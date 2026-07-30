@@ -13,6 +13,7 @@ dependencies = [
     "soundfile>=0.12",
     "pyannote.audio>=4.0",
     "groq",
+    "python-docx",
 ]
 
 [tool.pytest.ini_options]
