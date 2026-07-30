@@ -1,6 +1,7 @@
 # app/ui/window.py
 import tkinter as tk
 from tkinter import scrolledtext
+import threading
 
 from app.ui.controller import RecorderController
 
@@ -27,8 +28,10 @@ class MainWindow:
 
         button_frame = tk.Frame(root)
         button_frame.pack(fill="x", pady=4)
-        tk.Button(button_frame, text="Mulai Rekam", command=self._handle_start).pack(side="left")
-        tk.Button(button_frame, text="Stop Rekam", command=self._handle_stop).pack(side="left")
+        self._start_button = tk.Button(button_frame, text="Mulai Rekam", command=self._handle_start)
+        self._start_button.pack(side="left")
+        self._stop_button = tk.Button(button_frame, text="Stop Rekam", command=self._handle_stop)
+        self._stop_button.pack(side="left")
 
         tk.Label(root, textvariable=self.status_var).pack(anchor="w")
         self.transcript_view = scrolledtext.ScrolledText(root, height=15, width=60)
@@ -41,12 +44,27 @@ class MainWindow:
         self.on_stop_clicked()
 
     def on_start_clicked(self, title: str) -> None:
-        self._controller.start_meeting(title)
-        self.refresh_status()
+        try:
+            self._controller.start_meeting(title)
+        except Exception:
+            pass
+        finally:
+            self.refresh_status()
 
     def on_stop_clicked(self) -> None:
-        self._controller.stop_meeting()
-        self.refresh_status()
+        def _stop_in_background():
+            try:
+                self._controller.stop_meeting()
+            except Exception:
+                pass
+            finally:
+                self._root.after(0, self.refresh_status)
+
+        threading.Thread(target=_stop_in_background, daemon=True).start()
 
     def refresh_status(self) -> None:
         self.status_var.set(_STATUS_LABELS.get(self._controller.state, self._controller.state))
+        # Enable/disable buttons based on state
+        is_idle = self._controller.state in ("idle", "done", "error")
+        self._start_button.config(state="normal" if is_idle else "disabled")
+        self._stop_button.config(state="normal" if self._controller.state == "recording" else "disabled")
