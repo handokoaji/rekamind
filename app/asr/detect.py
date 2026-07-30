@@ -1,7 +1,11 @@
 def _cuda_available() -> bool:
+    """faster-whisper runs on ctranslate2, not torch — checking torch.cuda
+    here would report no-GPU on a machine with CUDA-capable ctranslate2 but
+    a CPU-only torch wheel (torch is only pulled in transitively, by the
+    diarizer)."""
     try:
-        import torch
-        return torch.cuda.is_available()
+        import ctranslate2
+        return ctranslate2.get_cuda_device_count() > 0
     except ImportError:
         return False
 
