@@ -1,4 +1,5 @@
 # tests/ui/test_window.py
+import time
 import tkinter as tk
 
 import pytest
@@ -47,6 +48,28 @@ def _tk_available() -> bool:
         return False
 
 
+def _pump_until(root: tk.Tk, predicate, timeout: float = 5.0) -> None:
+    """Run the Tk event loop until predicate() is true or timeout elapses.
+
+    Background threads (like the one on_start_clicked/on_stop_clicked spawn) call
+    self._root.after(...) to hand work back to the UI thread. Tkinter only honors
+    that hand-off while the main thread is actually inside mainloop() (a plain
+    root.update() polling loop is not enough and raises "main thread is not in
+    main loop"), so tests that wait on background-thread side effects must pump
+    via mainloop()/quit() instead of update().
+    """
+    deadline = time.time() + timeout
+
+    def _check():
+        if predicate() or time.time() > deadline:
+            root.quit()
+            return
+        root.after(20, _check)
+
+    root.after(20, _check)
+    root.mainloop()
+
+
 @pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
 def test_start_and_stop_buttons_call_controller():
     try:
@@ -58,6 +81,12 @@ def test_start_and_stop_buttons_call_controller():
     window = MainWindow(root, controller)
 
     window.on_start_clicked("Rapat Sore")
+
+    # on_start_clicked now runs start_meeting() in a background thread; pump the
+    # Tk event loop until it lands instead of asserting immediately (same style of
+    # deadline-polling used for background threads in tests/live/test_session.py).
+    _pump_until(root, lambda: controller.state == "recording")
+
     assert controller.started_with == "Rapat Sore"
     assert "recording" in window.status_var.get().lower() or controller.state == "recording"
 
@@ -80,6 +109,11 @@ def test_start_error_shows_error_state():
     window = MainWindow(root, controller)
 
     window.on_start_clicked("Rapat Sore")
+
+    # start_meeting() now raises inside a background thread; pump until the error
+    # state lands and the scheduled refresh_status() (via root.after) has run.
+    _pump_until(root, lambda: controller.state == "error" and "gagal" in window.status_var.get().lower())
+
     # refresh_status should have been called even though start_meeting() raised
     assert controller.state == "error"
     assert "Gagal" in window.status_var.get() or "gagal" in window.status_var.get().lower()

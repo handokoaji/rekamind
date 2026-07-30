@@ -70,12 +70,26 @@ class MainWindow:
             os.startfile(docx_path)
 
     def on_start_clicked(self, title: str) -> None:
-        try:
-            self._controller.start_meeting(title)
-        except Exception as exc:
-            print(f"Error starting meeting: {exc}", file=sys.stderr)
-        finally:
-            self.refresh_status()
+        # Guard: only allow start if currently idle/done/error (mirrors on_stop_clicked's
+        # guard below). Start is only clickable in these states per refresh_status(), but
+        # this closes the race for direct/rapid calls same as the stop-button fix.
+        if self._controller.state not in ("idle", "done", "error"):
+            return
+
+        # Disable start button synchronously BEFORE spawning background thread so a
+        # double-click can't fire start_meeting() twice while the heavy setup
+        # (Diarizer/VAD construction) runs off the UI thread.
+        self._start_button.config(state="disabled")
+
+        def _start_in_background():
+            try:
+                self._controller.start_meeting(title)
+            except Exception as exc:
+                print(f"Error starting meeting: {exc}", file=sys.stderr)
+            finally:
+                self._root.after(0, self.refresh_status)
+
+        threading.Thread(target=_start_in_background, daemon=True).start()
 
     def on_stop_clicked(self) -> None:
         # Guard: only allow stop if currently recording
