@@ -12,6 +12,7 @@ dependencies = [
     "optimum[openvino]>=1.17",
     "soundfile>=0.12",
     "pyannote.audio>=4.0",
+    "groq",
 ]
 
 [tool.pytest.ini_options]
