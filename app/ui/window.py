@@ -1,4 +1,5 @@
 # app/ui/window.py
+import os
 import sys
 import tkinter as tk
 from tkinter import scrolledtext
@@ -12,6 +13,14 @@ _STATUS_LABELS = {
     "processing": "Memproses transkrip & MoM...",
     "done": "Selesai",
     "error": "Gagal, lihat log",
+}
+
+_STATUS_COLORS = {
+    "idle": "black",
+    "recording": "red",
+    "processing": "#b8860b",  # dark goldenrod, readable on light/dark backgrounds
+    "done": "green",
+    "error": "red",
 }
 
 
@@ -34,7 +43,14 @@ class MainWindow:
         self._stop_button = tk.Button(button_frame, text="Stop Rekam", command=self._handle_stop)
         self._stop_button.pack(side="left")
 
-        tk.Label(root, textvariable=self.status_var).pack(anchor="w")
+        self.status_label = tk.Label(root, textvariable=self.status_var)
+        self.status_label.pack(anchor="w")
+
+        self._open_docx_button = tk.Button(
+            root, text="Buka Hasil (docx)", command=self._handle_open_docx, state="disabled"
+        )
+        self._open_docx_button.pack(anchor="w", pady=2)
+
         self.transcript_view = scrolledtext.ScrolledText(root, height=15, width=60)
         self.transcript_view.pack(fill="both", expand=True)
 
@@ -43,6 +59,11 @@ class MainWindow:
 
     def _handle_stop(self) -> None:
         self.on_stop_clicked()
+
+    def _handle_open_docx(self) -> None:
+        docx_path = self._controller.last_docx_path
+        if docx_path:
+            os.startfile(docx_path)
 
     def on_start_clicked(self, title: str) -> None:
         try:
@@ -72,11 +93,15 @@ class MainWindow:
         threading.Thread(target=_stop_in_background, daemon=True).start()
 
     def refresh_status(self) -> None:
-        status = _STATUS_LABELS.get(self._controller.state, self._controller.state)
-        if self._controller.state == "error" and self._controller.error_message:
+        state = self._controller.state
+        status = _STATUS_LABELS.get(state, state)
+        if state == "error" and self._controller.error_message:
             status = f"{status}: {self._controller.error_message}"
         self.status_var.set(status)
+        self.status_label.config(fg=_STATUS_COLORS.get(state, "black"))
         # Enable/disable buttons based on state
-        is_idle = self._controller.state in ("idle", "done", "error")
+        is_idle = state in ("idle", "done", "error")
         self._start_button.config(state="normal" if is_idle else "disabled")
-        self._stop_button.config(state="normal" if self._controller.state == "recording" else "disabled")
+        self._stop_button.config(state="normal" if state == "recording" else "disabled")
+        can_open_docx = state == "done" and bool(self._controller.last_docx_path)
+        self._open_docx_button.config(state="normal" if can_open_docx else "disabled")

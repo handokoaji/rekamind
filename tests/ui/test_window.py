@@ -15,6 +15,7 @@ class FakeController:
         self.error_message = ""
         self.start_raises = start_raises
         self.stop_raises = stop_raises
+        self.last_docx_path = None
 
     def start_meeting(self, title):
         if self.start_raises:
@@ -33,6 +34,7 @@ class FakeController:
             raise RuntimeError(self.error_message)
         self.stopped = True
         self.state = "done"
+        self.last_docx_path = "C:/recordings/1/mom.docx"
 
 
 def _tk_available() -> bool:
@@ -118,6 +120,81 @@ def test_button_enable_disable_based_on_state():
     window.refresh_status()
     assert window._start_button.cget("state") == "normal"
     assert window._stop_button.cget("state") == "disabled"
+
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_status_label_color_reflects_state():
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    controller = FakeController()
+    window = MainWindow(root, controller)
+
+    controller.state = "recording"
+    window.refresh_status()
+    assert window.status_label.cget("fg") == "red"
+
+    controller.state = "processing"
+    window.refresh_status()
+    assert window.status_label.cget("fg") == "#b8860b"
+
+    controller.state = "done"
+    window.refresh_status()
+    assert window.status_label.cget("fg") == "green"
+
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_open_docx_button_enabled_only_when_done_with_result():
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    controller = FakeController()
+    window = MainWindow(root, controller)
+
+    # Not done yet: disabled
+    controller.state = "recording"
+    window.refresh_status()
+    assert window._open_docx_button.cget("state") == "disabled"
+
+    # Done, docx available: enabled
+    controller.state = "done"
+    controller.last_docx_path = "C:/recordings/1/mom.docx"
+    window.refresh_status()
+    assert window._open_docx_button.cget("state") == "normal"
+
+    # Done, but no docx (shouldn't happen in practice, but guard anyway): disabled
+    controller.last_docx_path = None
+    window.refresh_status()
+    assert window._open_docx_button.cget("state") == "disabled"
+
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_open_docx_button_calls_os_startfile(monkeypatch):
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    opened = []
+    monkeypatch.setattr("app.ui.window.os.startfile", lambda path: opened.append(path))
+
+    controller = FakeController()
+    controller.state = "done"
+    controller.last_docx_path = "C:/recordings/1/mom.docx"
+    window = MainWindow(root, controller)
+
+    window._handle_open_docx()
+    assert opened == ["C:/recordings/1/mom.docx"]
 
     root.destroy()
 

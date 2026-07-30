@@ -30,6 +30,7 @@ class RecorderController:
         self._meeting_id: int | None = None
         self._meeting_title: str | None = None
         self._recorder = None
+        self.last_docx_path: str | None = None
 
     def start_meeting(self, title: str) -> int:
         # Try the recorder against a UUID-named staging folder BEFORE touching
@@ -92,7 +93,7 @@ class RecorderController:
                 await session.commit()
 
             async with self._session_factory() as session:
-                await self._finalize_fn(
+                summary = await self._finalize_fn(
                     session=session,
                     meeting_id=self._meeting_id,
                     meeting_title=self._meeting_title,
@@ -101,9 +102,10 @@ class RecorderController:
                     speaker_wav=speaker_path,
                 )
                 await session.commit()
+                return summary.docx_path
 
         try:
-            asyncio.run(_finalize())
+            self.last_docx_path = asyncio.run(_finalize())
             self.state = "done"
             self._recorder = None
         except Exception as exc:

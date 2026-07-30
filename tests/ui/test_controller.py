@@ -42,7 +42,8 @@ def test_start_then_stop_meeting_transitions_state(tmp_path):
         finalize_calls.append(kwargs["meeting_id"])
         from app.storage.models import Summary
         return Summary(id=1, meeting_id=kwargs["meeting_id"], mom_json="{}",
-                        groq_model="llama-3.3-70b-versatile", status="ready")
+                        groq_model="llama-3.3-70b-versatile", status="ready",
+                        docx_path="C:/recordings/1/mom.docx")
 
     controller = RecorderController(
         session_factory=session_factory,
@@ -59,6 +60,7 @@ def test_start_then_stop_meeting_transitions_state(tmp_path):
     controller.stop_meeting()
     assert controller.state == "done"
     assert finalize_calls == [meeting_id]
+    assert controller.last_docx_path == "C:/recordings/1/mom.docx"
 
 
 class BrokenRecorder:
@@ -138,7 +140,9 @@ def test_stop_meeting_raises_when_no_active_recording(tmp_path):
     session_factory = make_session_factory(engine)
 
     async def fake_finalize_fn(**kwargs):
-        pass
+        from app.storage.models import Summary
+        return Summary(id=1, meeting_id=kwargs["meeting_id"], mom_json="{}",
+                        groq_model="llama-3.3-70b-versatile", status="ready")
 
     controller = RecorderController(
         session_factory=session_factory,
