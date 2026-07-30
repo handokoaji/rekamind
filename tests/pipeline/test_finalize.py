@@ -37,6 +37,11 @@ class FakeSummarizer:
         )
 
 
+class FailingSummarizer:
+    def summarize(self, meeting_title, transcript_text):
+        raise RuntimeError("Summarizer failed")
+
+
 def test_finalize_meeting_saves_segments_and_summary(tmp_path):
     async def scenario():
         engine = make_engine("sqlite+aiosqlite:///:memory:")
@@ -90,3 +95,62 @@ def test_finalize_meeting_saves_segments_and_summary(tmp_path):
     assert summary.status == "ready"
     assert meetings[0].status == "completed"
     assert (tmp_path / "mom.docx").exists()
+
+
+def test_finalize_meeting_marks_failed_on_exception(tmp_path):
+    async def scenario():
+        engine = make_engine("sqlite+aiosqlite:///:memory:")
+        await init_db(engine)
+        session_factory = make_session_factory(engine)
+
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(session, "Rapat Uji", None)
+            await session.commit()
+            meeting_id = meeting.id
+
+        mic_wav = tmp_path / "mic.wav"
+        speaker_wav = tmp_path / "speaker.wav"
+        mic_wav.touch()
+        speaker_wav.touch()
+        docx_path = tmp_path / "mom.docx"
+
+        transcriber_calls = {"mic.wav": [
+            TranscriptSegmentResult(start_ms=0, end_ms=500, text="Selamat pagi")
+        ], "speaker.wav": [
+            TranscriptSegmentResult(start_ms=600, end_ms=1500, text="Mari kita mulai")
+        ]}
+
+        class RoutingFakeTranscriber:
+            def transcribe(self, wav_path, language="id"):
+                return transcriber_calls[wav_path.name]
+
+        diarizer = FakeDiarizer([SpeakerSegment(start_ms=600, end_ms=1500, label="Speaker 1")])
+        failing_summarizer = FailingSummarizer()
+
+        exception_raised = None
+        async with session_factory() as session:
+            try:
+                await finalize_meeting(
+                    session=session,
+                    meeting_id=meeting_id,
+                    meeting_title="Rapat Uji",
+                    meeting_date=datetime(2026, 7, 30, 9, 0),
+                    mic_wav=mic_wav,
+                    speaker_wav=speaker_wav,
+                    transcriber=RoutingFakeTranscriber(),
+                    diarizer=diarizer,
+                    summarizer=failing_summarizer,
+                    docx_output_path=docx_path,
+                )
+            except RuntimeError as e:
+                exception_raised = e
+            await session.commit()
+
+        async with session_factory() as session:
+            meetings = await repo.list_meetings(session)
+        return exception_raised, meetings
+
+    exception_raised, meetings = asyncio.run(scenario())
+    assert exception_raised is not None
+    assert "Summarizer failed" in str(exception_raised)
+    assert meetings[0].status == "failed"

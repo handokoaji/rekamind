@@ -66,5 +66,6 @@ async def finalize_meeting(
         await repo.mark_meeting_status(session, meeting_id, "completed")
         return summary
     except Exception:
+        await session.rollback()
         await repo.mark_meeting_status(session, meeting_id, "failed")
         raise
