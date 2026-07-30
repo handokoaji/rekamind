@@ -1429,9 +1429,24 @@ Expected: FAIL with `TypeError: RecorderController.__init__() got an unexpected 
         self.last_docx_path: str | None = None
 ```
 
-In `start_meeting`, right after `recorder.start()` succeeds (after the existing try/except around it) and before/around the DB `_create()` call, add:
+**Important ordering decision:** the live session must be constructed and
+started BEFORE the recorder, not after. Task 11 (main.py wiring) needs the
+live session's queues to already exist by the time `recorder_factory`
+constructs the real `MicSpeakerRecorder`, since that constructor reads the
+queues once at construction time — building the recorder first would hand
+it queues that don't exist yet. Replace the entire `start_meeting` method
+with this version (the only change from Fase 1's version is the new live
+session block inserted before `recorder = self._recorder_factory(...)`,
+and the two new `if self._live_session is not None: ...` cleanup lines in
+the two existing except blocks):
 
 ```python
+    def start_meeting(self, title: str) -> int:
+        session_dirname = uuid.uuid4().hex
+        meeting_dir = self._recordings_dir / session_dirname
+        mic_path = meeting_dir / "mic.wav"
+        speaker_path = meeting_dir / "speaker.wav"
+
         self._live_session = None
         if self._live_session_factory is not None:
             try:
@@ -1440,17 +1455,29 @@ In `start_meeting`, right after `recorder.start()` succeeds (after the existing 
             except Exception as exc:
                 print(f"WARNING: live preview unavailable this meeting: {exc}")
                 self._live_session = None
-```
 
-(Place this block after the recorder has successfully started, so `mic_path`/`speaker_path`/`meeting_dir` are already in scope from the existing code — before the `_create()` DB call, since live preview should start capturing text as soon as recording begins, not wait for the DB round-trip.)
+        recorder = self._recorder_factory(mic_path, speaker_path)
 
-The existing `except Exception as exc:` block around `asyncio.run(_create())` (the one that already calls `recorder.stop()` on DB failure) must ALSO stop the live session if one was started, or it leaks the live consumer threads:
+        try:
+            recorder.start()
+        except Exception as exc:
+            if self._live_session is not None:
+                self._live_session.stop()
+                self._live_session = None
+            self.error_message = f"Gagal memulai rekam (cek perangkat mic/speaker): {exc}"
+            self.state = "error"
+            raise
 
-```python
+        async def _create():
+            async with self._session_factory() as session:
+                meeting = await repo.create_meeting(session, title, None)
+                await repo.start_recording(session, meeting.id)
+                await session.commit()
+                return meeting.id
+
         try:
             meeting_id = asyncio.run(_create())
         except Exception as exc:
-            # Recorder was started but DB write failed; stop recorder to avoid resource leak
             recorder.stop()
             if self._live_session is not None:
                 self._live_session.stop()
@@ -1458,6 +1485,12 @@ The existing `except Exception as exc:` block around `asyncio.run(_create())` (t
             self.error_message = f"Gagal menyimpan data meeting: {exc}"
             self.state = "error"
             raise
+
+        self._meeting_id = meeting_id
+        self._meeting_title = title
+        self._recorder = recorder
+        self.state = "recording"
+        return meeting_id
 ```
 
 In `stop_meeting`, at the very top (right after the existing `if self._recorder is None: raise RuntimeError(...)` guard), add:
@@ -1699,7 +1732,7 @@ def _real_recorder(mic_path: Path, speaker_path: Path):
     )
 ```
 
-Note the ordering constraint this creates: `RecorderController.start_meeting` must construct the live session (which populates `recorder_queues`) BEFORE calling `recorder_factory(...)` — but Task 9's controller code calls `recorder_factory` first (to start capture immediately) and the live session only after. Resolve this by having `_real_recorder` read `recorder_queues` lazily at `MicSpeakerRecorder.start()` time instead of at construction time: pass `recorder_queues` (the dict itself, not its current values) into `MicSpeakerRecorder` and look up `recorder_queues["mic"]`/`["speaker"]` inside its `start()` method rather than in `__init__`. Since Task 2's `MicSpeakerRecorder.__init__` stores `mic_queue`/`speaker_queue` as plain attributes used later in `start()`'s callback closures anyway, this reordering is a one-line change: pass `recorder_queues["mic"]` at the point `start()` builds `mic_stream_callback` instead of caching it in `__init__`. If this ordering conflict is awkward to resolve cleanly, the simpler fix is to swap Task 9's order in `start_meeting`: construct+start the live session FIRST (which sets `recorder_queues`), THEN call `recorder_factory(...)`/`recorder.start()`. Either resolution is acceptable — pick whichever reads cleaner once you're looking at the real merged code from Tasks 2 and 9.
+This relies on Task 9's ordering decision: `RecorderController.start_meeting` calls `live_session_factory` (populating `recorder_queues` here) BEFORE `recorder_factory` constructs the real `MicSpeakerRecorder`. As long as Task 9 was implemented as specified, `_real_recorder`'s constructor-time read of `recorder_queues["mic"]`/`["speaker"]` already sees the real queue objects — nothing further to reconcile here.
 
 - [ ] **Step 5: Wire `window_ref` after the window is constructed**
 
