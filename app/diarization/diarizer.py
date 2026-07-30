@@ -1,9 +1,16 @@
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import soundfile as sf
 import torch
+
+# pyannote.audio warns at import time if torchcodec's native libs don't match
+# the installed FFmpeg/torch build. Harmless here: diarize() below always
+# hands pyannote an in-memory waveform (via soundfile), never a path, so its
+# torchcodec-based path-decoding is never actually used.
+warnings.filterwarnings("ignore", message=r"\ntorchcodec is not installed correctly.*", category=UserWarning)
 from pyannote.audio import Pipeline
 
 
