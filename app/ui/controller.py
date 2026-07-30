@@ -1,0 +1,93 @@
+import asyncio
+import uuid
+import wave
+from datetime import datetime
+from pathlib import Path
+from typing import Awaitable, Callable
+
+from app.storage import repository as repo
+
+
+def _wav_duration_ms(path: Path) -> int:
+    with wave.open(str(path), "rb") as wf:
+        return int(wf.getnframes() / wf.getframerate() * 1000)
+
+
+class RecorderController:
+    def __init__(
+        self,
+        session_factory,
+        recorder_factory: Callable,
+        finalize_fn: Callable[..., Awaitable],
+        recordings_dir: Path,
+    ):
+        self._session_factory = session_factory
+        self._recorder_factory = recorder_factory
+        self._finalize_fn = finalize_fn
+        self._recordings_dir = recordings_dir
+        self.state = "idle"
+        self.error_message: str | None = None
+        self._meeting_id: int | None = None
+        self._meeting_title: str | None = None
+        self._recorder = None
+
+    def start_meeting(self, title: str) -> int:
+        # Try the recorder against a UUID-named staging folder BEFORE touching
+        # the DB at all, so a missing/broken audio device never leaves behind
+        # an empty meeting row (spec requirement).
+        session_dirname = uuid.uuid4().hex
+        meeting_dir = self._recordings_dir / session_dirname
+        mic_path = meeting_dir / "mic.wav"
+        speaker_path = meeting_dir / "speaker.wav"
+        recorder = self._recorder_factory(mic_path, speaker_path)
+
+        try:
+            recorder.start()
+        except Exception as exc:
+            self.error_message = f"Gagal memulai rekam (cek perangkat mic/speaker): {exc}"
+            self.state = "error"
+            raise
+
+        async def _create():
+            async with self._session_factory() as session:
+                meeting = await repo.create_meeting(session, title, None)
+                await repo.start_recording(session, meeting.id)
+                await session.commit()
+                return meeting.id
+
+        meeting_id = asyncio.run(_create())
+        self._meeting_id = meeting_id
+        self._meeting_title = title
+        self._recorder = recorder
+        self.state = "recording"
+        return meeting_id
+
+    def stop_meeting(self) -> None:
+        mic_path, speaker_path = self._recorder.stop()
+        self.state = "processing"
+
+        async def _finalize():
+            async with self._session_factory() as session:
+                await repo.stop_recording(session, self._meeting_id)
+                await repo.save_recording_file(
+                    session, self._meeting_id, str(mic_path), "mic", _wav_duration_ms(mic_path)
+                )
+                await repo.save_recording_file(
+                    session, self._meeting_id, str(speaker_path), "speaker", _wav_duration_ms(speaker_path)
+                )
+                await self._finalize_fn(
+                    session=session,
+                    meeting_id=self._meeting_id,
+                    meeting_title=self._meeting_title,
+                    meeting_date=datetime.now(),
+                    mic_wav=mic_path,
+                    speaker_wav=speaker_path,
+                )
+                await session.commit()
+
+        try:
+            asyncio.run(_finalize())
+            self.state = "done"
+        except Exception:
+            self.state = "error"
+            raise

@@ -1,0 +1,101 @@
+import asyncio
+import wave
+from datetime import datetime
+from pathlib import Path
+
+from app.storage.db import make_engine, init_db, make_session_factory
+from app.ui.controller import RecorderController
+
+
+def _write_silent_wav(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(path), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(16000)
+        wf.writeframes((0).to_bytes(2, "little", signed=True) * 160)
+
+
+class FakeRecorder:
+    def __init__(self, mic_path, speaker_path):
+        self.mic_path = mic_path
+        self.speaker_path = speaker_path
+        self.started = False
+
+    def start(self):
+        self.started = True
+        _write_silent_wav(self.mic_path)
+        _write_silent_wav(self.speaker_path)
+
+    def stop(self):
+        return self.mic_path, self.speaker_path
+
+
+def test_start_then_stop_meeting_transitions_state(tmp_path):
+    engine = make_engine("sqlite+aiosqlite:///:memory:")
+    asyncio.run(init_db(engine))
+    session_factory = make_session_factory(engine)
+
+    finalize_calls = []
+
+    async def fake_finalize_fn(**kwargs):
+        finalize_calls.append(kwargs["meeting_id"])
+        from app.storage.models import Summary
+        return Summary(id=1, meeting_id=kwargs["meeting_id"], mom_json="{}",
+                        groq_model="llama-3.3-70b-versatile", status="ready")
+
+    controller = RecorderController(
+        session_factory=session_factory,
+        recorder_factory=lambda mic, speaker: FakeRecorder(mic, speaker),
+        finalize_fn=fake_finalize_fn,
+        recordings_dir=tmp_path,
+    )
+
+    assert controller.state == "idle"
+    meeting_id = controller.start_meeting("Rapat Harian")
+    assert controller.state == "recording"
+    assert isinstance(meeting_id, int)
+
+    controller.stop_meeting()
+    assert controller.state == "done"
+    assert finalize_calls == [meeting_id]
+
+
+class BrokenRecorder:
+    def __init__(self, mic_path, speaker_path):
+        pass
+
+    def start(self):
+        raise OSError("no default input device")
+
+
+def test_start_meeting_sets_error_state_when_device_missing(tmp_path):
+    engine = make_engine("sqlite+aiosqlite:///:memory:")
+    asyncio.run(init_db(engine))
+    session_factory = make_session_factory(engine)
+
+    async def fake_finalize_fn(**kwargs):
+        raise AssertionError("finalize should not be called when start fails")
+
+    controller = RecorderController(
+        session_factory=session_factory,
+        recorder_factory=lambda mic, speaker: BrokenRecorder(mic, speaker),
+        finalize_fn=fake_finalize_fn,
+        recordings_dir=tmp_path,
+    )
+
+    try:
+        controller.start_meeting("Rapat Gagal")
+        assert False, "expected OSError to propagate"
+    except OSError:
+        pass
+
+    assert controller.state == "error"
+    assert "mic/speaker" in controller.error_message
+
+    async def _list():
+        async with session_factory() as session:
+            from app.storage import repository as repo
+            return await repo.list_meetings(session)
+
+    assert asyncio.run(_list()) == []
