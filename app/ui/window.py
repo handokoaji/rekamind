@@ -4,6 +4,7 @@ import sys
 import tkinter as tk
 from tkinter import scrolledtext
 import threading
+import queue
 
 from app.ui.controller import RecorderController
 
@@ -53,6 +54,9 @@ class MainWindow:
 
         self.transcript_view = scrolledtext.ScrolledText(root, height=15, width=60)
         self.transcript_view.pack(fill="both", expand=True)
+
+        self._live_events: "queue.Queue" = queue.Queue()
+        self._root.after(200, self._drain_live_events)
 
     def _handle_start(self) -> None:
         self.on_start_clicked(self.title_var.get())
@@ -105,3 +109,24 @@ class MainWindow:
         self._stop_button.config(state="normal" if state == "recording" else "disabled")
         can_open_docx = state == "done" and bool(self._controller.last_docx_path)
         self._open_docx_button.config(state="normal" if can_open_docx else "disabled")
+
+    def push_live_event(self, event: dict) -> None:
+        """Thread-safe: called from LiveSession's background threads."""
+        self._live_events.put(event)
+
+    def _drain_live_events(self) -> None:
+        try:
+            while True:
+                event = self._live_events.get_nowait()
+                if event["type"] == "text":
+                    segment = event["segment"]
+                    if segment is not None:
+                        self.transcript_view.insert("end", f"{segment.text}\n")
+                elif event["type"] == "relabel":
+                    self.transcript_view.delete("1.0", "end")
+                    for seg in event["segments"]:
+                        self.transcript_view.insert("end", f"{seg.speaker_label}: {seg.text}\n")
+        except queue.Empty:
+            pass
+        finally:
+            self._root.after(200, self._drain_live_events)

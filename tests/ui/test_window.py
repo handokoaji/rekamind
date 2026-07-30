@@ -232,3 +232,51 @@ def test_double_click_stop_during_processing():
     # A more rigorous test would require mocking threading or using real async barriers.
 
     root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_text_event_appends_unlabeled_line():
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    from app.live.pipeline import LiveSegment
+
+    controller = FakeController()
+    window = MainWindow(root, controller)
+
+    window.push_live_event({"type": "text", "segment": LiveSegment(source="mic", start_ms=0, end_ms=500, text="Selamat pagi")})
+    window._drain_live_events()  # call directly instead of waiting for root.after's timer
+
+    assert "Selamat pagi" in window.transcript_view.get("1.0", "end")
+
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_relabel_event_rerenders_full_transcript_with_labels():
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    from app.pipeline.merge import MergedSegment
+
+    controller = FakeController()
+    window = MainWindow(root, controller)
+
+    window.push_live_event({"type": "text", "segment": None})  # unlabeled placeholder already shown
+    window._drain_live_events()
+
+    window.push_live_event({"type": "relabel", "segments": [
+        MergedSegment(source="mic", speaker_label="Anda", start_ms=0, end_ms=500, text="Selamat pagi"),
+        MergedSegment(source="speaker", speaker_label="Speaker 1", start_ms=600, end_ms=1200, text="Mari mulai"),
+    ]})
+    window._drain_live_events()
+
+    content = window.transcript_view.get("1.0", "end")
+    assert "Anda: Selamat pagi" in content
+    assert "Speaker 1: Mari mulai" in content
+
+    root.destroy()
