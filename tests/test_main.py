@@ -95,6 +95,18 @@ def test_query_loopback_format_terminates_even_on_failure(monkeypatch):
     assert _FakePyAudioModule.terminated == [True]
 
 
+def test_live_models_are_built_lazily_inside_the_live_session_factory():
+    """I7/I8: the small live model and the live diarizer must not load before the
+    Tkinter window exists, and must be reused across meetings once loaded."""
+    import inspect
+
+    source = inspect.getsource(main.main)
+    assert source.index("build_live_transcriber(") > source.index("def live_session_factory"), \
+        "build_live_transcriber must be called inside live_session_factory, not eagerly"
+    assert "nonlocal live_transcriber, live_diarizer" in source, \
+        "both the live model and the live diarizer must be cached across meetings"
+
+
 def test_build_models_openvino_uses_cpu_diarizer(monkeypatch):
     _patch(monkeypatch, cuda_ok=True)
     monkeypatch.setattr(main, "OpenVinoWhisperBackend", lambda: object())

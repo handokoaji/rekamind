@@ -135,18 +135,22 @@ def main() -> None:
             docx_output_path=docx_path,
         )
 
+    # Same lazy-singleton deal as load_models() above: the small live model and the
+    # live diarizer are built on the first "Mulai Rekam", not at startup (the window
+    # must appear at once), then reused for every later meeting in this app run.
+    # A load failure propagates to the controller, which starts the recording
+    # without live preview (spec §5) and retries the load on the next meeting.
     live_transcriber = None
-    try:
-        live_transcriber = build_live_transcriber(backend_name)
-    except Exception as exc:
-        print(f"WARNING: live preview model failed to load ({exc}); live preview disabled this session", file=sys.stderr)
+    live_diarizer = None
 
     window_ref: dict = {}  # populated below once `window` exists; closures need this indirection
 
     def live_session_factory(mic_wav_path, speaker_wav_path, scratch_dir):
+        nonlocal live_transcriber, live_diarizer
         if live_transcriber is None:
-            raise RuntimeError("live preview model not loaded")
-        live_diarizer = Diarizer(hf_token=settings.hf_token, device="cuda" if backend_name == "cuda" else "cpu")
+            live_transcriber = build_live_transcriber(backend_name)
+        if live_diarizer is None:
+            live_diarizer = Diarizer(hf_token=settings.hf_token, device="cuda" if backend_name == "cuda" else "cpu")
         mic_queue: "queue.Queue" = queue.Queue(maxsize=200)
         speaker_queue: "queue.Queue" = queue.Queue(maxsize=200)
         # The loopback device records at its native format (typically 48kHz

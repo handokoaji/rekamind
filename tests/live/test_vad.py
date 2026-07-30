@@ -118,3 +118,32 @@ def test_vad_module_importable_without_torch_at_module_level():
     # torch should not be in the module-level namespace
     assert "torch" not in dir(vad_module), \
         "torch should not be imported at module level; it should only be imported inside _bytes_to_tensor"
+
+
+def test_load_silero_vad_iterator_reuses_the_model_but_not_the_iterator(monkeypatch):
+    """I7: the model load is the expensive part and is cached; the iterator
+    carries per-session trigger state and must be fresh every meeting."""
+    import app.live.vad as vad_module
+
+    vad_module._load_silero_model.cache_clear()
+    loads = []
+
+    class _FakeSileroModule:
+        @staticmethod
+        def load_silero_vad():
+            loads.append(1)
+            return object()
+
+        class VADIterator:
+            def __init__(self, model, sampling_rate=16000):
+                self.model = model
+
+    monkeypatch.setitem(__import__("sys").modules, "silero_vad", _FakeSileroModule)
+
+    first = vad_module.load_silero_vad_iterator()
+    second = vad_module.load_silero_vad_iterator()
+
+    assert len(loads) == 1  # model loaded once...
+    assert first is not second  # ...iterator built fresh each time
+    assert first.model is second.model
+    vad_module._load_silero_model.cache_clear()

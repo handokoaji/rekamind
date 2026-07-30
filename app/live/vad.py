@@ -1,3 +1,4 @@
+import functools
 from dataclasses import dataclass
 
 import numpy as np
@@ -94,8 +95,17 @@ class SpeechSegmenter:
         return completed
 
 
-def load_silero_vad_iterator(samplerate: int = 16000):
-    from silero_vad import VADIterator, load_silero_vad
+@functools.lru_cache(maxsize=1)
+def _load_silero_model():
+    # The model load is the expensive part (~seconds) and is stateless; the
+    # iterator wrapped around it is not, so only this half is cached.
+    from silero_vad import load_silero_vad
+    return load_silero_vad()
 
-    model = load_silero_vad()
-    return VADIterator(model, sampling_rate=samplerate)
+
+def load_silero_vad_iterator(samplerate: int = 16000):
+    from silero_vad import VADIterator
+
+    # Always a FRESH iterator: it carries per-session trigger state that must not
+    # leak from one meeting into the next.
+    return VADIterator(_load_silero_model(), sampling_rate=samplerate)
