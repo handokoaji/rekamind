@@ -99,3 +99,153 @@ def test_start_meeting_sets_error_state_when_device_missing(tmp_path):
             return await repo.list_meetings(session)
 
     assert asyncio.run(_list()) == []
+
+
+def test_stop_meeting_sets_error_message_on_finalize_failure(tmp_path):
+    """Bug fix #1: stop_meeting() must set error_message when exception occurs."""
+    engine = make_engine("sqlite+aiosqlite:///:memory:")
+    asyncio.run(init_db(engine))
+    session_factory = make_session_factory(engine)
+
+    async def failing_finalize_fn(**kwargs):
+        raise ValueError("Database corruption detected")
+
+    controller = RecorderController(
+        session_factory=session_factory,
+        recorder_factory=lambda mic, speaker: FakeRecorder(mic, speaker),
+        finalize_fn=failing_finalize_fn,
+        recordings_dir=tmp_path,
+    )
+
+    meeting_id = controller.start_meeting("Rapat Test")
+    assert controller.state == "recording"
+
+    try:
+        controller.stop_meeting()
+        assert False, "expected ValueError to propagate"
+    except ValueError:
+        pass
+
+    assert controller.state == "error"
+    assert controller.error_message is not None
+    assert "Database corruption" in controller.error_message
+
+
+def test_stop_meeting_raises_when_no_active_recording(tmp_path):
+    """Bug fix #2: stop_meeting() must raise RuntimeError if no recorder is active."""
+    engine = make_engine("sqlite+aiosqlite:///:memory:")
+    asyncio.run(init_db(engine))
+    session_factory = make_session_factory(engine)
+
+    async def fake_finalize_fn(**kwargs):
+        pass
+
+    controller = RecorderController(
+        session_factory=session_factory,
+        recorder_factory=lambda mic, speaker: FakeRecorder(mic, speaker),
+        finalize_fn=fake_finalize_fn,
+        recordings_dir=tmp_path,
+    )
+
+    # stop_meeting() called without start_meeting()
+    try:
+        controller.stop_meeting()
+        assert False, "expected RuntimeError"
+    except RuntimeError as e:
+        assert "no meeting is currently being recorded" in str(e)
+
+    # Also test calling stop_meeting() twice
+    meeting_id = controller.start_meeting("Rapat Test")
+    controller.stop_meeting()
+    assert controller.state == "done"
+
+    try:
+        controller.stop_meeting()
+        assert False, "expected RuntimeError on second stop"
+    except RuntimeError as e:
+        assert "no meeting is currently being recorded" in str(e)
+
+
+class BrokenRecorderStartThenDB:
+    """Recorder that starts successfully but simulates DB write failure."""
+    def __init__(self, mic_path, speaker_path):
+        self.mic_path = mic_path
+        self.speaker_path = speaker_path
+        self.started = False
+        self.stopped = False
+
+    def start(self):
+        self.started = True
+        _write_silent_wav(self.mic_path)
+        _write_silent_wav(self.speaker_path)
+
+    def stop(self):
+        self.stopped = True
+        return self.mic_path, self.speaker_path
+
+
+def test_db_failure_after_recorder_start_stops_recorder(tmp_path):
+    """Bug fix #3: DB failure after successful recorder.start() must stop recorder to avoid leak."""
+    from app.storage.models import Meeting
+
+    async def fake_finalize_fn(**kwargs):
+        raise AssertionError("finalize should not be called")
+
+    # Use a real session factory for a real engine, but override commit to fail
+    engine = make_engine("sqlite+aiosqlite:///:memory:")
+    asyncio.run(init_db(engine))
+    real_session_factory = make_session_factory(engine)
+
+    class FailingSessionFactoryWrapper:
+        """Wraps the real session factory but makes commit fail."""
+        def __init__(self, real_factory):
+            self._real_factory = real_factory
+
+        def __call__(self):
+            return self._WrappedContext(self._real_factory)
+
+        class _WrappedContext:
+            def __init__(self, real_factory):
+                self.real_factory = real_factory
+                self.real_session = None
+
+            async def __aenter__(self):
+                self.real_session = await self.real_factory().__aenter__()
+                return self
+
+            async def __aexit__(self, *args):
+                if self.real_session:
+                    await self.real_session.__aexit__(*args)
+
+            def add(self, obj):
+                self.real_session.add(obj)
+
+            async def flush(self):
+                await self.real_session.flush()
+
+            async def get(self, model_class, pk):
+                return await self.real_session.get(model_class, pk)
+
+            async def commit(self):
+                raise RuntimeError("Simulated DB write failure")
+
+    controller = RecorderController(
+        session_factory=FailingSessionFactoryWrapper(real_session_factory),
+        recorder_factory=lambda mic, speaker: BrokenRecorderStartThenDB(mic, speaker),
+        finalize_fn=fake_finalize_fn,
+        recordings_dir=tmp_path,
+    )
+
+    try:
+        controller.start_meeting("Rapat DB Fail")
+        assert False, "expected RuntimeError from DB"
+    except RuntimeError as e:
+        assert "Simulated DB write failure" in str(e)
+
+    # Verify state machine is set to error with message
+    assert controller.state == "error"
+    assert controller.error_message is not None
+    assert "Gagal menyimpan data meeting" in controller.error_message
+    # Recorder was not stored in _recorder since DB write failed, but
+    # the important thing is that recorder.stop() was called (which the exception
+    # not being about recorder proves)

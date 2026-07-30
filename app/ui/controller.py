@@ -55,7 +55,15 @@ class RecorderController:
                 await session.commit()
                 return meeting.id
 
-        meeting_id = asyncio.run(_create())
+        try:
+            meeting_id = asyncio.run(_create())
+        except Exception as exc:
+            # Recorder was started but DB write failed; stop recorder to avoid resource leak
+            recorder.stop()
+            self.error_message = f"Gagal menyimpan data meeting: {exc}"
+            self.state = "error"
+            raise
+
         self._meeting_id = meeting_id
         self._meeting_title = title
         self._recorder = recorder
@@ -63,6 +71,9 @@ class RecorderController:
         return meeting_id
 
     def stop_meeting(self) -> None:
+        if self._recorder is None:
+            raise RuntimeError("cannot stop: no meeting is currently being recorded")
+
         mic_path, speaker_path = self._recorder.stop()
         self.state = "processing"
 
@@ -88,6 +99,8 @@ class RecorderController:
         try:
             asyncio.run(_finalize())
             self.state = "done"
-        except Exception:
+            self._recorder = None
+        except Exception as exc:
+            self.error_message = f"Gagal memproses hasil rekaman: {exc}"
             self.state = "error"
             raise
