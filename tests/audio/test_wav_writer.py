@@ -107,8 +107,9 @@ def test_writes_flush_after_interval_passes(tmp_path):
             assert mock_patch.call_count == 2
 
 
-def test_close_always_flushes_regardless_of_throttle(tmp_path):
-    """Verify that close() always flushes even if the interval hasn't passed."""
+def test_close_writes_complete_file_even_when_last_write_was_throttled(tmp_path):
+    """close() must leave a complete, correct WAV even for frames written after
+    the last throttled flush (stdlib Wave_write.close() patches the header)."""
     path = tmp_path / "close_flush.wav"
     frame = (0).to_bytes(2, "little", signed=True) * 160
 
@@ -118,17 +119,35 @@ def test_close_always_flushes_regardless_of_throttle(tmp_path):
         return fake_time[0]
 
     with patch("app.audio.wav_writer.time.monotonic", side_effect=fake_monotonic):
-        # Use a very long interval to ensure close() is not affected by throttling
+        # Very long interval: only the first write flushes, the rest are throttled.
         writer = WavFileWriter(path, samplerate=16000, channels=1, flush_interval_seconds=10.0)
+        writer.write_frames(frame)
+        writer.write_frames(frame)
+        writer.close()
 
-        with patch.object(writer._wf, "_patchheader") as mock_patch:
-            writer.write_frames(frame)
-            assert mock_patch.call_count == 1
+    with wave.open(str(path), "rb") as reader:
+        assert reader.getnframes() == 320
 
-            # close() should flush again even though interval hasn't passed
-            writer.close()
-            assert mock_patch.call_count == 2
 
-    # Verify file is valid
+def test_close_without_any_frames_written_does_not_raise(tmp_path):
+    """Regression: close() used to call _patchheader() unconditionally, which
+    asserts a header exists -- it does not until the first writeframes()."""
+    path = tmp_path / "empty.wav"
+    writer = WavFileWriter(path, samplerate=16000, channels=1)
+    writer.close()
+
+    with wave.open(str(path), "rb") as reader:
+        assert reader.getnframes() == 0
+        assert reader.getframerate() == 16000
+        assert reader.getnchannels() == 1
+
+
+def test_close_is_idempotent(tmp_path):
+    path = tmp_path / "twice.wav"
+    writer = WavFileWriter(path, samplerate=16000, channels=1)
+    writer.write_frames((0).to_bytes(2, "little", signed=True) * 160)
+    writer.close()
+    writer.close()  # must not raise
+
     with wave.open(str(path), "rb") as reader:
         assert reader.getnframes() == 160

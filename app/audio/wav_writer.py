@@ -14,6 +14,7 @@ class WavFileWriter:
     ):
         path.parent.mkdir(parents=True, exist_ok=True)
         self._wf = wave.open(str(path), "wb")
+        self._closed = False
         self._flush_interval_seconds = flush_interval_seconds
         # Initialize to a time far in the past so the first write will flush
         self._last_flush_time = time.monotonic() - flush_interval_seconds
@@ -44,8 +45,15 @@ class WavFileWriter:
             self._do_flush()
 
     def close(self) -> None:
-        # Always flush before closing to ensure no data is left unflushed
-        self._do_flush()
+        # Do NOT call _do_flush() here: _patchheader() asserts the header was
+        # already written, which is false for a writer that never got a frame
+        # (a stream that delivered zero callbacks) -- that AssertionError used
+        # to escape all the way out of "Stop Rekam". stdlib's own close()
+        # already writes a zero-length header if needed, patches it, and
+        # flushes; it is also a no-op the second time (it clears _file).
+        if self._closed:
+            return
+        self._closed = True
         self._wf.close()
 
     def __enter__(self) -> "WavFileWriter":
