@@ -41,6 +41,10 @@ class RecorderController:
         mic_path = meeting_dir / "mic.wav"
         speaker_path = meeting_dir / "speaker.wav"
 
+        # Live session must start BEFORE the recorder is constructed: the real
+        # recorder_factory (wired in main.py) reads the live session's queues
+        # at construction time, so those queues must already exist by the time
+        # recorder_factory(...) runs below. Do not reorder this.
         self._live_session = None
         if self._live_session_factory is not None:
             try:

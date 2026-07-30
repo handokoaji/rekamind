@@ -397,3 +397,41 @@ def test_live_session_stopped_when_db_write_fails_after_it_started(tmp_path):
     assert len(created_sessions) == 1
     assert created_sessions[0].started is True
     assert created_sessions[0].stopped is True
+
+
+def test_live_session_stopped_when_recorder_start_fails(tmp_path):
+    """spec §1: if recorder.start() fails AFTER a live session successfully
+    started, the live session must be stopped to avoid resource leak."""
+    engine = make_engine("sqlite+aiosqlite:///:memory:")
+    asyncio.run(init_db(engine))
+    session_factory = make_session_factory(engine)
+
+    created_sessions = []
+
+    def live_session_factory(mic_wav_path, speaker_wav_path, scratch_dir):
+        live_session = FakeLiveSession(mic_wav_path, speaker_wav_path, scratch_dir)
+        created_sessions.append(live_session)
+        return live_session
+
+    async def fake_finalize_fn(**kwargs):
+        raise AssertionError("finalize should not be called")
+
+    controller = RecorderController(
+        session_factory=session_factory,
+        recorder_factory=lambda mic, speaker: BrokenRecorder(mic, speaker),
+        finalize_fn=fake_finalize_fn,
+        recordings_dir=tmp_path,
+        live_session_factory=live_session_factory,
+    )
+
+    try:
+        controller.start_meeting("Rapat Recorder Fail")
+        assert False, "expected OSError from recorder"
+    except OSError:
+        pass
+
+    # Verify the live session was properly cleaned up
+    assert len(created_sessions) == 1
+    assert created_sessions[0].started is True
+    assert created_sessions[0].stopped is True
+    assert controller.state == "error"
