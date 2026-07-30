@@ -1,4 +1,5 @@
 import asyncio
+import pytest
 from datetime import datetime, timezone
 
 from app.storage.db import make_engine, init_db, make_session_factory
@@ -58,3 +59,54 @@ def test_full_meeting_lifecycle():
     assert meetings[0].status == "completed"
     assert meetings[0].start_time is not None
     assert meetings[0].end_time is not None
+
+
+def test_start_recording_missing_meeting():
+    async def scenario():
+        engine = make_engine("sqlite+aiosqlite:///:memory:")
+        await init_db(engine)
+        session_factory = make_session_factory(engine)
+
+        async with session_factory() as session:
+            try:
+                await repo.start_recording(session, 999)
+                return False
+            except ValueError as e:
+                return "Meeting 999 not found" in str(e)
+
+    result = asyncio.run(scenario())
+    assert result is True
+
+
+def test_stop_recording_missing_meeting():
+    async def scenario():
+        engine = make_engine("sqlite+aiosqlite:///:memory:")
+        await init_db(engine)
+        session_factory = make_session_factory(engine)
+
+        async with session_factory() as session:
+            try:
+                await repo.stop_recording(session, 999)
+                return False
+            except ValueError as e:
+                return "Meeting 999 not found" in str(e)
+
+    result = asyncio.run(scenario())
+    assert result is True
+
+
+def test_mark_meeting_status_missing_meeting():
+    async def scenario():
+        engine = make_engine("sqlite+aiosqlite:///:memory:")
+        await init_db(engine)
+        session_factory = make_session_factory(engine)
+
+        async with session_factory() as session:
+            try:
+                await repo.mark_meeting_status(session, 999, "failed")
+                return False
+            except ValueError as e:
+                return "Meeting 999 not found" in str(e)
+
+    result = asyncio.run(scenario())
+    assert result is True

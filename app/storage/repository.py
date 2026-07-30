@@ -19,12 +19,16 @@ async def create_meeting(session: AsyncSession, title: str, scheduled_time: date
 
 async def start_recording(session: AsyncSession, meeting_id: int) -> None:
     meeting = await session.get(Meeting, meeting_id)
+    if meeting is None:
+        raise ValueError(f"Meeting {meeting_id} not found")
     meeting.status = "recording"
     meeting.start_time = _utcnow()
 
 
 async def stop_recording(session: AsyncSession, meeting_id: int) -> None:
     meeting = await session.get(Meeting, meeting_id)
+    if meeting is None:
+        raise ValueError(f"Meeting {meeting_id} not found")
     meeting.status = "processing"
     meeting.end_time = _utcnow()
 
@@ -79,6 +83,8 @@ async def save_summary(
 
 async def mark_meeting_status(session: AsyncSession, meeting_id: int, status: str) -> None:
     meeting = await session.get(Meeting, meeting_id)
+    if meeting is None:
+        raise ValueError(f"Meeting {meeting_id} not found")
     meeting.status = status
 
 
