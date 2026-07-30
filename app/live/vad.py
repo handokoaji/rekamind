@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 
 import numpy as np
-import torch
 
 
 @dataclass
@@ -11,6 +10,7 @@ class SpeechSegment:
 
 
 def _bytes_to_tensor(window: bytes) -> "torch.Tensor":
+    import torch
     audio_int16 = np.frombuffer(window, dtype=np.int16)
     audio_float32 = audio_int16.astype(np.float32) / 32768.0
     return torch.from_numpy(audio_float32)
@@ -49,7 +49,7 @@ class SpeechSegmenter:
         if event and "start" in event:
             self._in_speech = True
             self._speech_buffer = bytearray()
-            self._speech_start_sample = window_start_sample
+            self._speech_start_sample = event["start"]
         if self._in_speech:
             self._speech_buffer.extend(window)
         if event and "end" in event:

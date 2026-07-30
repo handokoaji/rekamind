@@ -14,7 +14,7 @@ def test_segmenter_emits_segment_spanning_start_to_end_windows():
     def fake_vad_iterator(tensor, return_seconds=False):
         calls.append(tensor)
         if len(calls) == 1:
-            return {"start": 0}
+            return {"start": 137}
         if len(calls) == 3:
             return {"end": 1536}
         return None
@@ -27,7 +27,7 @@ def test_segmenter_emits_segment_spanning_start_to_end_windows():
 
     assert len(results) == 1
     assert isinstance(results[0], SpeechSegment)
-    assert results[0].start_sample == 0
+    assert results[0].start_sample == 137
     assert len(results[0].audio) == WINDOW_BYTES * 3
 
 
@@ -54,3 +54,17 @@ def test_segmenter_returns_nothing_outside_speech():
 
     segmenter = SpeechSegmenter(vad_iterator=fake_vad_iterator, samplerate=16000)
     assert segmenter.process_chunk(_window()) == []
+
+
+def test_vad_module_importable_without_torch_at_module_level():
+    """Verify that app.live.vad can be imported without torch being loaded at import time.
+
+    Only _bytes_to_tensor (called by load_silero_vad_iterator) should import torch,
+    not the module-level imports. This allows the module to be imported on systems
+    without torch installed.
+    """
+    import app.live.vad as vad_module
+
+    # torch should not be in the module-level namespace
+    assert "torch" not in dir(vad_module), \
+        "torch should not be imported at module level; it should only be imported inside _bytes_to_tensor"
