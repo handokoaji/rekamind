@@ -41,12 +41,17 @@ class StreamLivePipeline:
         self._source_channels = source_channels
         self._segment_counter = 0
 
-    def _to_target_format(self, chunk: bytes) -> bytes:
+    def _to_target_format(self, chunk: bytes, want_samples: int) -> bytes:
         """Downmix + resample native capture audio to 16kHz mono int16.
 
         WASAPI loopback hands us the device's native format (typically 48kHz
         stereo). Same conversion as app/asr/openvino_backend.py's
         _load_audio_array, just on raw int16 bytes instead of a WAV file.
+
+        ponytail: each chunk is resampled independently (no filter state carried
+        across chunks), so there is a tiny artifact at every chunk boundary --
+        inaudible to the small preview model. Carry resampler state across calls
+        if the live text ever looks damaged at boundaries.
         """
         import torch
         import torchaudio
@@ -57,14 +62,24 @@ class StreamLivePipeline:
             audio = torchaudio.functional.resample(
                 torch.from_numpy(audio), self._source_samplerate, TARGET_SAMPLERATE
             ).numpy()
-        return np.clip(audio, -32768, 32767).astype(np.int16).tobytes()
+        # torchaudio rounds the output length UP, while the absolute sample tags
+        # below advance by the floor. Left alone, a contiguous capture would look
+        # like it had a gap at every chunk and the segmenter would keep throwing
+        # its partial window away. One sample at 16kHz is 0.06ms - just align it.
+        audio = audio[:want_samples]
+        out = np.clip(audio, -32768, 32767).astype(np.int16).tobytes()
+        return out + b"\x00\x00" * (want_samples - len(audio))
 
     def feed_chunk(self, chunk: bytes, absolute_start_sample: int) -> None:
         if self._source_samplerate != TARGET_SAMPLERATE or self._source_channels != 1:
-            chunk = self._to_target_format(chunk)
-            # The tag is counted in native device frames; everything downstream
-            # of here lives in 16kHz-mono sample space.
-            absolute_start_sample = absolute_start_sample * TARGET_SAMPLERATE // self._source_samplerate
+            # The tag is counted in native device frames; everything downstream of
+            # here lives in 16kHz-mono sample space, so rescale it and make the
+            # converted chunk exactly as long as that rescaling implies.
+            frames = len(chunk) // (2 * self._source_channels)
+            start = absolute_start_sample * TARGET_SAMPLERATE // self._source_samplerate
+            end = (absolute_start_sample + frames) * TARGET_SAMPLERATE // self._source_samplerate
+            chunk = self._to_target_format(chunk, end - start)
+            absolute_start_sample = start
         for segment in self._segmenter.process_chunk(chunk, absolute_start_sample):
             self._transcribe_segment(segment)
 

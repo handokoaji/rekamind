@@ -150,6 +150,38 @@ def test_native_48k_stereo_source_is_downmixed_and_resampled_to_16k_mono(tmp_pat
     assert received[0].start_ms == 2000
 
 
+def test_converted_chunks_stay_contiguous_across_a_realistic_chunk_stream(tmp_path):
+    """torchaudio rounds the resampled length up while the sample tags advance by
+    the floor; unaligned, a contiguous capture would look gappy to the segmenter
+    and it would discard its partial window on every single chunk."""
+    frames_per_chunk = 1024  # a typical pyaudio callback size, not a multiple of 3
+
+    class ContiguityChecker:
+        def __init__(self):
+            self.next_expected = 0
+            self.gaps = []
+
+        def process_chunk(self, chunk, absolute_start_sample):
+            if absolute_start_sample != self.next_expected:
+                self.gaps.append((self.next_expected, absolute_start_sample))
+            self.next_expected = absolute_start_sample + len(chunk) // 2
+            return []
+
+    checker = ContiguityChecker()
+    pipeline = StreamLivePipeline(
+        source="speaker", segmenter=checker, transcriber=FakeTranscriber([]),
+        scratch_dir=tmp_path, samplerate=16000, on_segment=lambda s: None,
+        source_samplerate=48000, source_channels=2,
+    )
+
+    for i in range(20):
+        pipeline.feed_chunk(_interleaved_stereo_48k(frames_per_chunk), i * frames_per_chunk)
+
+    assert checker.gaps == []
+    # 20 chunks of 1024 frames at 48kHz -> 20480/3 samples at 16kHz.
+    assert checker.next_expected == 20 * frames_per_chunk * 16000 // 48000
+
+
 def test_16k_mono_source_is_passed_through_untouched(tmp_path):
     window = (1234).to_bytes(2, "little", signed=True) * 512
     segmenter = FakeSegmenter([[]])
