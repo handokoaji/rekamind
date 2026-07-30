@@ -1046,7 +1046,7 @@ git commit -m "feat: add live diarize loop (full re-diarization every ~8s)"
 **Interfaces:**
 - Consumes: `app.live.vad.SpeechSegmenter` (Task 3), `app.live.pipeline.StreamLivePipeline`, `app.live.pipeline.LiveSegment` (Task 4), `app.live.diarize_loop.LiveDiarizeLoop` (Task 7), `app.pipeline.merge.MergedSegment` (Fase 1).
 - Produces: `app.live.session.LiveSession(mic_transcriber, speaker_transcriber, diarizer, vad_iterator_factory, mic_wav_path, speaker_wav_path, scratch_dir, mic_queue, speaker_queue, diarize_interval_seconds, on_update)` — a single object `RecorderController` (Task 9) holds one instance of per recording. `on_update: Callable[[dict], None]` receives events of shape `{"type": "text", "segment": LiveSegment}` (as soon as a live segment is transcribed) or `{"type": "relabel", "segments": list[MergedSegment]}` (every diarize-loop tick) — this is the SAME callback the UI queue (Task 10) will drain.
-  - `start(self) -> None` — spawns two consumer threads (one per queue) each running a loop: pull a chunk (or a `None` sentinel to stop) from its queue, feed it to that source's `StreamLivePipeline`, forward every produced `LiveSegment` to `on_update({"type": "text", "segment": seg})` AND append it to an internal running list (mic list or speaker list) used by `get_segments()`. Also starts the `LiveDiarizeLoop`.
+  - `start(self) -> None` — spawns two consumer threads (one per queue) each running a loop: pull a chunk (or a `None` sentinel to stop) from its queue, feed it to that source's `StreamLivePipeline`, forward every produced `LiveSegment` to `on_update({"type": "text", "segment": seg})` AND append it to an internal running list (mic list or speaker list) used by `get_segments()`. Also starts the `LiveDiarizeLoop`. Per spec §5, an exception from `pipeline.feed_chunk(chunk)` is caught and logged (`print(...)`), NOT re-raised — the consumer thread must keep pulling and processing subsequent chunks rather than dying silently on the first bad one (this closes the gap Task 4's review flagged: `StreamLivePipeline.feed_chunk` itself has no internal error handling, so this is the one place in the whole chain that must catch it).
   - `stop(self) -> None` — stops the diarize loop, pushes a `None` sentinel onto each queue to unblock and stop the consumer threads, joins them.
   - `get_segments(self) -> tuple[list[LiveSegment], list[LiveSegment]]` — thread-safe snapshot (`list(...)` copy) of `(mic_segments_so_far, speaker_segments_so_far)`, used both by `LiveDiarizeLoop` internally and available for inspection in tests.
 
@@ -1138,6 +1138,51 @@ def test_stop_unblocks_consumer_threads_promptly(tmp_path):
     start = time.time()
     session.stop()
     assert time.time() - start < 3  # stop() must not hang waiting on empty queues
+
+
+class BrokenThenWorkingTranscriber:
+    """Raises once (simulating a transient live-pipeline error), then works normally."""
+    def __init__(self):
+        self._call_count = 0
+
+    def transcribe(self, wav_path, language="id"):
+        from app.asr.base import TranscriptSegmentResult
+        self._call_count += 1
+        if self._call_count == 1:
+            raise RuntimeError("simulated transient ASR failure")
+        return [TranscriptSegmentResult(start_ms=0, end_ms=500, text="pulih setelah error")]
+
+
+def test_feed_chunk_error_is_logged_and_does_not_kill_consumer_thread(tmp_path):
+    mic_queue = queue.Queue()
+    events = []
+
+    session = LiveSession(
+        mic_transcriber=BrokenThenWorkingTranscriber(),
+        speaker_transcriber=FakeTranscriber("y"),
+        diarizer=FakeDiarizer(),
+        segmenter_factory=lambda: FakeSegmenter(),
+        mic_wav_path=tmp_path / "mic.wav",
+        speaker_wav_path=tmp_path / "speaker.wav",
+        scratch_dir=tmp_path / "live_scratch",
+        mic_queue=mic_queue,
+        speaker_queue=queue.Queue(),
+        diarize_interval_seconds=999,
+        on_update=events.append,
+    )
+
+    session.start()
+    mic_queue.put(b"\x00\x00" * 512)  # first chunk: transcriber raises, must not kill the thread
+    mic_queue.put(b"\x00\x00" * 512)  # second chunk: thread must still be alive to process this
+
+    deadline = time.time() + 5
+    while not events and time.time() < deadline:
+        time.sleep(0.05)
+
+    session.stop()
+
+    assert len(events) == 1
+    assert events[0]["segment"].text == "pulih setelah error"
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -1209,15 +1254,21 @@ class LiveSession:
             return list(self._mic_segments), list(self._speaker_segments)
 
     def start(self) -> None:
-        def _consume(source_queue, pipeline):
+        def _consume(source_queue, pipeline, source_name):
             while True:
                 chunk = source_queue.get()
                 if chunk is None:
                     break
-                pipeline.feed_chunk(chunk)
+                try:
+                    pipeline.feed_chunk(chunk)
+                except Exception as exc:
+                    # spec §5: a live-pipeline error must never crash the app or
+                    # silently kill this consumer thread - log and keep consuming
+                    # (WAV capture, on a separate path entirely, is unaffected).
+                    print(f"WARNING: live {source_name} pipeline error, skipping this chunk: {exc}")
 
-        mic_thread = threading.Thread(target=_consume, args=(self._mic_queue, self._mic_pipeline), daemon=True)
-        speaker_thread = threading.Thread(target=_consume, args=(self._speaker_queue, self._speaker_pipeline), daemon=True)
+        mic_thread = threading.Thread(target=_consume, args=(self._mic_queue, self._mic_pipeline, "mic"), daemon=True)
+        speaker_thread = threading.Thread(target=_consume, args=(self._speaker_queue, self._speaker_pipeline, "speaker"), daemon=True)
         mic_thread.start()
         speaker_thread.start()
         self._threads = [mic_thread, speaker_thread]
