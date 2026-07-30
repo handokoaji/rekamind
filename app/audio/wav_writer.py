@@ -16,6 +16,11 @@ class WavFileWriter:
 
     def write_frames(self, frames: bytes) -> None:
         self._wf.writeframes(frames)
+        # wave.Wave_write buffers via its underlying file object and only
+        # patches the RIFF header's size fields on close(); a concurrent
+        # reader needs both the audio bytes AND the header flushed now.
+        self._wf._file.flush()
+        self._wf._patchheader()
 
     def close(self) -> None:
         self._wf.close()
