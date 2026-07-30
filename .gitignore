@@ -7,3 +7,4 @@ __pycache__/
 .superpowers/
 model_cache/
 *.egg-info/
+.claude/
