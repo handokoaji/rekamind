@@ -124,7 +124,10 @@ POSTGRES_PASSWORD=admin
 POSTGRES_DB=meeting_recorder
 DATABASE_URL=postgresql+asyncpg://admin:admin@10.55.11.209:5432/meeting_recorder
 GROQ_API_KEY=            # diisi manual oleh user
+HF_TOKEN=                # diisi manual oleh user (butuh accept terms pyannote di HuggingFace)
 ```
+
+`.env` tidak boleh pernah masuk git (sudah di `.gitignore`).
 
 ## 8. UI (Tkinter, Bahasa Indonesia)
 
