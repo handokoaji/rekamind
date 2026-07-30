@@ -14,7 +14,7 @@ class SpeakerSegment:
 class Diarizer:
     def __init__(self, hf_token: str, device: str = "cpu"):
         self._pipeline = Pipeline.from_pretrained(
-            "pyannote/speaker-diarization-3.1", use_auth_token=hf_token
+            "pyannote/speaker-diarization-3.1", token=hf_token
         )
         self._device = device
 
