@@ -24,6 +24,23 @@ def test_config_defaults():
     assert config.channels == 1
 
 
+def test_stop_before_start_raises_error(tmp_path):
+    """Calling stop() before start() should raise RuntimeError."""
+    recorder = MicSpeakerRecorder(tmp_path / "mic.wav", tmp_path / "speaker.wav")
+    with pytest.raises(RuntimeError, match="recorder was never started"):
+        recorder.stop()
+
+
+def test_start_twice_raises_error(tmp_path):
+    """Calling start() twice should raise RuntimeError."""
+    recorder = MicSpeakerRecorder(tmp_path / "mic.wav", tmp_path / "speaker.wav")
+    # We can't actually call start() since we don't have pyaudiowpatch,
+    # but we can manually set _pyaudio to simulate it
+    recorder._pyaudio = object()  # Non-None to simulate already started
+    with pytest.raises(RuntimeError, match="recorder is already started"):
+        recorder.start()
+
+
 @pytest.mark.hardware
 def test_real_capture_start_stop(tmp_path):
     recorder = MicSpeakerRecorder(tmp_path / "mic.wav", tmp_path / "speaker.wav")
