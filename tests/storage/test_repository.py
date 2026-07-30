@@ -110,3 +110,72 @@ def test_mark_meeting_status_missing_meeting():
 
     result = asyncio.run(scenario())
     assert result is True
+
+
+def test_save_transcript_segments_defaults_is_final_true():
+    async def scenario():
+        engine = make_engine("sqlite+aiosqlite:///:memory:")
+        await init_db(engine)
+        session_factory = make_session_factory(engine)
+
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(session, "Rapat Draft", None)
+            await session.commit()
+            meeting_id = meeting.id
+
+        async with session_factory() as session:
+            await repo.save_transcript_segments(session, [
+                {"meeting_id": meeting_id, "speaker_id": None, "source": "mic",
+                 "start_ms": 0, "end_ms": 500, "text": "final segment"},
+            ])
+            await session.commit()
+
+        async with session_factory() as session:
+            from sqlalchemy import select
+            from app.storage.models import TranscriptSegment
+            result = await session.execute(
+                select(TranscriptSegment).where(TranscriptSegment.meeting_id == meeting_id)
+            )
+            return result.scalars().all()
+
+    segments = asyncio.run(scenario())
+    assert len(segments) == 1
+    assert segments[0].is_final is True
+
+
+def test_save_transcript_segments_honors_is_final_false_and_clear_draft_segments_removes_only_drafts():
+    async def scenario():
+        engine = make_engine("sqlite+aiosqlite:///:memory:")
+        await init_db(engine)
+        session_factory = make_session_factory(engine)
+
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(session, "Rapat Draft", None)
+            await session.commit()
+            meeting_id = meeting.id
+
+        async with session_factory() as session:
+            await repo.save_transcript_segments(session, [
+                {"meeting_id": meeting_id, "speaker_id": None, "source": "mic",
+                 "start_ms": 0, "end_ms": 500, "text": "draft segment", "is_final": False},
+                {"meeting_id": meeting_id, "speaker_id": None, "source": "mic",
+                 "start_ms": 500, "end_ms": 1000, "text": "final segment", "is_final": True},
+            ])
+            await session.commit()
+
+        async with session_factory() as session:
+            await repo.clear_draft_segments(session, meeting_id)
+            await session.commit()
+
+        async with session_factory() as session:
+            from sqlalchemy import select
+            from app.storage.models import TranscriptSegment
+            result = await session.execute(
+                select(TranscriptSegment).where(TranscriptSegment.meeting_id == meeting_id)
+            )
+            return result.scalars().all()
+
+    segments = asyncio.run(scenario())
+    assert len(segments) == 1
+    assert segments[0].text == "final segment"
+    assert segments[0].is_final is True

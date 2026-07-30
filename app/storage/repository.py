@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.storage.models import Meeting, Recording, Speaker, Summary, TranscriptSegment
@@ -64,7 +64,18 @@ async def save_transcript_segments(session: AsyncSession, segments: list[dict]) 
             start_ms=seg["start_ms"],
             end_ms=seg["end_ms"],
             text=seg["text"],
+            is_final=seg.get("is_final", True),
         ))
+    await session.flush()
+
+
+async def clear_draft_segments(session: AsyncSession, meeting_id: int) -> None:
+    await session.execute(
+        delete(TranscriptSegment).where(
+            TranscriptSegment.meeting_id == meeting_id,
+            TranscriptSegment.is_final.is_(False),
+        )
+    )
     await session.flush()
 
 
