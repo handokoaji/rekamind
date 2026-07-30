@@ -6,3 +6,4 @@ __pycache__/
 .idea/
 .superpowers/
 model_cache/
+*.egg-info/
