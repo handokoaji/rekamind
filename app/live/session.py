@@ -22,6 +22,8 @@ class LiveSession:
         speaker_queue: "queue.Queue",
         diarize_interval_seconds: float,
         on_update: Callable[[dict], None],
+        speaker_samplerate: int = 16000,
+        speaker_channels: int = 1,
     ):
         self._mic_queue = mic_queue
         self._speaker_queue = speaker_queue
@@ -42,9 +44,12 @@ class LiveSession:
             source="mic", segmenter=segmenter_factory(), transcriber=mic_transcriber,
             scratch_dir=scratch_dir, samplerate=16000, on_segment=make_on_segment(self._mic_segments),
         )
+        # Only the speaker source needs conversion: mic capture is already forced to
+        # 16kHz mono by AudioDeviceConfig, but WASAPI loopback records native format.
         self._speaker_pipeline = StreamLivePipeline(
             source="speaker", segmenter=segmenter_factory(), transcriber=speaker_transcriber,
             scratch_dir=scratch_dir, samplerate=16000, on_segment=make_on_segment(self._speaker_segments),
+            source_samplerate=speaker_samplerate, source_channels=speaker_channels,
         )
         self._diarize_loop = LiveDiarizeLoop(
             diarizer=diarizer, speaker_wav_path=speaker_wav_path,
@@ -60,11 +65,12 @@ class LiveSession:
     def start(self) -> None:
         def _consume(source_queue, pipeline, source_name):
             while True:
-                chunk = source_queue.get()
-                if chunk is None:
+                item = source_queue.get()
+                if item is None:
                     break
+                chunk, absolute_start_sample = item
                 try:
-                    pipeline.feed_chunk(chunk)
+                    pipeline.feed_chunk(chunk, absolute_start_sample)
                 except Exception as exc:
                     # spec §5: a live-pipeline error must never crash the app or
                     # silently kill this consumer thread - log and keep consuming

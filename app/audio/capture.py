@@ -11,11 +11,20 @@ class AudioDeviceConfig:
     channels: int = 1
 
 
-def frame_callback(frames: bytes, writer: WavFileWriter, live_queue: "queue.Queue | None" = None) -> None:
+def frame_callback(
+    frames: bytes,
+    writer: WavFileWriter,
+    live_queue: "queue.Queue | None" = None,
+    absolute_start_sample: int = 0,
+) -> None:
     writer.write_frames(frames)
     if live_queue is not None:
         try:
-            live_queue.put_nowait(frames)
+            # Tag every chunk with its absolute position in the recording. The WAV
+            # write above never drops, but the queue below does; without the tag,
+            # a single drop would shift every later live timestamp relative to the
+            # diarization of the complete WAV they get merged against.
+            live_queue.put_nowait((frames, absolute_start_sample))
         except queue.Full:
             pass  # live preview is best-effort; the WAV write above already happened
 
@@ -46,6 +55,9 @@ class MicSpeakerRecorder:
         self._speaker_stream = None
         self._mic_writer: WavFileWriter | None = None
         self._speaker_writer: WavFileWriter | None = None
+        # Counted per audio callback, whether or not the live-queue push succeeds.
+        self._mic_samples_written = 0
+        self._speaker_samples_written = 0
 
     def start(self) -> None:
         if self._pyaudio is not None:
@@ -62,11 +74,15 @@ class MicSpeakerRecorder:
         self._speaker_writer = WavFileWriter(self._speaker_path, speaker_samplerate, speaker_channels)
 
         def mic_stream_callback(in_data, frame_count, time_info, status):
-            frame_callback(in_data, self._mic_writer, self._mic_queue)
+            # Capture the count BEFORE incrementing: the tag means "samples
+            # written before this chunk".
+            frame_callback(in_data, self._mic_writer, self._mic_queue, self._mic_samples_written)
+            self._mic_samples_written += frame_count
             return (None, pyaudio.paContinue)
 
         def speaker_stream_callback(in_data, frame_count, time_info, status):
-            frame_callback(in_data, self._speaker_writer, self._speaker_queue)
+            frame_callback(in_data, self._speaker_writer, self._speaker_queue, self._speaker_samples_written)
+            self._speaker_samples_written += frame_count
             return (None, pyaudio.paContinue)
 
         self._mic_stream = self._pyaudio.open(

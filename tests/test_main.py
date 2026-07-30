@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import sys
+
 import app.main as main
 
 
@@ -49,6 +51,48 @@ def test_build_models_falls_back_to_cpu_for_diarizer_too(monkeypatch):
     assert calls == [None, "cpu"]
     # ...and the diarizer must follow it, not the original "cuda" request.
     assert diarizer.device == "cpu"
+
+
+class _FakePyAudioModule:
+    """Stands in for pyaudiowpatch; records that the throwaway instance is closed."""
+    terminated = []
+
+    class PyAudio:
+        def get_default_wasapi_loopback(self):
+            return {"defaultSampleRate": 48000.0, "maxInputChannels": 2, "index": 7}
+
+        def terminate(self):
+            _FakePyAudioModule.terminated.append(True)
+
+
+def test_query_loopback_format_reads_native_rate_and_channels(monkeypatch):
+    """C1: the live pipeline needs the loopback device's native format, read
+    independently of any recorder instance."""
+    _FakePyAudioModule.terminated.clear()
+    monkeypatch.setitem(sys.modules, "pyaudiowpatch", _FakePyAudioModule)
+
+    assert main.query_loopback_format() == (48000, 2)
+    assert _FakePyAudioModule.terminated == [True]  # throwaway instance not leaked
+
+
+def test_query_loopback_format_terminates_even_on_failure(monkeypatch):
+    class _Boom(_FakePyAudioModule):
+        class PyAudio:
+            def get_default_wasapi_loopback(self):
+                raise OSError("no loopback device")
+
+            def terminate(self):
+                _FakePyAudioModule.terminated.append(True)
+
+    _FakePyAudioModule.terminated.clear()
+    monkeypatch.setitem(sys.modules, "pyaudiowpatch", _Boom)
+
+    try:
+        main.query_loopback_format()
+        assert False, "expected OSError"
+    except OSError:
+        pass
+    assert _FakePyAudioModule.terminated == [True]
 
 
 def test_build_models_openvino_uses_cpu_diarizer(monkeypatch):

@@ -1,16 +1,14 @@
 import queue
 import time
 
-from app.live.pipeline import LiveSegment
 from app.live.session import LiveSession
-from app.pipeline.merge import MergedSegment
 
 
 class FakeSegmenter:
     """Treats every chunk as one completed speech segment (skips real VAD windowing)."""
-    def process_chunk(self, chunk):
+    def process_chunk(self, chunk, absolute_start_sample):
         from app.live.vad import SpeechSegment
-        return [SpeechSegment(start_sample=0, audio=chunk)]
+        return [SpeechSegment(start_sample=absolute_start_sample, audio=chunk)]
 
 
 class FakeTranscriber:
@@ -25,6 +23,10 @@ class FakeTranscriber:
 class FakeDiarizer:
     def diarize(self, wav_path):
         return []
+
+
+def _chunk(samples: int = 512) -> tuple[bytes, int]:
+    return (b"\x00\x00" * samples, 0)
 
 
 def test_start_feeds_queued_chunks_through_pipeline_and_reports_text_events(tmp_path):
@@ -47,8 +49,8 @@ def test_start_feeds_queued_chunks_through_pipeline_and_reports_text_events(tmp_
     )
 
     session.start()
-    mic_queue.put(b"\x00\x00" * 512)
-    speaker_queue.put(b"\x00\x00" * 512)
+    mic_queue.put(_chunk())
+    speaker_queue.put(_chunk())
 
     deadline = time.time() + 5
     while len(events) < 2 and time.time() < deadline:
@@ -116,8 +118,8 @@ def test_feed_chunk_error_is_logged_and_does_not_kill_consumer_thread(tmp_path):
     )
 
     session.start()
-    mic_queue.put(b"\x00\x00" * 512)  # first chunk: transcriber raises, must not kill the thread
-    mic_queue.put(b"\x00\x00" * 512)  # second chunk: thread must still be alive to process this
+    mic_queue.put(_chunk())  # first chunk: transcriber raises, must not kill the thread
+    mic_queue.put(_chunk())  # second chunk: thread must still be alive to process this
 
     deadline = time.time() + 5
     while not events and time.time() < deadline:
@@ -127,3 +129,26 @@ def test_feed_chunk_error_is_logged_and_does_not_kill_consumer_thread(tmp_path):
 
     assert len(events) == 1
     assert events[0]["segment"].text == "pulih setelah error"
+
+
+def test_speaker_pipeline_is_built_with_the_native_device_format(tmp_path):
+    """C1: only the speaker source needs conversion; mic capture is already 16k mono."""
+    session = LiveSession(
+        mic_transcriber=FakeTranscriber("x"),
+        speaker_transcriber=FakeTranscriber("y"),
+        diarizer=FakeDiarizer(),
+        segmenter_factory=lambda: FakeSegmenter(),
+        mic_wav_path=tmp_path / "mic.wav",
+        speaker_wav_path=tmp_path / "speaker.wav",
+        scratch_dir=tmp_path / "live_scratch",
+        mic_queue=queue.Queue(),
+        speaker_queue=queue.Queue(),
+        diarize_interval_seconds=999,
+        on_update=lambda e: None,
+        speaker_samplerate=48000,
+        speaker_channels=2,
+    )
+    assert session._speaker_pipeline._source_samplerate == 48000
+    assert session._speaker_pipeline._source_channels == 2
+    assert session._mic_pipeline._source_samplerate == 16000
+    assert session._mic_pipeline._source_channels == 1

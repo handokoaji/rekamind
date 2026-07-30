@@ -57,9 +57,9 @@ def test_frame_callback_pushes_to_live_queue_without_blocking(tmp_path):
     live_queue = queue.Queue(maxsize=2)
 
     with WavFileWriter(path, samplerate=16000, channels=1) as writer:
-        frame_callback(frame, writer, live_queue=live_queue)
+        frame_callback(frame, writer, live_queue=live_queue, absolute_start_sample=4800)
 
-    assert live_queue.get_nowait() == frame
+    assert live_queue.get_nowait() == (frame, 4800)
 
 
 def test_frame_callback_drops_frame_when_queue_full_instead_of_blocking(tmp_path):
@@ -80,3 +80,11 @@ def test_frame_callback_without_live_queue_still_works(tmp_path):
     frame = (0).to_bytes(2, "little", signed=True) * 160
     with WavFileWriter(path, samplerate=16000, channels=1) as writer:
         frame_callback(frame, writer)  # no live_queue passed at all
+
+
+def test_recorder_sample_counters_start_at_zero(tmp_path):
+    """The absolute-sample tags handed to the live queue come from these counters,
+    which must count every callback (dropped queue pushes included)."""
+    recorder = MicSpeakerRecorder(tmp_path / "mic.wav", tmp_path / "speaker.wav")
+    assert recorder._mic_samples_written == 0
+    assert recorder._speaker_samples_written == 0

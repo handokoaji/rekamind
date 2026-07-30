@@ -54,6 +54,20 @@ def build_live_transcriber(backend_name: str):
     return FasterWhisperBackend(model_size="small", device="cpu", compute_type="int8")
 
 
+def query_loopback_format() -> tuple[int, int]:
+    """Native (samplerate, channels) of the WASAPI loopback device -- a
+    machine-level property, so it is read independently of any recorder
+    instance (the live session is built before the recorder exists)."""
+    import pyaudiowpatch as pyaudio
+
+    pa = pyaudio.PyAudio()
+    try:
+        info = pa.get_default_wasapi_loopback()
+        return int(info["defaultSampleRate"]), int(info["maxInputChannels"])
+    finally:
+        pa.terminate()
+
+
 def build_models(backend_name: str, settings):
     """(transcriber, diarizer, summarizer). On a backend load failure BOTH the
     transcriber and the diarizer fall back to CPU: telling the diarizer "cuda"
@@ -132,9 +146,12 @@ def main() -> None:
     def live_session_factory(mic_wav_path, speaker_wav_path, scratch_dir):
         if live_transcriber is None:
             raise RuntimeError("live preview model not loaded")
+        live_diarizer = Diarizer(hf_token=settings.hf_token, device="cuda" if backend_name == "cuda" else "cpu")
         mic_queue: "queue.Queue" = queue.Queue(maxsize=200)
         speaker_queue: "queue.Queue" = queue.Queue(maxsize=200)
-        live_diarizer = Diarizer(hf_token=settings.hf_token, device="cuda" if backend_name == "cuda" else "cpu")
+        # The loopback device records at its native format (typically 48kHz
+        # stereo); the live pipeline needs to know so it can convert to 16kHz mono.
+        speaker_samplerate, speaker_channels = query_loopback_format()
         session = LiveSession(
             mic_transcriber=live_transcriber,
             speaker_transcriber=live_transcriber,
@@ -147,6 +164,8 @@ def main() -> None:
             speaker_queue=speaker_queue,
             diarize_interval_seconds=8.0,
             on_update=window_ref["window"].push_live_event,
+            speaker_samplerate=speaker_samplerate,
+            speaker_channels=speaker_channels,
         )
         # MicSpeakerRecorder needs these same queues to actually feed audio in;
         # stash them so _real_recorder (above) can pick them up for this meeting.

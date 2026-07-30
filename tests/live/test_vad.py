@@ -22,8 +22,8 @@ def test_segmenter_emits_segment_spanning_start_to_end_windows():
     segmenter = SpeechSegmenter(vad_iterator=fake_vad_iterator, samplerate=16000)
 
     results = []
-    for _ in range(3):
-        results.extend(segmenter.process_chunk(_window()))
+    for i in range(3):
+        results.extend(segmenter.process_chunk(_window(), i * WINDOW_SAMPLES))
 
     assert len(results) == 1
     assert isinstance(results[0], SpeechSegment)
@@ -42,9 +42,9 @@ def test_segmenter_buffers_partial_chunks_across_calls():
     segmenter = SpeechSegmenter(vad_iterator=fake_vad_iterator, samplerate=16000)
 
     half = _window()[: WINDOW_BYTES // 2]
-    assert segmenter.process_chunk(half) == []  # not enough for one window yet
+    assert segmenter.process_chunk(half, 0) == []  # not enough for one window yet
     assert len(calls) == 0
-    assert segmenter.process_chunk(half) == []  # now exactly one window's worth
+    assert segmenter.process_chunk(half, WINDOW_SAMPLES // 2) == []  # now one window's worth
     assert len(calls) == 1
 
 
@@ -53,7 +53,57 @@ def test_segmenter_returns_nothing_outside_speech():
         return None
 
     segmenter = SpeechSegmenter(vad_iterator=fake_vad_iterator, samplerate=16000)
-    assert segmenter.process_chunk(_window()) == []
+    assert segmenter.process_chunk(_window(), 0) == []
+
+
+def test_segment_start_follows_absolute_position_after_a_dropped_chunk():
+    """A chunk lost to a full live queue must not shift later timestamps: the
+    absolute sample tag, not a self-incremented counter, is the source of truth."""
+    calls = []
+
+    def fake_vad_iterator(tensor, return_seconds=False):
+        calls.append(tensor)
+        # VADIterator reports positions in its OWN space: it has only seen two
+        # windows, so speech starting on its 2nd window is "512" to it.
+        if len(calls) == 2:
+            return {"start": 512}
+        if len(calls) == 3:
+            return {"end": 1024}
+        return None
+
+    segmenter = SpeechSegmenter(vad_iterator=fake_vad_iterator, samplerate=16000)
+
+    # Chunks 0..9 were captured but only #0 and #9 reached the live queue.
+    assert segmenter.process_chunk(_window(), 0) == []
+    assert segmenter.process_chunk(_window(), 9 * WINDOW_SAMPLES) == []
+    results = segmenter.process_chunk(_window(), 10 * WINDOW_SAMPLES)
+
+    assert len(results) == 1
+    # Speech started on the window tagged 9*512, not on a self-counted "512".
+    assert results[0].start_sample == 9 * WINDOW_SAMPLES
+
+
+def test_segmenter_force_closes_a_segment_that_exceeds_the_max_duration():
+    """A stuck-triggered VAD (start, then never an end) must not buffer forever."""
+    calls = []
+
+    def fake_vad_iterator(tensor, return_seconds=False):
+        calls.append(tensor)
+        return {"start": 0} if len(calls) == 1 else None
+
+    segmenter = SpeechSegmenter(vad_iterator=fake_vad_iterator, samplerate=16000)
+    max_windows = SpeechSegmenter.MAX_SEGMENT_SECONDS * 16000 // WINDOW_SAMPLES
+
+    results = []
+    for i in range(max_windows + 2):
+        results.extend(segmenter.process_chunk(_window(), i * WINDOW_SAMPLES))
+
+    assert len(results) == 1, "expected exactly one force-closed segment"
+    assert results[0].start_sample == 0
+    assert len(results[0].audio) <= SpeechSegmenter.MAX_SEGMENT_SECONDS * 16000 * 2
+    # Audio is continued, not discarded: the next segment picks up where this ended.
+    assert segmenter._speech_start_sample == max_windows * WINDOW_SAMPLES
+    assert len(segmenter._speech_buffer) > 0
 
 
 def test_vad_module_importable_without_torch_at_module_level():
