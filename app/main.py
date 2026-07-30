@@ -1,4 +1,5 @@
 import asyncio
+import queue
 import shutil
 import sys
 import tkinter as tk
@@ -10,6 +11,8 @@ from app.asr.detect import detect_backend
 from app.asr.openvino_backend import OpenVinoWhisperBackend
 from app.config import get_settings
 from app.diarization.diarizer import Diarizer
+from app.live.session import LiveSession
+from app.live.vad import SpeechSegmenter, load_silero_vad_iterator
 from app.pipeline.finalize import finalize_meeting
 from app.storage.db import init_db, make_engine, make_session_factory
 from app.summarization.groq_client import GroqSummarizer
@@ -41,6 +44,16 @@ def build_transcriber(backend_name: str):
     return FasterWhisperBackend(device="cpu", compute_type="int8")
 
 
+def build_live_transcriber(backend_name: str):
+    """Small model for live preview - same backend family as the batch
+    transcriber, just a lighter size so it keeps up in near-real-time."""
+    if backend_name == "cuda":
+        return FasterWhisperBackend(model_size="small", device="cuda", compute_type="float32")
+    if backend_name == "openvino":
+        return OpenVinoWhisperBackend(model_size="small")
+    return FasterWhisperBackend(model_size="small", device="cpu", compute_type="int8")
+
+
 def build_models(backend_name: str, settings):
     """(transcriber, diarizer, summarizer). On a backend load failure BOTH the
     transcriber and the diarizer fall back to CPU: telling the diarizer "cuda"
@@ -62,9 +75,15 @@ def build_models(backend_name: str, settings):
     )
 
 
+recorder_queues: dict = {"mic": None, "speaker": None}
+
+
 def _real_recorder(mic_path: Path, speaker_path: Path):
     from app.audio.capture import MicSpeakerRecorder
-    return MicSpeakerRecorder(mic_path, speaker_path)
+    return MicSpeakerRecorder(
+        mic_path, speaker_path,
+        mic_queue=recorder_queues["mic"], speaker_queue=recorder_queues["speaker"],
+    )
 
 
 def main() -> None:
@@ -102,15 +121,50 @@ def main() -> None:
             docx_output_path=docx_path,
         )
 
+    live_transcriber = None
+    try:
+        live_transcriber = build_live_transcriber(backend_name)
+    except Exception as exc:
+        print(f"WARNING: live preview model failed to load ({exc}); live preview disabled this session", file=sys.stderr)
+
+    window_ref: dict = {}  # populated below once `window` exists; closures need this indirection
+
+    def live_session_factory(mic_wav_path, speaker_wav_path, scratch_dir):
+        if live_transcriber is None:
+            raise RuntimeError("live preview model not loaded")
+        mic_queue: "queue.Queue" = queue.Queue(maxsize=200)
+        speaker_queue: "queue.Queue" = queue.Queue(maxsize=200)
+        live_diarizer = Diarizer(hf_token=settings.hf_token, device="cuda" if backend_name == "cuda" else "cpu")
+        session = LiveSession(
+            mic_transcriber=live_transcriber,
+            speaker_transcriber=live_transcriber,
+            diarizer=live_diarizer,
+            segmenter_factory=lambda: SpeechSegmenter(load_silero_vad_iterator()),
+            mic_wav_path=mic_wav_path,
+            speaker_wav_path=speaker_wav_path,
+            scratch_dir=scratch_dir,
+            mic_queue=mic_queue,
+            speaker_queue=speaker_queue,
+            diarize_interval_seconds=8.0,
+            on_update=window_ref["window"].push_live_event,
+        )
+        # MicSpeakerRecorder needs these same queues to actually feed audio in;
+        # stash them so _real_recorder (above) can pick them up for this meeting.
+        recorder_queues["mic"] = mic_queue
+        recorder_queues["speaker"] = speaker_queue
+        return session
+
     controller = RecorderController(
         session_factory=session_factory,
         recorder_factory=_real_recorder,
         finalize_fn=finalize_fn,
         recordings_dir=settings.recordings_dir,
+        live_session_factory=live_session_factory,
     )
 
     root = tk.Tk()
     window = MainWindow(root, controller)
+    window_ref["window"] = window
 
     def show_window():
         root.after(0, root.deiconify)
