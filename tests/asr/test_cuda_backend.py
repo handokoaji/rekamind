@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.asr.cuda_backend import CudaWhisperBackend
+from app.asr.cuda_backend import FasterWhisperBackend
 
 
 def test_transcribe_maps_faster_whisper_segments(monkeypatch, tmp_path):
@@ -17,7 +17,7 @@ def test_transcribe_maps_faster_whisper_segments(monkeypatch, tmp_path):
         lambda *args, **kwargs: fake_model,
     )
 
-    backend = CudaWhisperBackend()
+    backend = FasterWhisperBackend()
     wav_path = tmp_path / "audio.wav"
     wav_path.touch()
     segments = backend.transcribe(wav_path, language="id")
