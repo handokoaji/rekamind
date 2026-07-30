@@ -1,4 +1,5 @@
 # app/ui/window.py
+import sys
 import tkinter as tk
 from tkinter import scrolledtext
 import threading
@@ -46,17 +47,25 @@ class MainWindow:
     def on_start_clicked(self, title: str) -> None:
         try:
             self._controller.start_meeting(title)
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"Error starting meeting: {exc}", file=sys.stderr)
         finally:
             self.refresh_status()
 
     def on_stop_clicked(self) -> None:
+        # Guard: only allow stop if currently recording
+        if self._controller.state != "recording":
+            return
+
+        # Disable stop button synchronously BEFORE spawning background thread
+        # to prevent double-click during processing window
+        self._stop_button.config(state="disabled")
+
         def _stop_in_background():
             try:
                 self._controller.stop_meeting()
-            except Exception:
-                pass
+            except Exception as exc:
+                print(f"Error stopping meeting: {exc}", file=sys.stderr)
             finally:
                 self._root.after(0, self.refresh_status)
 
