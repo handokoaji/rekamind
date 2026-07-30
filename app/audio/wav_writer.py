@@ -6,9 +6,13 @@ class WavFileWriter:
     def __init__(self, path: Path, samplerate: int, channels: int, sample_width: int = 2):
         path.parent.mkdir(parents=True, exist_ok=True)
         self._wf = wave.open(str(path), "wb")
-        self._wf.setnchannels(channels)
-        self._wf.setsampwidth(sample_width)
-        self._wf.setframerate(samplerate)
+        try:
+            self._wf.setnchannels(channels)
+            self._wf.setsampwidth(sample_width)
+            self._wf.setframerate(samplerate)
+        except Exception:
+            self._wf.close()
+            raise
 
     def write_frames(self, frames: bytes) -> None:
         self._wf.writeframes(frames)
