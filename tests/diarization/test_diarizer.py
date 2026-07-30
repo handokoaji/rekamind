@@ -1,6 +1,23 @@
+import wave
 from unittest.mock import MagicMock
 
 from app.diarization.diarizer import Diarizer, SpeakerSegment
+
+
+def _write_silent_wav(path, samplerate=16000, channels=1, num_frames=160):
+    with wave.open(str(path), "wb") as wf:
+        wf.setnchannels(channels)
+        wf.setsampwidth(2)
+        wf.setframerate(samplerate)
+        wf.writeframes((0).to_bytes(2, "little", signed=True) * num_frames * channels)
+
+
+def _fake_output(fake_annotation):
+    """pyannote.audio >= 4 wraps the Annotation in a DiarizeOutput with an
+    `exclusive_speaker_diarization` attribute; mirror that shape here."""
+    output = MagicMock(spec=["exclusive_speaker_diarization"])
+    output.exclusive_speaker_diarization = fake_annotation
+    return output
 
 
 def test_diarize_maps_pyannote_turns_to_speaker_segments(monkeypatch, tmp_path):
@@ -14,7 +31,7 @@ def test_diarize_maps_pyannote_turns_to_speaker_segments(monkeypatch, tmp_path):
     ]
 
     fake_pipeline = MagicMock()
-    fake_pipeline.return_value = fake_annotation
+    fake_pipeline.return_value = _fake_output(fake_annotation)
 
     monkeypatch.setattr(
         "app.diarization.diarizer.Pipeline.from_pretrained",
@@ -23,7 +40,7 @@ def test_diarize_maps_pyannote_turns_to_speaker_segments(monkeypatch, tmp_path):
 
     diarizer = Diarizer(hf_token="fake-token")
     wav_path = tmp_path / "speaker.wav"
-    wav_path.touch()
+    _write_silent_wav(wav_path)
     segments = diarizer.diarize(wav_path)
 
     assert segments == [
@@ -46,7 +63,7 @@ def test_diarize_handles_non_contiguous_same_speaker(monkeypatch, tmp_path):
     ]
 
     fake_pipeline = MagicMock()
-    fake_pipeline.return_value = fake_annotation
+    fake_pipeline.return_value = _fake_output(fake_annotation)
 
     monkeypatch.setattr(
         "app.diarization.diarizer.Pipeline.from_pretrained",
@@ -55,7 +72,7 @@ def test_diarize_handles_non_contiguous_same_speaker(monkeypatch, tmp_path):
 
     diarizer = Diarizer(hf_token="fake-token")
     wav_path = tmp_path / "speaker.wav"
-    wav_path.touch()
+    _write_silent_wav(wav_path)
     segments = diarizer.diarize(wav_path)
 
     assert segments == [
@@ -65,6 +82,34 @@ def test_diarize_handles_non_contiguous_same_speaker(monkeypatch, tmp_path):
     ]
     # Both turn 1 and turn 3 should have "Speaker 1" label (same raw SPEAKER_00)
     assert segments[0].label == segments[2].label
+
+def test_diarize_passes_waveform_dict_not_path(monkeypatch, tmp_path):
+    """diarize() must not hand the pipeline a raw path: that decode route
+    goes through torchcodec, which has repeatedly broken across otherwise
+    unrelated torch/FFmpeg version changes."""
+    fake_annotation = MagicMock()
+    fake_annotation.itertracks.return_value = []
+
+    fake_pipeline = MagicMock()
+    fake_pipeline.return_value = _fake_output(fake_annotation)
+
+    monkeypatch.setattr(
+        "app.diarization.diarizer.Pipeline.from_pretrained",
+        lambda *args, **kwargs: fake_pipeline,
+    )
+
+    diarizer = Diarizer(hf_token="fake-token")
+    wav_path = tmp_path / "speaker.wav"
+    _write_silent_wav(wav_path, samplerate=16000, channels=1, num_frames=160)
+    diarizer.diarize(wav_path)
+
+    fake_pipeline.assert_called_once()
+    (call_arg,), _ = fake_pipeline.call_args
+    assert isinstance(call_arg, dict)
+    assert set(call_arg.keys()) == {"waveform", "sample_rate"}
+    assert call_arg["sample_rate"] == 16000
+    assert call_arg["waveform"].shape[0] == 1  # (channel, time), mono
+
 
 def test_device_is_applied_to_pipeline(monkeypatch):
     """The device= arg used to be stored and never applied, so diarization
