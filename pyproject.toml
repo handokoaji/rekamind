@@ -11,6 +11,7 @@ dependencies = [
     "faster-whisper>=1.0",
     "optimum[openvino]>=1.17",
     "soundfile>=0.12",
+    "pyannote.audio>=4.0",
 ]
 
 [tool.pytest.ini_options]
