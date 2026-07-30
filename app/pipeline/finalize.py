@@ -49,6 +49,7 @@ async def finalize_meeting(
                 "end_ms": seg.end_ms,
                 "text": seg.text,
             })
+        await repo.clear_draft_segments(session, meeting_id)
         await repo.save_transcript_segments(session, segment_rows)
         # Commit the transcript before the risky LLM/docx step: spec §9 requires the
         # transcript to survive intact even when Groq fails.

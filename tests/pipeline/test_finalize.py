@@ -282,3 +282,64 @@ def test_finalize_meeting_marks_failed_on_exception(tmp_path):
     assert len(summaries) == 1
     assert summaries[0].status == "failed"
     assert summaries[0].docx_path is None
+
+
+def test_finalize_meeting_clears_existing_drafts_before_saving_final_segments(tmp_path):
+    async def scenario():
+        engine = make_engine("sqlite+aiosqlite:///:memory:")
+        await init_db(engine)
+        session_factory = make_session_factory(engine)
+
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(session, "Rapat Uji", None)
+            await session.commit()
+            meeting_id = meeting.id
+
+        # Simulate a leftover live-preview draft from before Stop was clicked.
+        async with session_factory() as session:
+            await repo.save_transcript_segments(session, [
+                {"meeting_id": meeting_id, "speaker_id": None, "source": "mic",
+                 "start_ms": 0, "end_ms": 400, "text": "draft yang belum sempat dihapus",
+                 "is_final": False},
+            ])
+            await session.commit()
+
+        mic_wav = tmp_path / "mic.wav"
+        speaker_wav = tmp_path / "speaker.wav"
+        mic_wav.touch()
+        speaker_wav.touch()
+        docx_path = tmp_path / "mom.docx"
+
+        transcriber_calls = {"mic.wav": [
+            TranscriptSegmentResult(start_ms=0, end_ms=500, text="Selamat pagi")
+        ], "speaker.wav": [
+            TranscriptSegmentResult(start_ms=600, end_ms=1500, text="Mari kita mulai")
+        ]}
+
+        class RoutingFakeTranscriber:
+            def transcribe(self, wav_path, language="id"):
+                return transcriber_calls[wav_path.name]
+
+        diarizer = FakeDiarizer([SpeakerSegment(start_ms=600, end_ms=1500, label="Speaker 1")])
+        summarizer = FakeSummarizer()
+
+        async with session_factory() as session:
+            await finalize_meeting(
+                session=session, meeting_id=meeting_id, meeting_title="Rapat Uji",
+                meeting_date=datetime(2026, 7, 30, 9, 0), mic_wav=mic_wav, speaker_wav=speaker_wav,
+                transcriber=RoutingFakeTranscriber(), diarizer=diarizer, summarizer=summarizer,
+                docx_output_path=docx_path,
+            )
+            await session.commit()
+
+        async with session_factory() as session:
+            result = await session.execute(
+                select(TranscriptSegment).where(TranscriptSegment.meeting_id == meeting_id)
+            )
+            return result.scalars().all()
+
+    segments = asyncio.run(scenario())
+    texts = {seg.text for seg in segments}
+    assert "draft yang belum sempat dihapus" not in texts
+    assert all(seg.is_final for seg in segments)
+    assert "Selamat pagi" in texts
