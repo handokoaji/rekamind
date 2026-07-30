@@ -1,4 +1,5 @@
 import asyncio
+import shutil
 import sys
 import tkinter as tk
 import threading
@@ -15,6 +16,21 @@ from app.summarization.groq_client import GroqSummarizer
 from app.tray.icon import build_tray_icon
 from app.ui.controller import RecorderController
 from app.ui.window import MainWindow
+
+
+def check_ffmpeg_available() -> bool:
+    """Diarization (pyannote/torchaudio) needs FFmpeg's shared libraries on
+    PATH to decode audio. Missing FFmpeg doesn't stop the app — capture, ASR,
+    and summarization all work without it — only diarization will fail later,
+    so we warn once at startup instead of silently installing anything."""
+    if shutil.which("ffmpeg") is not None:
+        return True
+    print(
+        "WARNING: ffmpeg tidak ditemukan di PATH. Speaker diarization tidak akan "
+        "berfungsi. Pasang dengan: winget install ffmpeg",
+        file=sys.stderr,
+    )
+    return False
 
 
 def build_transcriber(backend_name: str):
@@ -53,6 +69,7 @@ def _real_recorder(mic_path: Path, speaker_path: Path):
 
 def main() -> None:
     settings = get_settings()
+    check_ffmpeg_available()
     engine = make_engine(settings.database_url)
     asyncio.run(init_db(engine))
     session_factory = make_session_factory(engine)

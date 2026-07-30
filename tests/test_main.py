@@ -3,6 +3,17 @@ from types import SimpleNamespace
 import app.main as main
 
 
+def test_check_ffmpeg_available_true_when_on_path(monkeypatch):
+    monkeypatch.setattr(main.shutil, "which", lambda name: "C:/ffmpeg/ffmpeg.exe")
+    assert main.check_ffmpeg_available() is True
+
+
+def test_check_ffmpeg_available_false_when_missing(monkeypatch, capsys):
+    monkeypatch.setattr(main.shutil, "which", lambda name: None)
+    assert main.check_ffmpeg_available() is False
+    assert "ffmpeg" in capsys.readouterr().err.lower()
+
+
 class _FakeDiarizer:
     def __init__(self, hf_token=None, device=None):
         self.device = device
