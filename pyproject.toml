@@ -8,6 +8,7 @@ dependencies = [
     "asyncpg>=0.29",
     "aiosqlite>=0.20",
     "pyaudiowpatch",
+    "faster-whisper>=1.0",
 ]
 
 [tool.pytest.ini_options]
