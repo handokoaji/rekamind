@@ -72,7 +72,10 @@ class MainWindow:
         threading.Thread(target=_stop_in_background, daemon=True).start()
 
     def refresh_status(self) -> None:
-        self.status_var.set(_STATUS_LABELS.get(self._controller.state, self._controller.state))
+        status = _STATUS_LABELS.get(self._controller.state, self._controller.state)
+        if self._controller.state == "error" and self._controller.error_message:
+            status = f"{status}: {self._controller.error_message}"
+        self.status_var.set(status)
         # Enable/disable buttons based on state
         is_idle = self._controller.state in ("idle", "done", "error")
         self._start_button.config(state="normal" if is_idle else "disabled")

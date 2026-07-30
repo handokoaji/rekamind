@@ -229,9 +229,16 @@ def test_db_failure_after_recorder_start_stops_recorder(tmp_path):
             async def commit(self):
                 raise RuntimeError("Simulated DB write failure")
 
+    made_recorders = []
+
+    def recorder_factory(mic, speaker):
+        recorder = BrokenRecorderStartThenDB(mic, speaker)
+        made_recorders.append(recorder)
+        return recorder
+
     controller = RecorderController(
         session_factory=FailingSessionFactoryWrapper(real_session_factory),
-        recorder_factory=lambda mic, speaker: BrokenRecorderStartThenDB(mic, speaker),
+        recorder_factory=recorder_factory,
         finalize_fn=fake_finalize_fn,
         recordings_dir=tmp_path,
     )
@@ -246,6 +253,7 @@ def test_db_failure_after_recorder_start_stops_recorder(tmp_path):
     assert controller.state == "error"
     assert controller.error_message is not None
     assert "Gagal menyimpan data meeting" in controller.error_message
-    # Recorder was not stored in _recorder since DB write failed, but
-    # the important thing is that recorder.stop() was called (which the exception
-    # not being about recorder proves)
+    # The actual point of this test: the started recorder was stopped, not leaked.
+    assert len(made_recorders) == 1
+    assert made_recorders[0].started is True
+    assert made_recorders[0].stopped is True

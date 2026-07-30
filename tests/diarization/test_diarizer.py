@@ -65,3 +65,18 @@ def test_diarize_handles_non_contiguous_same_speaker(monkeypatch, tmp_path):
     ]
     # Both turn 1 and turn 3 should have "Speaker 1" label (same raw SPEAKER_00)
     assert segments[0].label == segments[2].label
+
+def test_device_is_applied_to_pipeline(monkeypatch):
+    """The device= arg used to be stored and never applied, so diarization
+    silently always ran on CPU."""
+    import torch
+
+    fake_pipeline = MagicMock()
+    monkeypatch.setattr(
+        "app.diarization.diarizer.Pipeline.from_pretrained",
+        lambda *args, **kwargs: fake_pipeline,
+    )
+
+    Diarizer(hf_token="fake-token", device="cuda")
+
+    fake_pipeline.to.assert_called_once_with(torch.device("cuda"))

@@ -1,9 +1,10 @@
 import asyncio
+import sys
 import tkinter as tk
 import threading
 from pathlib import Path
 
-from app.asr.cuda_backend import CudaWhisperBackend
+from app.asr.cuda_backend import FasterWhisperBackend
 from app.asr.detect import detect_backend
 from app.asr.openvino_backend import OpenVinoWhisperBackend
 from app.config import get_settings
@@ -18,10 +19,10 @@ from app.ui.window import MainWindow
 
 def build_transcriber(backend_name: str):
     if backend_name == "cuda":
-        return CudaWhisperBackend()
+        return FasterWhisperBackend()
     if backend_name == "openvino":
         return OpenVinoWhisperBackend()
-    return CudaWhisperBackend(device="cpu", compute_type="int8")
+    return FasterWhisperBackend(device="cpu", compute_type="int8")
 
 
 def _real_recorder(mic_path: Path, speaker_path: Path):
@@ -36,11 +37,34 @@ def main() -> None:
     session_factory = make_session_factory(engine)
 
     backend_name = detect_backend(settings.asr_backend_override)
-    transcriber = build_transcriber(backend_name)
-    diarizer = Diarizer(hf_token=settings.hf_token)
-    summarizer = GroqSummarizer(api_key=settings.groq_api_key)
+
+    # Heavy models are loaded on the first finalize, not at startup: spec §2 wants
+    # them resident only for the batch pass, and the window must appear at once.
+    models = None
+
+    def load_models():
+        nonlocal models
+        if models is None:
+            try:
+                transcriber = build_transcriber(backend_name)
+            except Exception as exc:
+                print(
+                    f"WARNING: failed to load {backend_name} backend ({exc}), falling back to CPU",
+                    file=sys.stderr,
+                )
+                transcriber = build_transcriber("cpu")
+            models = (
+                transcriber,
+                Diarizer(
+                    hf_token=settings.hf_token,
+                    device="cuda" if backend_name == "cuda" else "cpu",
+                ),
+                GroqSummarizer(api_key=settings.groq_api_key),
+            )
+        return models
 
     async def finalize_fn(session, meeting_id, meeting_title, meeting_date, mic_wav, speaker_wav):
+        transcriber, diarizer, summarizer = load_models()
         docx_path = settings.recordings_dir / str(meeting_id) / "mom.docx"
         return await finalize_meeting(
             session=session,
@@ -70,6 +94,9 @@ def main() -> None:
 
     def quit_app():
         root.after(0, root.quit)
+
+    # X button hides to tray instead of killing the app; "Buka Dashboard" reopens.
+    root.protocol("WM_DELETE_WINDOW", root.withdraw)
 
     icon = build_tray_icon(on_show=show_window, on_quit=quit_app)
 

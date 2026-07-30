@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+import torch
 from pyannote.audio import Pipeline
 
 
@@ -16,6 +17,7 @@ class Diarizer:
         self._pipeline = Pipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1", token=hf_token
         )
+        self._pipeline.to(torch.device(device))
         self._device = device
 
     def diarize(self, wav_path: Path) -> list[SpeakerSegment]:
