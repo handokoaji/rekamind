@@ -1,3 +1,4 @@
+import queue
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,8 +11,13 @@ class AudioDeviceConfig:
     channels: int = 1
 
 
-def frame_callback(frames: bytes, writer: WavFileWriter) -> None:
+def frame_callback(frames: bytes, writer: WavFileWriter, live_queue: "queue.Queue | None" = None) -> None:
     writer.write_frames(frames)
+    if live_queue is not None:
+        try:
+            live_queue.put_nowait(frames)
+        except queue.Full:
+            pass  # live preview is best-effort; the WAV write above already happened
 
 
 class MicSpeakerRecorder:
@@ -22,10 +28,19 @@ class MicSpeakerRecorder:
     frame_callback logic tested on any platform without pyaudiowpatch installed.
     """
 
-    def __init__(self, mic_path: Path, speaker_path: Path, config: AudioDeviceConfig | None = None):
+    def __init__(
+        self,
+        mic_path: Path,
+        speaker_path: Path,
+        config: AudioDeviceConfig | None = None,
+        mic_queue: "queue.Queue | None" = None,
+        speaker_queue: "queue.Queue | None" = None,
+    ):
         self._mic_path = mic_path
         self._speaker_path = speaker_path
         self._config = config or AudioDeviceConfig()
+        self._mic_queue = mic_queue
+        self._speaker_queue = speaker_queue
         self._pyaudio = None
         self._mic_stream = None
         self._speaker_stream = None
@@ -42,17 +57,16 @@ class MicSpeakerRecorder:
         self._mic_writer = WavFileWriter(self._mic_path, self._config.samplerate, self._config.channels)
 
         default_speakers = self._pyaudio.get_default_wasapi_loopback()
-        # Use device's native format for speaker writer (not self._config)
         speaker_samplerate = int(default_speakers["defaultSampleRate"])
         speaker_channels = default_speakers["maxInputChannels"]
         self._speaker_writer = WavFileWriter(self._speaker_path, speaker_samplerate, speaker_channels)
 
         def mic_stream_callback(in_data, frame_count, time_info, status):
-            frame_callback(in_data, self._mic_writer)
+            frame_callback(in_data, self._mic_writer, self._mic_queue)
             return (None, pyaudio.paContinue)
 
         def speaker_stream_callback(in_data, frame_count, time_info, status):
-            frame_callback(in_data, self._speaker_writer)
+            frame_callback(in_data, self._speaker_writer, self._speaker_queue)
             return (None, pyaudio.paContinue)
 
         self._mic_stream = self._pyaudio.open(

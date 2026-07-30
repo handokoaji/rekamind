@@ -1,3 +1,4 @@
+import queue
 from pathlib import Path
 
 import pytest
@@ -48,3 +49,34 @@ def test_real_capture_start_stop(tmp_path):
     mic_path, speaker_path = recorder.stop()
     assert mic_path.exists()
     assert speaker_path.exists()
+
+
+def test_frame_callback_pushes_to_live_queue_without_blocking(tmp_path):
+    path = tmp_path / "mic.wav"
+    frame = (0).to_bytes(2, "little", signed=True) * 160
+    live_queue = queue.Queue(maxsize=2)
+
+    with WavFileWriter(path, samplerate=16000, channels=1) as writer:
+        frame_callback(frame, writer, live_queue=live_queue)
+
+    assert live_queue.get_nowait() == frame
+
+
+def test_frame_callback_drops_frame_when_queue_full_instead_of_blocking(tmp_path):
+    path = tmp_path / "mic.wav"
+    frame = (0).to_bytes(2, "little", signed=True) * 160
+    live_queue = queue.Queue(maxsize=1)
+    live_queue.put_nowait(b"already-full")
+
+    with WavFileWriter(path, samplerate=16000, channels=1) as writer:
+        # Must not raise or block even though the queue has no room.
+        frame_callback(frame, writer, live_queue=live_queue)
+
+    assert live_queue.get_nowait() == b"already-full"
+
+
+def test_frame_callback_without_live_queue_still_works(tmp_path):
+    path = tmp_path / "mic.wav"
+    frame = (0).to_bytes(2, "little", signed=True) * 160
+    with WavFileWriter(path, samplerate=16000, channels=1) as writer:
+        frame_callback(frame, writer)  # no live_queue passed at all
