@@ -86,6 +86,43 @@ def test_stop_unblocks_consumer_threads_promptly(tmp_path):
     assert time.time() - start < 3  # stop() must not hang waiting on empty queues
 
 
+def test_stop_does_not_block_on_a_full_bounded_queue_or_drain_its_backlog(tmp_path):
+    """I3: production queues are bounded (maxsize=200). A sentinel-based stop
+    would block on put() and then wait behind the whole backlog."""
+    mic_queue = queue.Queue(maxsize=3)
+    speaker_queue = queue.Queue(maxsize=3)
+
+    class SlowTranscriber:
+        def transcribe(self, wav_path, language="id"):
+            from app.asr.base import TranscriptSegmentResult
+            time.sleep(0.4)
+            return [TranscriptSegmentResult(start_ms=0, end_ms=1, text="lambat")]
+
+    session = LiveSession(
+        mic_transcriber=SlowTranscriber(),
+        speaker_transcriber=SlowTranscriber(),
+        diarizer=FakeDiarizer(),
+        segmenter_factory=lambda: FakeSegmenter(),
+        mic_wav_path=tmp_path / "mic.wav",
+        speaker_wav_path=tmp_path / "speaker.wav",
+        scratch_dir=tmp_path / "live_scratch",
+        mic_queue=mic_queue,
+        speaker_queue=speaker_queue,
+        diarize_interval_seconds=999,
+        on_update=lambda e: None,
+    )
+    for _ in range(3):
+        mic_queue.put_nowait(_chunk())
+        speaker_queue.put_nowait(_chunk())
+    assert mic_queue.full()
+
+    session.start()
+    start = time.time()
+    session.stop()
+    # Draining 3 x 0.4s of backlog per source would take >1.2s; abandoning it is fast.
+    assert time.time() - start < 2
+
+
 class BrokenThenWorkingTranscriber:
     """Raises once (simulating a transient live-pipeline error), then works normally."""
     def __init__(self):

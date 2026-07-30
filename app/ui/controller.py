@@ -35,6 +35,18 @@ class RecorderController:
         self._live_session = None
         self.last_docx_path: str | None = None
 
+    def _stop_live_session(self) -> None:
+        """Stopping live preview must never mask the real error or block the
+        recorder from being stopped -- it is best-effort, spec §5."""
+        if self._live_session is None:
+            return
+        try:
+            self._live_session.stop()
+        except Exception as exc:
+            print(f"WARNING: live session failed to stop cleanly: {exc}")
+        finally:
+            self._live_session = None
+
     def start_meeting(self, title: str) -> int:
         session_dirname = uuid.uuid4().hex
         meeting_dir = self._recordings_dir / session_dirname
@@ -59,9 +71,7 @@ class RecorderController:
         try:
             recorder.start()
         except Exception as exc:
-            if self._live_session is not None:
-                self._live_session.stop()
-                self._live_session = None
+            self._stop_live_session()
             self.error_message = f"Gagal memulai rekam (cek perangkat mic/speaker): {exc}"
             self.state = "error"
             raise
@@ -77,9 +87,7 @@ class RecorderController:
             meeting_id = asyncio.run(_create())
         except Exception as exc:
             recorder.stop()
-            if self._live_session is not None:
-                self._live_session.stop()
-                self._live_session = None
+            self._stop_live_session()
             self.error_message = f"Gagal menyimpan data meeting: {exc}"
             self.state = "error"
             raise
@@ -94,9 +102,7 @@ class RecorderController:
         if self._recorder is None:
             raise RuntimeError("cannot stop: no meeting is currently being recorded")
 
-        if self._live_session is not None:
-            self._live_session.stop()
-            self._live_session = None
+        self._stop_live_session()
 
         mic_path, speaker_path = self._recorder.stop()
         self.state = "processing"

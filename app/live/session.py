@@ -29,6 +29,7 @@ class LiveSession:
         self._speaker_queue = speaker_queue
         self._on_update = on_update
         self._lock = threading.Lock()
+        self._stop_event = threading.Event()
         self._mic_segments: list[LiveSegment] = []
         self._speaker_segments: list[LiveSegment] = []
         scratch_dir.mkdir(parents=True, exist_ok=True)
@@ -63,12 +64,14 @@ class LiveSession:
             return list(self._mic_segments), list(self._speaker_segments)
 
     def start(self) -> None:
+        self._stop_event.clear()
+
         def _consume(source_queue, pipeline, source_name):
-            while True:
-                item = source_queue.get()
-                if item is None:
-                    break
-                chunk, absolute_start_sample = item
+            while not self._stop_event.is_set():
+                try:
+                    chunk, absolute_start_sample = source_queue.get(timeout=0.5)
+                except queue.Empty:
+                    continue  # nothing yet; just re-check the stop flag
                 try:
                     pipeline.feed_chunk(chunk, absolute_start_sample)
                 except Exception as exc:
@@ -85,8 +88,11 @@ class LiveSession:
         self._diarize_loop.start()
 
     def stop(self) -> None:
+        # An Event, not a sentinel in the queue: the production queues are bounded
+        # (maxsize=200) so put() could block, and even once it landed the sentinel
+        # would sit behind a whole backlog the consumer must transcribe first.
+        # Setting the flag lets the consumers abandon their backlog and exit now.
         self._diarize_loop.stop()
-        self._mic_queue.put(None)
-        self._speaker_queue.put(None)
+        self._stop_event.set()
         for thread in self._threads:
             thread.join(timeout=5)

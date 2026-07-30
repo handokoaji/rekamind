@@ -271,12 +271,19 @@ class FakeLiveSession:
         self.scratch_dir = scratch_dir
         self.started = False
         self.stopped = False
+        self.meeting_id = None
 
     def start(self):
         self.started = True
 
     def stop(self):
         self.stopped = True
+
+
+class BrokenStopLiveSession(FakeLiveSession):
+    def stop(self):
+        self.stopped = True
+        raise RuntimeError("live session stop hung/failed")
 
 
 def test_start_meeting_starts_live_session_when_factory_provided(tmp_path):
@@ -310,6 +317,87 @@ def test_start_meeting_starts_live_session_when_factory_provided(tmp_path):
 
     controller.stop_meeting()
     assert created_sessions[0].stopped is True
+
+
+def _live_session_test_controller(tmp_path, live_session_cls, recorder_cls, session_factory):
+    created = []
+
+    def live_session_factory(mic_wav_path, speaker_wav_path, scratch_dir):
+        live_session = live_session_cls(mic_wav_path, speaker_wav_path, scratch_dir)
+        created.append(live_session)
+        return live_session
+
+    async def fake_finalize_fn(**kwargs):
+        from app.storage.models import Summary
+        return Summary(id=1, meeting_id=kwargs["meeting_id"], mom_json="{}",
+                        groq_model="llama-3.3-70b-versatile", status="ready")
+
+    controller = RecorderController(
+        session_factory=session_factory,
+        recorder_factory=lambda mic, speaker: recorder_cls(mic, speaker),
+        finalize_fn=fake_finalize_fn,
+        recordings_dir=tmp_path,
+        live_session_factory=live_session_factory,
+    )
+    return controller, created
+
+
+def test_failing_live_session_stop_does_not_block_stop_meeting(tmp_path):
+    """I3: a slow or broken live_session.stop() must never stop the recorder
+    from being stopped or the meeting from being finalized."""
+    engine = make_engine("sqlite+aiosqlite:///:memory:")
+    asyncio.run(init_db(engine))
+    session_factory = make_session_factory(engine)
+
+    controller, created = _live_session_test_controller(
+        tmp_path, BrokenStopLiveSession, FakeRecorder, session_factory
+    )
+
+    controller.start_meeting("Rapat Live Stop Gagal")
+    controller.stop_meeting()
+
+    assert created[0].stopped is True
+    assert controller.state == "done"  # finalize still ran
+
+
+def test_failing_live_session_stop_does_not_mask_recorder_start_error(tmp_path):
+    engine = make_engine("sqlite+aiosqlite:///:memory:")
+    asyncio.run(init_db(engine))
+    session_factory = make_session_factory(engine)
+
+    controller, created = _live_session_test_controller(
+        tmp_path, BrokenStopLiveSession, BrokenRecorder, session_factory
+    )
+
+    try:
+        controller.start_meeting("Rapat Recorder Fail")
+        assert False, "expected the ORIGINAL OSError from the recorder to propagate"
+    except OSError:
+        pass
+
+    assert created[0].stopped is True
+    assert controller.state == "error"
+    assert "mic/speaker" in controller.error_message
+
+
+def test_failing_live_session_stop_does_not_mask_db_error(tmp_path):
+    engine = make_engine("sqlite+aiosqlite:///:memory:")
+    asyncio.run(init_db(engine))
+    real_session_factory = make_session_factory(engine)
+
+    controller, created = _live_session_test_controller(
+        tmp_path, BrokenStopLiveSession, BrokenRecorderStartThenDB,
+        FailingSessionFactoryWrapper(real_session_factory),
+    )
+
+    try:
+        controller.start_meeting("Rapat DB Fail")
+        assert False, "expected the ORIGINAL RuntimeError from the DB to propagate"
+    except RuntimeError as e:
+        assert "Simulated DB write failure" in str(e)
+
+    assert created[0].stopped is True
+    assert "Gagal menyimpan data meeting" in controller.error_message
 
 
 def test_start_meeting_without_live_session_factory_behaves_like_fase1(tmp_path):
