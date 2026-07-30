@@ -78,6 +78,9 @@ class RecorderController:
         self.state = "processing"
 
         async def _finalize():
+            # Commit the recording metadata first, in its own transaction: if
+            # finalize_fn later fails, end_time and the WAV file references must
+            # still be on disk-of-record instead of being rolled back with it.
             async with self._session_factory() as session:
                 await repo.stop_recording(session, self._meeting_id)
                 await repo.save_recording_file(
@@ -86,6 +89,9 @@ class RecorderController:
                 await repo.save_recording_file(
                     session, self._meeting_id, str(speaker_path), "speaker", _wav_duration_ms(speaker_path)
                 )
+                await session.commit()
+
+            async with self._session_factory() as session:
                 await self._finalize_fn(
                     session=session,
                     meeting_id=self._meeting_id,

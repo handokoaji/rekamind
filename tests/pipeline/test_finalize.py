@@ -1,7 +1,10 @@
 import asyncio
 from datetime import datetime
 
+from sqlalchemy import select
+
 from app.asr.base import TranscriptSegmentResult
+from app.storage.models import Summary, TranscriptSegment
 from app.diarization.diarizer import SpeakerSegment
 from app.storage.db import make_engine, init_db, make_session_factory
 from app.storage import repository as repo
@@ -26,6 +29,8 @@ class FakeDiarizer:
 
 
 class FakeSummarizer:
+    model = "llama-3.3-70b-versatile"
+
     def summarize(self, meeting_title, transcript_text):
         assert "Anda" in transcript_text
         assert "Speaker 1" in transcript_text
@@ -38,6 +43,8 @@ class FakeSummarizer:
 
 
 class FailingSummarizer:
+    model = "llama-3.3-70b-versatile"
+
     def summarize(self, meeting_title, transcript_text):
         raise RuntimeError("Summarizer failed")
 
@@ -127,6 +134,8 @@ def test_finalize_meeting_marks_failed_on_exception(tmp_path):
         diarizer = FakeDiarizer([SpeakerSegment(start_ms=600, end_ms=1500, label="Speaker 1")])
         failing_summarizer = FailingSummarizer()
 
+        # Mirror the real caller (RecorderController._finalize): one session, and
+        # the caller's own commit is never reached when finalize_meeting raises.
         exception_raised = None
         async with session_factory() as session:
             try:
@@ -142,15 +151,26 @@ def test_finalize_meeting_marks_failed_on_exception(tmp_path):
                     summarizer=failing_summarizer,
                     docx_output_path=docx_path,
                 )
+                await session.commit()
             except RuntimeError as e:
                 exception_raised = e
-            await session.commit()
 
         async with session_factory() as session:
             meetings = await repo.list_meetings(session)
-        return exception_raised, meetings
+            segments = (await session.execute(select(TranscriptSegment))).scalars().all()
+            summaries = (await session.execute(select(Summary))).scalars().all()
+        return exception_raised, meetings, segments, summaries
 
-    exception_raised, meetings = asyncio.run(scenario())
+    exception_raised, meetings, segments, summaries = asyncio.run(scenario())
+    # (2) the original exception still propagates
     assert exception_raised is not None
     assert "Summarizer failed" in str(exception_raised)
+    # (1) transcript survives the summarizer failure (spec §9)
+    assert len(segments) == 2
+    assert {s.text for s in segments} == {"Selamat pagi", "Mari kita mulai"}
+    # (3) meeting status is "failed"
     assert meetings[0].status == "failed"
+    # (4) a Summary row exists with status="failed"
+    assert len(summaries) == 1
+    assert summaries[0].status == "failed"
+    assert summaries[0].docx_path is None

@@ -33,6 +33,10 @@ class GroqSummarizer:
         self._client = Groq(api_key=api_key)
         self._model = model
 
+    @property
+    def model(self) -> str:
+        return self._model
+
     def summarize(self, meeting_title: str, transcript_text: str) -> MomResult:
         prompt = _PROMPT_TEMPLATE.format(title=meeting_title, transcript=transcript_text)
         response = self._client.chat.completions.create(

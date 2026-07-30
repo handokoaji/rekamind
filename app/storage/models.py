@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import ForeignKey
+from sqlalchemy import DateTime, ForeignKey
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -17,11 +17,11 @@ class Meeting(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str]
-    scheduled_time: Mapped[datetime | None] = mapped_column(default=None)
-    start_time: Mapped[datetime | None] = mapped_column(default=None)
-    end_time: Mapped[datetime | None] = mapped_column(default=None)
+    scheduled_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    start_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    end_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     status: Mapped[str] = mapped_column(default="scheduled")
-    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     speakers: Mapped[list["Speaker"]] = relationship(back_populates="meeting")
     segments: Mapped[list["TranscriptSegment"]] = relationship(back_populates="meeting")
@@ -77,6 +77,6 @@ class Summary(Base):
     docx_path: Mapped[str | None] = mapped_column(default=None)
     groq_model: Mapped[str]
     status: Mapped[str] = mapped_column(default="pending")
-    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     meeting: Mapped["Meeting"] = relationship(back_populates="summary")
