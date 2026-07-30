@@ -166,6 +166,7 @@ def main() -> None:
             on_update=window_ref["window"].push_live_event,
             speaker_samplerate=speaker_samplerate,
             speaker_channels=speaker_channels,
+            session_factory=session_factory,
         )
         # MicSpeakerRecorder needs these same queues to actually feed audio in;
         # stash them so _real_recorder (above) can pick them up for this meeting.

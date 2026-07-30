@@ -92,6 +92,11 @@ class RecorderController:
             self.state = "error"
             raise
 
+        if self._live_session is not None:
+            # Only now does the meeting row exist; before this the live session
+            # keeps its drafts out of the DB (see LiveSession.meeting_id).
+            self._live_session.meeting_id = meeting_id
+
         self._meeting_id = meeting_id
         self._meeting_title = title
         self._recorder = recorder

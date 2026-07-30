@@ -311,9 +311,12 @@ def test_start_meeting_starts_live_session_when_factory_provided(tmp_path):
         live_session_factory=live_session_factory,
     )
 
-    controller.start_meeting("Rapat Live")
+    meeting_id = controller.start_meeting("Rapat Live")
     assert len(created_sessions) == 1
     assert created_sessions[0].started is True
+    # The live session only learns the meeting id once the row exists; without it
+    # its draft writes stay disabled.
+    assert created_sessions[0].meeting_id == meeting_id
 
     controller.stop_meeting()
     assert created_sessions[0].stopped is True
