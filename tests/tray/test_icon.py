@@ -14,9 +14,9 @@ def test_build_tray_icon_has_show_and_quit_menu_items():
 
     for item in icon.menu.items:
         if "Buka" in item.text:
-            item._action(icon, item)
+            item(icon)
         if "Keluar" in item.text:
-            item._action(icon, item)
+            item(icon)
 
     assert shown == [True]
     assert quit_called == [True]

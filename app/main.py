@@ -66,10 +66,10 @@ def main() -> None:
     window = MainWindow(root, controller)
 
     def show_window():
-        root.deiconify()
+        root.after(0, root.deiconify)
 
     def quit_app():
-        root.quit()
+        root.after(0, root.quit)
 
     icon = build_tray_icon(on_show=show_window, on_quit=quit_app)
 
