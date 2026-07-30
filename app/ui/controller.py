@@ -20,31 +20,44 @@ class RecorderController:
         recorder_factory: Callable,
         finalize_fn: Callable[..., Awaitable],
         recordings_dir: Path,
+        live_session_factory: Callable[[Path, Path, Path], object] | None = None,
     ):
         self._session_factory = session_factory
         self._recorder_factory = recorder_factory
         self._finalize_fn = finalize_fn
         self._recordings_dir = recordings_dir
+        self._live_session_factory = live_session_factory
         self.state = "idle"
         self.error_message: str | None = None
         self._meeting_id: int | None = None
         self._meeting_title: str | None = None
         self._recorder = None
+        self._live_session = None
         self.last_docx_path: str | None = None
 
     def start_meeting(self, title: str) -> int:
-        # Try the recorder against a UUID-named staging folder BEFORE touching
-        # the DB at all, so a missing/broken audio device never leaves behind
-        # an empty meeting row (spec requirement).
         session_dirname = uuid.uuid4().hex
         meeting_dir = self._recordings_dir / session_dirname
         mic_path = meeting_dir / "mic.wav"
         speaker_path = meeting_dir / "speaker.wav"
+
+        self._live_session = None
+        if self._live_session_factory is not None:
+            try:
+                self._live_session = self._live_session_factory(mic_path, speaker_path, meeting_dir / "live_scratch")
+                self._live_session.start()
+            except Exception as exc:
+                print(f"WARNING: live preview unavailable this meeting: {exc}")
+                self._live_session = None
+
         recorder = self._recorder_factory(mic_path, speaker_path)
 
         try:
             recorder.start()
         except Exception as exc:
+            if self._live_session is not None:
+                self._live_session.stop()
+                self._live_session = None
             self.error_message = f"Gagal memulai rekam (cek perangkat mic/speaker): {exc}"
             self.state = "error"
             raise
@@ -59,8 +72,10 @@ class RecorderController:
         try:
             meeting_id = asyncio.run(_create())
         except Exception as exc:
-            # Recorder was started but DB write failed; stop recorder to avoid resource leak
             recorder.stop()
+            if self._live_session is not None:
+                self._live_session.stop()
+                self._live_session = None
             self.error_message = f"Gagal menyimpan data meeting: {exc}"
             self.state = "error"
             raise
@@ -74,6 +89,10 @@ class RecorderController:
     def stop_meeting(self) -> None:
         if self._recorder is None:
             raise RuntimeError("cannot stop: no meeting is currently being recorded")
+
+        if self._live_session is not None:
+            self._live_session.stop()
+            self._live_session = None
 
         mic_path, speaker_path = self._recorder.stop()
         self.state = "processing"

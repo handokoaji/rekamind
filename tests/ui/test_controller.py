@@ -188,6 +188,40 @@ class BrokenRecorderStartThenDB:
         return self.mic_path, self.speaker_path
 
 
+class FailingSessionFactoryWrapper:
+    """Wraps the real session factory but makes commit fail."""
+    def __init__(self, real_factory):
+        self._real_factory = real_factory
+
+    def __call__(self):
+        return self._WrappedContext(self._real_factory)
+
+    class _WrappedContext:
+        def __init__(self, real_factory):
+            self.real_factory = real_factory
+            self.real_session = None
+
+        async def __aenter__(self):
+            self.real_session = await self.real_factory().__aenter__()
+            return self
+
+        async def __aexit__(self, *args):
+            if self.real_session:
+                await self.real_session.__aexit__(*args)
+
+        def add(self, obj):
+            self.real_session.add(obj)
+
+        async def flush(self):
+            await self.real_session.flush()
+
+        async def get(self, model_class, pk):
+            return await self.real_session.get(model_class, pk)
+
+        async def commit(self):
+            raise RuntimeError("Simulated DB write failure")
+
+
 def test_db_failure_after_recorder_start_stops_recorder(tmp_path):
     """Bug fix #3: DB failure after successful recorder.start() must stop recorder to avoid leak."""
     from app.storage.models import Meeting
@@ -199,39 +233,6 @@ def test_db_failure_after_recorder_start_stops_recorder(tmp_path):
     engine = make_engine("sqlite+aiosqlite:///:memory:")
     asyncio.run(init_db(engine))
     real_session_factory = make_session_factory(engine)
-
-    class FailingSessionFactoryWrapper:
-        """Wraps the real session factory but makes commit fail."""
-        def __init__(self, real_factory):
-            self._real_factory = real_factory
-
-        def __call__(self):
-            return self._WrappedContext(self._real_factory)
-
-        class _WrappedContext:
-            def __init__(self, real_factory):
-                self.real_factory = real_factory
-                self.real_session = None
-
-            async def __aenter__(self):
-                self.real_session = await self.real_factory().__aenter__()
-                return self
-
-            async def __aexit__(self, *args):
-                if self.real_session:
-                    await self.real_session.__aexit__(*args)
-
-            def add(self, obj):
-                self.real_session.add(obj)
-
-            async def flush(self):
-                await self.real_session.flush()
-
-            async def get(self, model_class, pk):
-                return await self.real_session.get(model_class, pk)
-
-            async def commit(self):
-                raise RuntimeError("Simulated DB write failure")
 
     made_recorders = []
 
@@ -261,3 +262,138 @@ def test_db_failure_after_recorder_start_stops_recorder(tmp_path):
     assert len(made_recorders) == 1
     assert made_recorders[0].started is True
     assert made_recorders[0].stopped is True
+
+
+class FakeLiveSession:
+    def __init__(self, mic_wav_path, speaker_wav_path, scratch_dir):
+        self.mic_wav_path = mic_wav_path
+        self.speaker_wav_path = speaker_wav_path
+        self.scratch_dir = scratch_dir
+        self.started = False
+        self.stopped = False
+
+    def start(self):
+        self.started = True
+
+    def stop(self):
+        self.stopped = True
+
+
+def test_start_meeting_starts_live_session_when_factory_provided(tmp_path):
+    engine = make_engine("sqlite+aiosqlite:///:memory:")
+    asyncio.run(init_db(engine))
+    session_factory = make_session_factory(engine)
+
+    created_sessions = []
+
+    def live_session_factory(mic_wav_path, speaker_wav_path, scratch_dir):
+        live_session = FakeLiveSession(mic_wav_path, speaker_wav_path, scratch_dir)
+        created_sessions.append(live_session)
+        return live_session
+
+    async def fake_finalize_fn(**kwargs):
+        from app.storage.models import Summary
+        return Summary(id=1, meeting_id=kwargs["meeting_id"], mom_json="{}",
+                        groq_model="llama-3.3-70b-versatile", status="ready")
+
+    controller = RecorderController(
+        session_factory=session_factory,
+        recorder_factory=lambda mic, speaker: FakeRecorder(mic, speaker),
+        finalize_fn=fake_finalize_fn,
+        recordings_dir=tmp_path,
+        live_session_factory=live_session_factory,
+    )
+
+    controller.start_meeting("Rapat Live")
+    assert len(created_sessions) == 1
+    assert created_sessions[0].started is True
+
+    controller.stop_meeting()
+    assert created_sessions[0].stopped is True
+
+
+def test_start_meeting_without_live_session_factory_behaves_like_fase1(tmp_path):
+    """live_session_factory defaults to None: no live session, no behavior change."""
+    engine = make_engine("sqlite+aiosqlite:///:memory:")
+    asyncio.run(init_db(engine))
+    session_factory = make_session_factory(engine)
+
+    async def fake_finalize_fn(**kwargs):
+        from app.storage.models import Summary
+        return Summary(id=1, meeting_id=kwargs["meeting_id"], mom_json="{}",
+                        groq_model="llama-3.3-70b-versatile", status="ready")
+
+    controller = RecorderController(
+        session_factory=session_factory,
+        recorder_factory=lambda mic, speaker: FakeRecorder(mic, speaker),
+        finalize_fn=fake_finalize_fn,
+        recordings_dir=tmp_path,
+    )
+
+    controller.start_meeting("Rapat Tanpa Live")
+    controller.stop_meeting()
+    assert controller.state == "done"
+
+
+def test_live_session_construction_failure_does_not_block_recording(tmp_path):
+    """spec §5: live preview must never prevent the recording itself from starting."""
+    engine = make_engine("sqlite+aiosqlite:///:memory:")
+    asyncio.run(init_db(engine))
+    session_factory = make_session_factory(engine)
+
+    def broken_live_session_factory(mic_wav_path, speaker_wav_path, scratch_dir):
+        raise RuntimeError("silero-vad model download failed")
+
+    async def fake_finalize_fn(**kwargs):
+        from app.storage.models import Summary
+        return Summary(id=1, meeting_id=kwargs["meeting_id"], mom_json="{}",
+                        groq_model="llama-3.3-70b-versatile", status="ready")
+
+    controller = RecorderController(
+        session_factory=session_factory,
+        recorder_factory=lambda mic, speaker: FakeRecorder(mic, speaker),
+        finalize_fn=fake_finalize_fn,
+        recordings_dir=tmp_path,
+        live_session_factory=broken_live_session_factory,
+    )
+
+    controller.start_meeting("Rapat Live Gagal")
+    assert controller.state == "recording"  # recording still started despite live-session failure
+
+
+def test_live_session_stopped_when_db_write_fails_after_it_started(tmp_path):
+    """A live session that started successfully must not leak if the
+    subsequent DB write for create_meeting fails. Reuses FailingSessionFactoryWrapper
+    and BrokenRecorderStartThenDB, both already defined earlier in this file
+    from Fase 1's Task 14."""
+    engine = make_engine("sqlite+aiosqlite:///:memory:")
+    asyncio.run(init_db(engine))
+    real_session_factory = make_session_factory(engine)
+
+    created_sessions = []
+
+    def live_session_factory(mic_wav_path, speaker_wav_path, scratch_dir):
+        live_session = FakeLiveSession(mic_wav_path, speaker_wav_path, scratch_dir)
+        created_sessions.append(live_session)
+        return live_session
+
+    async def fake_finalize_fn(**kwargs):
+        raise AssertionError("finalize should not be called")
+
+    controller = RecorderController(
+        session_factory=FailingSessionFactoryWrapper(real_session_factory),
+        recorder_factory=lambda mic, speaker: BrokenRecorderStartThenDB(mic, speaker),
+        finalize_fn=fake_finalize_fn,
+        recordings_dir=tmp_path,
+        live_session_factory=live_session_factory,
+    )
+
+    try:
+        controller.start_meeting("Rapat DB Fail Live")
+        assert False, "expected RuntimeError from DB"
+    except RuntimeError:
+        pass
+
+    assert len(created_sessions) == 1
+    assert created_sessions[0].started is True
+    assert created_sessions[0].stopped is True
