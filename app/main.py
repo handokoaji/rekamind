@@ -25,6 +25,27 @@ def build_transcriber(backend_name: str):
     return FasterWhisperBackend(device="cpu", compute_type="int8")
 
 
+def build_models(backend_name: str, settings):
+    """(transcriber, diarizer, summarizer). On a backend load failure BOTH the
+    transcriber and the diarizer fall back to CPU: telling the diarizer "cuda"
+    after the GPU already failed to load just crashes it later (spec §9)."""
+    try:
+        transcriber = build_transcriber(backend_name)
+        effective_device = "cuda" if backend_name == "cuda" else "cpu"
+    except Exception as exc:
+        print(
+            f"WARNING: failed to load {backend_name} backend ({exc}), falling back to CPU",
+            file=sys.stderr,
+        )
+        transcriber = build_transcriber("cpu")
+        effective_device = "cpu"
+    return (
+        transcriber,
+        Diarizer(hf_token=settings.hf_token, device=effective_device),
+        GroqSummarizer(api_key=settings.groq_api_key),
+    )
+
+
 def _real_recorder(mic_path: Path, speaker_path: Path):
     from app.audio.capture import MicSpeakerRecorder
     return MicSpeakerRecorder(mic_path, speaker_path)
@@ -45,22 +66,7 @@ def main() -> None:
     def load_models():
         nonlocal models
         if models is None:
-            try:
-                transcriber = build_transcriber(backend_name)
-            except Exception as exc:
-                print(
-                    f"WARNING: failed to load {backend_name} backend ({exc}), falling back to CPU",
-                    file=sys.stderr,
-                )
-                transcriber = build_transcriber("cpu")
-            models = (
-                transcriber,
-                Diarizer(
-                    hf_token=settings.hf_token,
-                    device="cuda" if backend_name == "cuda" else "cpu",
-                ),
-                GroqSummarizer(api_key=settings.groq_api_key),
-            )
+            models = build_models(backend_name, settings)
         return models
 
     async def finalize_fn(session, meeting_id, meeting_title, meeting_date, mic_wav, speaker_wav):

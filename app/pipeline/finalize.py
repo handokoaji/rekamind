@@ -24,32 +24,42 @@ async def finalize_meeting(
     summarizer: GroqSummarizer,
     docx_output_path: Path,
 ) -> Summary:
-    mic_segments = transcriber.transcribe(mic_wav, language="id")
-    speaker_segments = transcriber.transcribe(speaker_wav, language="id")
-    speaker_labels = diarizer.diarize(speaker_wav)
-    merged = merge_segments(mic_segments, speaker_segments, speaker_labels)
+    try:
+        mic_segments = transcriber.transcribe(mic_wav, language="id")
+        speaker_segments = transcriber.transcribe(speaker_wav, language="id")
+        speaker_labels = diarizer.diarize(speaker_wav)
+        merged = merge_segments(mic_segments, speaker_segments, speaker_labels)
 
-    label_to_speaker_id: dict[str, int | None] = {"Anda": None}
-    segment_rows = []
-    for seg in merged:
-        speaker_id = None
-        if seg.speaker_label != "Anda":
-            if seg.speaker_label not in label_to_speaker_id:
-                speaker = await repo.get_or_create_speaker(session, meeting_id, seg.speaker_label)
-                label_to_speaker_id[seg.speaker_label] = speaker.id
-            speaker_id = label_to_speaker_id[seg.speaker_label]
-        segment_rows.append({
-            "meeting_id": meeting_id,
-            "speaker_id": speaker_id,
-            "source": seg.source,
-            "start_ms": seg.start_ms,
-            "end_ms": seg.end_ms,
-            "text": seg.text,
-        })
-    await repo.save_transcript_segments(session, segment_rows)
-    # Commit the transcript before the risky LLM/docx step: spec §9 requires the
-    # transcript to survive intact even when Groq fails.
-    await session.commit()
+        label_to_speaker_id: dict[str, int | None] = {"Anda": None}
+        segment_rows = []
+        for seg in merged:
+            speaker_id = None
+            if seg.speaker_label != "Anda":
+                if seg.speaker_label not in label_to_speaker_id:
+                    speaker = await repo.get_or_create_speaker(
+                        session, meeting_id, seg.speaker_label
+                    )
+                    label_to_speaker_id[seg.speaker_label] = speaker.id
+                speaker_id = label_to_speaker_id[seg.speaker_label]
+            segment_rows.append({
+                "meeting_id": meeting_id,
+                "speaker_id": speaker_id,
+                "source": seg.source,
+                "start_ms": seg.start_ms,
+                "end_ms": seg.end_ms,
+                "text": seg.text,
+            })
+        await repo.save_transcript_segments(session, segment_rows)
+        # Commit the transcript before the risky LLM/docx step: spec §9 requires the
+        # transcript to survive intact even when Groq fails.
+        await session.commit()
+    except Exception:
+        # ASR/diarization blew up: no summarization ever started, so no Summary row
+        # to write - just stop the meeting being stuck at "processing" forever.
+        await session.rollback()
+        await repo.mark_meeting_status(session, meeting_id, "failed")
+        await session.commit()
+        raise
 
     transcript_text = "\n".join(f"{seg.speaker_label}: {seg.text}" for seg in merged)
     try:

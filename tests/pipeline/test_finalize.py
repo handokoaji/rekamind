@@ -49,6 +49,114 @@ class FailingSummarizer:
         raise RuntimeError("Summarizer failed")
 
 
+def test_finalize_meeting_marks_failed_when_transcription_raises(tmp_path):
+    async def scenario():
+        engine = make_engine("sqlite+aiosqlite:///:memory:")
+        await init_db(engine)
+        session_factory = make_session_factory(engine)
+
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(session, "Rapat Uji", None)
+            await repo.mark_meeting_status(session, meeting.id, "processing")
+            await session.commit()
+            meeting_id = meeting.id
+
+        mic_wav = tmp_path / "mic.wav"
+        speaker_wav = tmp_path / "speaker.wav"
+        mic_wav.touch()
+        speaker_wav.touch()
+
+        class ExplodingTranscriber:
+            def transcribe(self, wav_path, language="id"):
+                raise RuntimeError("CUDA out of memory")
+
+        exception_raised = None
+        async with session_factory() as session:
+            try:
+                await finalize_meeting(
+                    session=session,
+                    meeting_id=meeting_id,
+                    meeting_title="Rapat Uji",
+                    meeting_date=datetime(2026, 7, 30, 9, 0),
+                    mic_wav=mic_wav,
+                    speaker_wav=speaker_wav,
+                    transcriber=ExplodingTranscriber(),
+                    diarizer=FakeDiarizer([]),
+                    summarizer=FakeSummarizer(),
+                    docx_output_path=tmp_path / "mom.docx",
+                )
+                await session.commit()
+            except RuntimeError as e:
+                exception_raised = e
+
+        async with session_factory() as session:
+            meetings = await repo.list_meetings(session)
+            summaries = (await session.execute(select(Summary))).scalars().all()
+        return exception_raised, meetings, summaries
+
+    exception_raised, meetings, summaries = asyncio.run(scenario())
+    assert exception_raised is not None
+    assert "CUDA out of memory" in str(exception_raised)
+    # not left stuck at "processing"
+    assert meetings[0].status == "failed"
+    # summarization never started, so no Summary row is written
+    assert summaries == []
+
+
+def test_finalize_meeting_marks_failed_when_diarizer_raises(tmp_path):
+    async def scenario():
+        engine = make_engine("sqlite+aiosqlite:///:memory:")
+        await init_db(engine)
+        session_factory = make_session_factory(engine)
+
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(session, "Rapat Uji", None)
+            await repo.mark_meeting_status(session, meeting.id, "processing")
+            await session.commit()
+            meeting_id = meeting.id
+
+        mic_wav = tmp_path / "mic.wav"
+        speaker_wav = tmp_path / "speaker.wav"
+        mic_wav.touch()
+        speaker_wav.touch()
+
+        class ExplodingDiarizer:
+            def diarize(self, wav_path):
+                raise RuntimeError("HF model download failed")
+
+        exception_raised = None
+        async with session_factory() as session:
+            try:
+                await finalize_meeting(
+                    session=session,
+                    meeting_id=meeting_id,
+                    meeting_title="Rapat Uji",
+                    meeting_date=datetime(2026, 7, 30, 9, 0),
+                    mic_wav=mic_wav,
+                    speaker_wav=speaker_wav,
+                    transcriber=FakeTranscriber([
+                        TranscriptSegmentResult(start_ms=0, end_ms=500, text="Selamat pagi")
+                    ]),
+                    diarizer=ExplodingDiarizer(),
+                    summarizer=FakeSummarizer(),
+                    docx_output_path=tmp_path / "mom.docx",
+                )
+                await session.commit()
+            except RuntimeError as e:
+                exception_raised = e
+
+        async with session_factory() as session:
+            meetings = await repo.list_meetings(session)
+            segments = (await session.execute(select(TranscriptSegment))).scalars().all()
+        return exception_raised, meetings, segments
+
+    exception_raised, meetings, segments = asyncio.run(scenario())
+    assert exception_raised is not None
+    assert "HF model download failed" in str(exception_raised)
+    assert meetings[0].status == "failed"
+    assert segments == []
+
+
 def test_finalize_meeting_saves_segments_and_summary(tmp_path):
     async def scenario():
         engine = make_engine("sqlite+aiosqlite:///:memory:")
