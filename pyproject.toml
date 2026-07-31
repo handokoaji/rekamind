@@ -18,4 +18,5 @@ dependencies = [
     "pillow>=10.0",
     "silero-vad",
     "tzdata",
+    "minio",
 ]

@@ -30,6 +30,7 @@ class Meeting(Base):
     failed_stage: Mapped[str | None] = mapped_column(default=None)
     device_id: Mapped[str | None] = mapped_column(default=None)
     device_label: Mapped[str | None] = mapped_column(default=None)
+    synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
 
     speakers: Mapped[list["Speaker"]] = relationship(back_populates="meeting")
     segments: Mapped[list["TranscriptSegment"]] = relationship(back_populates="meeting")
