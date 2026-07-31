@@ -91,6 +91,7 @@ def test_submit_sqlite_saves_config_without_connection_check(monkeypatch):
     assert saved == {
         "storage_backend": "sqlite", "groq_api_key": "gk", "hf_token": "hf",
         "device_label": "test-device",
+        "minio_endpoint": "", "minio_access_key": "", "minio_secret_key": "", "minio_bucket": "",
     }
     root.destroy()
 
@@ -186,4 +187,60 @@ def test_submit_includes_device_label_and_falls_back_to_hostname_when_blank(monk
     wizard._submit_button.invoke()
 
     assert saved["device_label"] == "DESKTOP-XYZ"
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_minio_fields_prefilled_from_initial():
+    root = tk.Tk()
+
+    wizard = SetupWizard(parent=root, initial={
+        "minio_endpoint": "play.min.io", "minio_access_key": "ak",
+        "minio_secret_key": "sk", "minio_bucket": "meetings",
+    })
+
+    assert wizard.minio_endpoint_var.get() == "play.min.io"
+    assert wizard.minio_access_key_var.get() == "ak"
+    assert wizard.minio_secret_key_var.get() == "sk"
+    assert wizard.minio_bucket_var.get() == "meetings"
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_submit_includes_blank_minio_fields_by_default(monkeypatch):
+    saved = {}
+    monkeypatch.setattr(setup_wizard_module, "save_packaged_config", saved.update)
+    root = tk.Tk()
+    wizard = SetupWizard(parent=root)
+
+    wizard._submit_button.invoke()
+
+    assert saved["minio_endpoint"] == ""
+    assert saved["minio_access_key"] == ""
+    assert saved["minio_secret_key"] == ""
+    assert saved["minio_bucket"] == ""
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_submit_never_checks_minio_connectivity(monkeypatch):
+    """MinIO config is never validated at submit time -- default off means
+    zero network activity, not a connectivity check that could hang/fail."""
+    saved = {}
+    monkeypatch.setattr(setup_wizard_module, "save_packaged_config", saved.update)
+    minio_client_calls = []
+    monkeypatch.setattr(
+        setup_wizard_module, "Minio", lambda *a, **k: minio_client_calls.append(True), raising=False,
+    )
+    root = tk.Tk()
+    wizard = SetupWizard(parent=root)
+    wizard.minio_endpoint_var.set("play.min.io")
+    wizard.minio_access_key_var.set("ak")
+    wizard.minio_secret_key_var.set("sk")
+    wizard.minio_bucket_var.set("meetings")
+
+    wizard._submit_button.invoke()
+
+    assert minio_client_calls == []
+    assert saved["minio_endpoint"] == "play.min.io"
     root.destroy()

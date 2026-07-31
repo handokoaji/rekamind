@@ -76,6 +76,22 @@ class SetupWizard:
         )
         self._hf_skip_button.pack(side="left")
 
+        tk.Label(self.window, text="Sinkronisasi MinIO (lanjutan, opsional):").pack(anchor="w")
+        minio_frame = tk.Frame(self.window)
+        minio_frame.pack(fill="x")
+        self.minio_endpoint_var = tk.StringVar(value=initial.get("minio_endpoint", ""))
+        self.minio_access_key_var = tk.StringVar(value=initial.get("minio_access_key", ""))
+        self.minio_secret_key_var = tk.StringVar(value=initial.get("minio_secret_key", ""))
+        self.minio_bucket_var = tk.StringVar(value=initial.get("minio_bucket", ""))
+        for label, var in [
+            ("Endpoint", self.minio_endpoint_var), ("Access Key", self.minio_access_key_var),
+            ("Secret Key", self.minio_secret_key_var), ("Bucket", self.minio_bucket_var),
+        ]:
+            row = tk.Frame(minio_frame)
+            row.pack(fill="x")
+            tk.Label(row, text=label, width=10, anchor="w").pack(side="left")
+            tk.Entry(row, textvariable=var).pack(side="left", fill="x", expand=True)
+
         self.error_var = tk.StringVar()
         tk.Label(self.window, textvariable=self.error_var, fg="red").pack(anchor="w")
 
@@ -113,6 +129,10 @@ class SetupWizard:
             "groq_api_key": self.groq_var.get(),
             "hf_token": self.hf_var.get(),
             "device_label": self.device_label_var.get() or socket.gethostname(),
+            "minio_endpoint": self.minio_endpoint_var.get(),
+            "minio_access_key": self.minio_access_key_var.get(),
+            "minio_secret_key": self.minio_secret_key_var.get(),
+            "minio_bucket": self.minio_bucket_var.get(),
         }
         if self.storage_var.get() == "postgres":
             data["postgres_host"] = self.postgres_host_var.get()
