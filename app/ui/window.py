@@ -1,12 +1,15 @@
 # app/ui/window.py
 import sys
 import tkinter as tk
-from tkinter import scrolledtext
+from tkinter import messagebox, scrolledtext
 import threading
 import queue
 
+from app.config import get_settings
+from app.settings_store import save_packaged_config
 from app.ui.controller import RecorderController
 from app.ui.history_view import HistoryView
+from app.ui.setup_wizard import SetupWizard
 
 _STATUS_LABELS = {
     "idle": "Siap",
@@ -31,6 +34,7 @@ class MainWindow:
         nav.pack(fill="x")
         tk.Button(nav, text="Meeting Baru", command=self._show_recording).pack(side="left")
         tk.Button(nav, text="Riwayat", command=self._show_history).pack(side="left")
+        tk.Button(nav, text="Pengaturan", command=self._handle_open_settings).pack(side="left")
 
         container = tk.Frame(root)
         container.pack(fill="both", expand=True)
@@ -54,6 +58,23 @@ class MainWindow:
     def _show_history(self) -> None:
         self._history_view.tkraise()
         self._history_view.set_active(True)
+
+    def _handle_open_settings(self) -> None:
+        settings = get_settings()
+        initial = {
+            "storage_backend": settings.storage_backend,
+            "postgres_host": settings.postgres_host,
+            "postgres_port": settings.postgres_port,
+            "postgres_user": settings.postgres_user,
+            "postgres_password": settings.postgres_password,
+            "postgres_db": settings.postgres_db,
+            "groq_api_key": settings.groq_api_key,
+            "hf_token": settings.hf_token,
+        }
+        result = SetupWizard(parent=self._root, initial=initial).run()
+        if result is not None:
+            save_packaged_config(result)
+            messagebox.showinfo("Pengaturan", "Restart aplikasi untuk menerapkan perubahan.")
 
     def _build_recording_frame(self, parent: tk.Widget) -> None:
         self.title_var = tk.StringVar()

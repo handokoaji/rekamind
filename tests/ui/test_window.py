@@ -406,4 +406,50 @@ def test_history_polling_follows_the_visible_tab():
     window._show_recording()
     assert window._history_view._active is False
 
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_pengaturan_button_reopens_wizard_prefilled_and_saves_on_submit(monkeypatch):
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    import app.ui.window as window_module
+
+    class FakeSettings:
+        storage_backend = "sqlite"
+        postgres_host = None
+        postgres_port = None
+        postgres_user = None
+        postgres_password = None
+        postgres_db = None
+        groq_api_key = "gk"
+        hf_token = "hf"
+
+    monkeypatch.setattr(window_module, "get_settings", lambda: FakeSettings())
+    wizard_calls = []
+    saved = []
+
+    class FakeWizard:
+        def __init__(self, parent=None, initial=None):
+            wizard_calls.append((parent, initial))
+
+        def run(self):
+            return {"storage_backend": "sqlite", "groq_api_key": "gk2", "hf_token": "hf"}
+
+    monkeypatch.setattr(window_module, "SetupWizard", FakeWizard)
+    monkeypatch.setattr(window_module, "save_packaged_config", saved.append)
+    monkeypatch.setattr(window_module.messagebox, "showinfo", lambda *a, **k: None)
+
+    controller = FakeController()
+    window = MainWindow(root, controller)
+
+    window._handle_open_settings()
+
+    assert wizard_calls == [(root, {
+        "storage_backend": "sqlite", "postgres_host": None, "postgres_port": None,
+        "postgres_user": None, "postgres_password": None, "postgres_db": None,
+        "groq_api_key": "gk", "hf_token": "hf",
+    })]
+    assert saved == [{"storage_backend": "sqlite", "groq_api_key": "gk2", "hf_token": "hf"}]
     root.destroy()
