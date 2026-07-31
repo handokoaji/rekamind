@@ -61,6 +61,62 @@ def test_full_meeting_lifecycle():
     assert meetings[0].end_time is not None
 
 
+def test_delete_meeting_removes_meeting_and_all_its_children():
+    async def scenario():
+        engine = make_engine("sqlite+aiosqlite:///:memory:")
+        await init_db(engine)
+        session_factory = make_session_factory(engine)
+
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(
+                session, "Sprint Review", None, recording_dir="./recordings/abc",
+            )
+            await session.commit()
+            meeting_id = meeting.id
+
+        async with session_factory() as session:
+            speaker = await repo.get_or_create_speaker(session, meeting_id, "Speaker 1")
+            await repo.save_recording_file(session, meeting_id, "./recordings/abc/mic.wav", "mic", 5000)
+            await repo.save_transcript_segments(session, [
+                {"meeting_id": meeting_id, "speaker_id": speaker.id, "source": "speaker",
+                 "start_ms": 0, "end_ms": 900, "text": "Halo"},
+            ])
+            await repo.save_summary(
+                session, meeting_id, mom_json="{}", docx_path="./recordings/abc/mom.docx",
+                groq_model="llama-3.3-70b-versatile", status="ready",
+            )
+            await session.commit()
+
+        async with session_factory() as session:
+            recording_dir = await repo.delete_meeting(session, meeting_id)
+            await session.commit()
+
+        async with session_factory() as session:
+            meetings = await repo.list_meetings(session)
+            transcript = await repo.get_final_transcript(session, meeting_id)
+            summary = await repo.get_summary(session, meeting_id)
+
+        return recording_dir, meetings, transcript, summary
+
+    recording_dir, meetings, transcript, summary = asyncio.run(scenario())
+    assert recording_dir == "./recordings/abc"
+    assert meetings == []
+    assert transcript == []
+    assert summary is None
+
+
+def test_delete_meeting_raises_for_unknown_id():
+    async def scenario():
+        engine = make_engine("sqlite+aiosqlite:///:memory:")
+        await init_db(engine)
+        session_factory = make_session_factory(engine)
+        async with session_factory() as session:
+            await repo.delete_meeting(session, 999)
+
+    with pytest.raises(ValueError):
+        asyncio.run(scenario())
+
+
 def test_start_recording_missing_meeting():
     async def scenario():
         engine = make_engine("sqlite+aiosqlite:///:memory:")

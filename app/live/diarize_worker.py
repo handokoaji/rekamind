@@ -14,8 +14,8 @@ def _init_worker(hf_token: str, device: str) -> None:
     _worker_diarizer = Diarizer(hf_token=hf_token, device=device)
 
 
-def _diarize_in_worker(wav_path: str) -> list[SpeakerSegment]:
-    return _worker_diarizer.diarize(Path(wav_path))
+def _diarize_in_worker(wav_path: str, window_seconds: float | None) -> list[SpeakerSegment]:
+    return _worker_diarizer.diarize(Path(wav_path), window_seconds=window_seconds)
 
 
 class ProcessIsolatedDiarizer:
@@ -33,10 +33,16 @@ class ProcessIsolatedDiarizer:
     breaks or hangs.
     """
 
-    def __init__(self, hf_token: str, device: str, timeout_seconds: float = 30.0):
+    def __init__(
+        self, hf_token: str, device: str, timeout_seconds: float = 30.0,
+        window_seconds: float | None = 300.0,
+    ):
         self._hf_token = hf_token
         self._device = device
         self._timeout_seconds = timeout_seconds
+        # Cap on how much of the recording gets re-diarized per tick -- see
+        # Diarizer.diarize's docstring for why this exists.
+        self._window_seconds = window_seconds
         self._executor: ProcessPoolExecutor | None = None
 
     def _ensure_executor(self) -> ProcessPoolExecutor:
@@ -48,19 +54,30 @@ class ProcessIsolatedDiarizer:
 
     def diarize(self, wav_path: Path) -> list[SpeakerSegment]:
         executor = self._ensure_executor()
-        future = executor.submit(_diarize_in_worker, str(wav_path))
+        future = executor.submit(_diarize_in_worker, str(wav_path), self._window_seconds)
         try:
             return future.result(timeout=self._timeout_seconds)
         except BrokenExecutor as exc:
             logger.warning("live diarize worker crashed (%s); respawning for the next tick", exc)
             self._executor = None
-            executor.shutdown(wait=False)
+            self._kill_workers(executor)
             return []
         except FutureTimeoutError:
             logger.warning("live diarize worker timed out after %ss; respawning for the next tick", self._timeout_seconds)
             self._executor = None
-            executor.shutdown(wait=False, cancel_futures=True)
+            self._kill_workers(executor)
             return []
+
+    @staticmethod
+    def _kill_workers(executor: ProcessPoolExecutor) -> None:
+        # shutdown(wait=False)/cancel_futures only stop new submissions -- a worker
+        # stuck mid-diarize keeps running in the background (still holding its full
+        # pyannote+CUDA model) unless force-killed. Left alone this orphans one
+        # python.exe per timeout, each carrying its own model copy, until RAM/VRAM
+        # runs out (observed: ~20GB across 3 orphaned processes, then CUDA OOM).
+        for process in executor._processes.values():
+            process.kill()
+        executor.shutdown(wait=False)
 
     def shutdown(self) -> None:
         if self._executor is not None:

@@ -15,6 +15,14 @@ class FakeFuture:
         return self._result
 
 
+class FakeProcess:
+    def __init__(self):
+        self.killed = False
+
+    def kill(self):
+        self.killed = True
+
+
 class FakeExecutor:
     instances = []
 
@@ -25,6 +33,7 @@ class FakeExecutor:
         self.submitted = []
         self.shutdown_calls = []
         self._next_future = FakeFuture(result=[])
+        self._processes = {1: FakeProcess()}
         FakeExecutor.instances.append(self)
 
     def submit(self, fn, *args):
@@ -75,6 +84,7 @@ def test_broken_worker_returns_empty_list_and_respawns(monkeypatch, tmp_path):
 
     assert result == []
     assert first_executor.shutdown_calls == [{"wait": False, "cancel_futures": False}]
+    assert all(p.killed for p in first_executor._processes.values())
 
     # Next call must spin up a fresh worker, not reuse the broken one.
     diarizer.diarize(tmp_path / "speaker.wav")
@@ -91,7 +101,8 @@ def test_timeout_returns_empty_list_and_respawns(monkeypatch, tmp_path):
     result = diarizer.diarize(tmp_path / "speaker.wav")
 
     assert result == []
-    assert first_executor.shutdown_calls == [{"wait": False, "cancel_futures": True}]
+    assert first_executor.shutdown_calls == [{"wait": False, "cancel_futures": False}]
+    assert all(p.killed for p in first_executor._processes.values())
 
     diarizer.diarize(tmp_path / "speaker.wav")
     assert len(FakeExecutor.instances) == 2

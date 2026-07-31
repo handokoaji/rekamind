@@ -46,7 +46,13 @@ def check_ffmpeg_available() -> bool:
 
 def build_transcriber(backend_name: str):
     if backend_name == "cuda":
-        return FasterWhisperBackend()
+        # int8 (not the class default float32): large-v3 in float32 is the
+        # single biggest RAM/VRAM cost in the app once loaded (~6-10GB), and it
+        # stays resident for the rest of the app run. int8 uses CUDA's DP4A
+        # path (supported from compute capability 6.1 onward, e.g. GTX 1080
+        # Ti) rather than float16, which faster-whisper already avoids here
+        # because it silently misbehaves on Pascal-generation GPUs.
+        return FasterWhisperBackend(compute_type="int8")
     if backend_name == "openvino":
         return OpenVinoWhisperBackend()
     return FasterWhisperBackend(device="cpu", compute_type="int8")

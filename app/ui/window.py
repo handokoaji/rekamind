@@ -73,6 +73,10 @@ class MainWindow:
         self.status_label = tk.Label(parent, textvariable=self.status_var)
         self.status_label.pack(anchor="w")
 
+        self.live_warning_var = tk.StringVar()
+        self.live_warning_label = tk.Label(parent, textvariable=self.live_warning_var, fg="orange")
+        self.live_warning_label.pack(anchor="w")
+
         self.transcript_view = scrolledtext.ScrolledText(parent, height=15, width=60)
         self.transcript_view.pack(fill="both", expand=True)
 
@@ -96,6 +100,7 @@ class MainWindow:
         # double-click can't fire start_meeting() twice while the heavy setup
         # (Diarizer/VAD construction) runs off the UI thread.
         self._start_button.config(state="disabled")
+        self.live_warning_var.set("")  # clear any stale warning from the previous meeting
 
         def _start_in_background():
             try:
@@ -161,6 +166,8 @@ class MainWindow:
                         self.transcript_view.insert("end", f"{segment.text}\n")
                         if follow:
                             self.transcript_view.see("end")
+                elif event["type"] == "warning":
+                    self.live_warning_var.set(event["message"])
                 elif event["type"] == "relabel":
                     # A full clear+reinsert always resets the view to the top;
                     # follow the bottom if the user was there, otherwise keep

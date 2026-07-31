@@ -342,6 +342,80 @@ def test_draft_write_failure_is_logged_and_does_not_propagate(tmp_path, caplog):
     assert "db is down" in caplog.text
 
 
+def test_watchdog_warns_when_mic_wav_never_grows(tmp_path):
+    """mic.wav staying 0 bytes all meeting (no default input device delivering
+    frames) used to be silent -- discovered only after the meeting ended."""
+    mic_path = tmp_path / "mic.wav"
+    speaker_path = tmp_path / "speaker.wav"
+    mic_path.touch()
+    speaker_path.write_bytes(b"x" * 1000)  # speaker is fine, growing normally below
+    events = []
+
+    session = LiveSession(
+        mic_transcriber=FakeTranscriber("x"),
+        speaker_transcriber=FakeTranscriber("y"),
+        diarizer=FakeDiarizer(),
+        segmenter_factory=lambda: FakeSegmenter(),
+        mic_wav_path=mic_path,
+        speaker_wav_path=speaker_path,
+        scratch_dir=tmp_path / "live_scratch",
+        mic_queue=queue.Queue(),
+        speaker_queue=queue.Queue(),
+        diarize_interval_seconds=999,
+        on_update=events.append,
+        capture_watchdog_interval_seconds=0.02,
+        capture_stall_seconds=0.05,
+    )
+
+    session.start()
+    deadline = time.time() + 5
+    while not any(e["type"] == "warning" for e in events) and time.time() < deadline:
+        time.sleep(0.02)
+    session.stop()
+
+    warnings = [e for e in events if e["type"] == "warning"]
+    assert warnings, "expected a stall warning for mic"
+    assert "Mic" in warnings[0]["message"]
+    # speaker.wav never changes size after being written once either, so it also
+    # stalls in this test -- but each source warns only once, not on every tick.
+    mic_warnings = [w for w in warnings if "Mic" in w["message"]]
+    assert len(mic_warnings) == 1
+
+
+def test_watchdog_does_not_warn_while_wav_keeps_growing(tmp_path):
+    mic_path = tmp_path / "mic.wav"
+    speaker_path = tmp_path / "speaker.wav"
+    events = []
+
+    session = LiveSession(
+        mic_transcriber=FakeTranscriber("x"),
+        speaker_transcriber=FakeTranscriber("y"),
+        diarizer=FakeDiarizer(),
+        segmenter_factory=lambda: FakeSegmenter(),
+        mic_wav_path=mic_path,
+        speaker_wav_path=speaker_path,
+        scratch_dir=tmp_path / "live_scratch",
+        mic_queue=queue.Queue(),
+        speaker_queue=queue.Queue(),
+        diarize_interval_seconds=999,
+        on_update=events.append,
+        capture_watchdog_interval_seconds=0.02,
+        capture_stall_seconds=0.08,
+    )
+
+    session.start()
+    stop_growing = time.time() + 0.3
+    while time.time() < stop_growing:
+        with open(mic_path, "ab") as f:
+            f.write(b"x")
+        with open(speaker_path, "ab") as f:
+            f.write(b"x")
+        time.sleep(0.02)
+    session.stop()
+
+    assert not [e for e in events if e["type"] == "warning"]
+
+
 def test_no_session_factory_means_no_draft_writes(tmp_path):
     """Existing callers that pass no DB (and the tests above) must keep working."""
     session = LiveSession(

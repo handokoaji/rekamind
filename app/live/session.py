@@ -2,6 +2,7 @@ import asyncio
 import logging
 import queue
 import threading
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -11,6 +12,8 @@ from app.live.vad import SpeechSegmenter
 from app.storage import repository as repo
 
 logger = logging.getLogger(__name__)
+
+_CAPTURE_SOURCE_LABELS = {"mic": "Mic", "speaker": "Audio lawan bicara (speaker)"}
 
 
 class LiveSession:
@@ -31,10 +34,16 @@ class LiveSession:
         speaker_channels: int = 1,
         meeting_id: int | None = None,
         session_factory=None,
+        capture_stall_seconds: float = 20.0,
+        capture_watchdog_interval_seconds: float = 5.0,
     ):
         self._mic_queue = mic_queue
         self._speaker_queue = speaker_queue
         self._on_update = on_update
+        self._mic_wav_path = mic_wav_path
+        self._speaker_wav_path = speaker_wav_path
+        self._capture_stall_seconds = capture_stall_seconds
+        self._capture_watchdog_interval_seconds = capture_watchdog_interval_seconds
         # Public and mutable: the controller only learns the meeting id AFTER the
         # live session is constructed (the recorder factory needs the queues
         # first, and the meeting row is only written once recording started).
@@ -162,8 +171,40 @@ class LiveSession:
         speaker_thread = threading.Thread(target=_consume, args=(self._speaker_queue, self._speaker_pipeline, "speaker"), daemon=True)
         mic_thread.start()
         speaker_thread.start()
-        self._threads = [mic_thread, speaker_thread]
+        watchdog_thread = threading.Thread(target=self._watch_capture, daemon=True)
+        watchdog_thread.start()
+        self._threads = [mic_thread, speaker_thread, watchdog_thread]
         self._diarize_loop.start()
+
+    def _watch_capture(self) -> None:
+        """Silent-failure detector: real audio (even silence) keeps growing the
+        WAV file every callback, so a size that stops changing means the device
+        stream itself died -- e.g. mic.wav staying 0 bytes all meeting because
+        no default input device ever delivered a frame, or speaker.wav freezing
+        mid-meeting after a native CUDA crash wedged the process. Both looked
+        like nothing was wrong until the meeting was already over."""
+        sources = {"mic": self._mic_wav_path, "speaker": self._speaker_wav_path}
+        last_size = {name: -1 for name in sources}
+        last_change = {name: time.monotonic() for name in sources}
+        warned: set[str] = set()
+        while not self._stop_event.wait(self._capture_watchdog_interval_seconds):
+            now = time.monotonic()
+            for name, path in sources.items():
+                size = path.stat().st_size if path.exists() else 0
+                if size != last_size[name]:
+                    last_size[name] = size
+                    last_change[name] = now
+                    continue
+                if name not in warned and now - last_change[name] >= self._capture_stall_seconds:
+                    warned.add(name)
+                    label = _CAPTURE_SOURCE_LABELS[name]
+                    self._on_update({
+                        "type": "warning",
+                        "message": (
+                            f"{label} tidak merekam apa pun sejak lebih dari "
+                            f"{int(self._capture_stall_seconds)} detik -- cek perangkat/driver."
+                        ),
+                    })
 
     def stop(self) -> None:
         # An Event, not a sentinel in the queue: the production queues are bounded

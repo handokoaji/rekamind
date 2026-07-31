@@ -179,3 +179,21 @@ async def get_final_transcript(session: AsyncSession, meeting_id: int) -> list[t
 async def get_summary(session: AsyncSession, meeting_id: int) -> Summary | None:
     result = await session.execute(select(Summary).where(Summary.meeting_id == meeting_id))
     return result.scalar_one_or_none()
+
+
+async def delete_meeting(session: AsyncSession, meeting_id: int) -> str | None:
+    """Deletes the meeting row and everything referencing it (no cascade is
+    configured on the FKs, so children go first). Returns recording_dir so the
+    caller can also remove the audio files on disk -- those aren't tracked by
+    SQLAlchemy at all."""
+    meeting = await session.get(Meeting, meeting_id)
+    if meeting is None:
+        raise ValueError(f"Meeting {meeting_id} not found")
+    recording_dir = meeting.recording_dir
+    await session.execute(delete(Summary).where(Summary.meeting_id == meeting_id))
+    await session.execute(delete(TranscriptSegment).where(TranscriptSegment.meeting_id == meeting_id))
+    await session.execute(delete(Speaker).where(Speaker.meeting_id == meeting_id))
+    await session.execute(delete(Recording).where(Recording.meeting_id == meeting_id))
+    await session.delete(meeting)
+    await session.flush()
+    return recording_dir

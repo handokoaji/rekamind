@@ -1,8 +1,11 @@
+import logging
 import queue
 from dataclasses import dataclass
 from pathlib import Path
 
 from app.audio.wav_writer import WavFileWriter
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -66,6 +69,15 @@ class MicSpeakerRecorder:
         import pyaudiowpatch as pyaudio
 
         self._pyaudio = pyaudio.PyAudio()
+        # mic.wav has shown up fully empty (device opened, zero callbacks ever
+        # fired) with no exception anywhere -- logging which device PortAudio
+        # actually picked makes a wrong/disabled default mic diagnosable from
+        # the log instead of only discovered after the meeting ends.
+        try:
+            default_mic = self._pyaudio.get_default_input_device_info()
+            logger.info("mic capture device: %s (index %s)", default_mic["name"], default_mic["index"])
+        except Exception as exc:
+            logger.warning("no default input (mic) device found: %s", exc)
         self._mic_writer = WavFileWriter(self._mic_path, self._config.samplerate, self._config.channels)
 
         default_speakers = self._pyaudio.get_default_wasapi_loopback()

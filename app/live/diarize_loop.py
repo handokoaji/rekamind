@@ -25,6 +25,12 @@ class LiveDiarizeLoop:
         self._on_relabeled = on_relabeled
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
+        # The diarizer may only cover a recent window of the recording (see
+        # Diarizer.diarize), so a speaker segment before that window gets no
+        # overlap and merge_segments falls back to "Speaker ?" -- remember the
+        # last real label per segment so old segments don't visibly un-label
+        # themselves on every tick.
+        self._last_labels: dict[tuple[str, int], str] = {}
 
     def tick(self) -> None:
         mic_segments, speaker_segments = self._get_segments()
@@ -36,6 +42,14 @@ class LiveDiarizeLoop:
             [TranscriptSegmentResult(s.start_ms, s.end_ms, s.text) for s in speaker_segments],
             speaker_labels,
         )
+        for seg in merged:
+            if seg.source != "speaker":
+                continue
+            key = (seg.source, seg.start_ms)
+            if seg.speaker_label == "Speaker ?" and key in self._last_labels:
+                seg.speaker_label = self._last_labels[key]
+            else:
+                self._last_labels[key] = seg.speaker_label
         self._on_relabeled(merged)
 
     def start(self) -> None:

@@ -156,6 +156,40 @@ def test_button_enable_disable_based_on_state():
 
 
 @pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_warning_event_shows_message_in_live_warning_label():
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    controller = FakeController()
+    window = MainWindow(root, controller)
+
+    window.push_live_event({"type": "warning", "message": "Mic tidak merekam apa pun"})
+    _pump_until(root, lambda: window.live_warning_var.get() != "")
+
+    assert window.live_warning_var.get() == "Mic tidak merekam apa pun"
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_starting_a_new_meeting_clears_a_stale_warning():
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    controller = FakeController()
+    window = MainWindow(root, controller)
+    window.live_warning_var.set("peringatan dari meeting sebelumnya")
+
+    window.on_start_clicked("Rapat Baru")
+
+    assert window.live_warning_var.get() == ""
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
 def test_status_label_color_reflects_state():
     try:
         root = tk.Tk()

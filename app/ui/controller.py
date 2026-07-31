@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import shutil
 import uuid
 import wave
 from datetime import datetime, timezone
@@ -204,6 +205,23 @@ class RecorderController:
                 return await repo.get_final_transcript(session, meeting_id)
 
         return asyncio.run(_get())
+
+    def delete_meeting(self, meeting_id: int) -> None:
+        """Blocking -- call from a background thread. Irreversible: drops the
+        DB rows and the meeting's whole recordings/<id>/ directory (WAVs,
+        live scratch files, exported docx)."""
+        if self._meeting_id == meeting_id and self.state == "recording":
+            raise ValueError("Tidak bisa menghapus meeting yang sedang direkam")
+
+        async def _delete():
+            async with self._session_factory() as session:
+                recording_dir = await repo.delete_meeting(session, meeting_id)
+                await session.commit()
+                return recording_dir
+
+        recording_dir = asyncio.run(_delete())
+        if recording_dir:
+            shutil.rmtree(recording_dir, ignore_errors=True)
 
     def get_docx_path(self, meeting_id: int) -> str | None:
         async def _get():

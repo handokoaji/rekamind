@@ -2,7 +2,7 @@ import logging
 import os
 import threading
 import tkinter as tk
-from tkinter import scrolledtext, ttk
+from tkinter import messagebox, scrolledtext, ttk
 
 from app.timeutil import to_wib
 
@@ -57,6 +57,7 @@ class HistoryView(tk.Frame):
         self._retry_button = tk.Button(action_frame, text="Coba Lagi", command=self._handle_retry)
         self._download_button = tk.Button(action_frame, text="Unduh Docx", command=self._handle_download)
         self._view_transcript_button = tk.Button(action_frame, text="Lihat Transkrip", command=self._handle_view_transcript)
+        self._delete_button = tk.Button(action_frame, text="Hapus", command=self._handle_delete)
 
         self._transcript_view = scrolledtext.ScrolledText(self, height=10, width=60)
 
@@ -104,7 +105,7 @@ class HistoryView(tk.Frame):
     def _update_action_panel(self) -> None:
         for button in (
             self._transcribe_button, self._summarize_button, self._retry_button,
-            self._download_button, self._view_transcript_button,
+            self._download_button, self._view_transcript_button, self._delete_button,
         ):
             button.pack_forget()
 
@@ -145,6 +146,12 @@ class HistoryView(tk.Frame):
         elif status == "failed":
             self._retry_button.config(state=state)
             self._retry_button.pack(side="left")
+
+        # Never while it's the one actively being recorded -- everything else
+        # (including mid-pipeline states left over from a crash) is deletable.
+        if status != "recording":
+            self._delete_button.config(state=state)
+            self._delete_button.pack(side="right")
 
     def _run_in_background(self, fn, meeting_id: int) -> None:
         def _worker():
@@ -192,6 +199,22 @@ class HistoryView(tk.Frame):
         docx_path = self._controller.get_docx_path(meeting.id)
         if docx_path:
             os.startfile(docx_path)
+
+    def _handle_delete(self) -> None:
+        meeting = self._selected_meeting()
+        if meeting is None or meeting.id in self._busy_meeting_ids:
+            return
+        confirmed = messagebox.askyesno(
+            "Hapus meeting",
+            f"Yakin ingin menghapus \"{meeting.title}\"?\n\n"
+            "Ini akan menghapus SEMUA data meeting ini secara permanen, "
+            "termasuk transkrip, ringkasan, dan file rekaman audionya. "
+            "Tindakan ini tidak bisa dibatalkan.",
+            icon="warning",
+        )
+        if not confirmed:
+            return
+        self._start_action(self._delete_button, self._controller.delete_meeting)
 
     def _handle_view_transcript(self) -> None:
         meeting = self._selected_meeting()

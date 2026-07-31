@@ -58,6 +58,7 @@ class FakeController:
         self.summarize_calls = []
         self.retry_calls = []
         self.download_calls = []
+        self.delete_calls = []
         self.transcript_by_id = {}
         self.list_meetings_calls = 0
 
@@ -80,6 +81,10 @@ class FakeController:
     def get_docx_path(self, meeting_id):
         self.download_calls.append(meeting_id)
         return "C:/recordings/1/mom.docx"
+
+    def delete_meeting(self, meeting_id):
+        self.delete_calls.append(meeting_id)
+        self._meetings = [m for m in self._meetings if m.id != meeting_id]
 
 
 class GatedController(FakeController):
@@ -318,6 +323,66 @@ def test_meeting_dates_are_rendered_in_wib_not_utc():
 
     values = view._tree.item("1", "values")
     assert values[1] == "2026-07-31 16:00"
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_delete_button_hidden_while_meeting_is_recording():
+    root = tk.Tk()
+    controller = FakeController([_meeting(1, "Rapat A", "recording")])
+    view = HistoryView(root, controller)
+    view._tree.selection_set("1")
+    view._on_select()
+
+    assert str(view._delete_button.winfo_manager()) == ""
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_delete_button_shown_for_non_recording_status():
+    root = tk.Tk()
+    controller = FakeController([_meeting(1, "Rapat A", "completed")])
+    view = HistoryView(root, controller)
+    view._tree.selection_set("1")
+    view._on_select()
+
+    assert str(view._delete_button.winfo_manager()) == "pack"
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_delete_asks_for_confirmation_and_deletes_on_yes(monkeypatch):
+    root = tk.Tk()
+    monkeypatch.setattr("app.ui.history_view.messagebox.askyesno", lambda *a, **k: True)
+    controller = FakeController([_meeting(1, "Rapat A", "completed")])
+    view = HistoryView(root, controller)
+    view._tree.selection_set("1")
+    view._on_select()
+
+    view._handle_delete()
+
+    timeout = 2.0
+    start = time.time()
+    while len(controller.delete_calls) == 0 and time.time() - start < timeout:
+        time.sleep(0.01)
+
+    assert controller.delete_calls == [1]
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_delete_does_nothing_when_confirmation_declined(monkeypatch):
+    root = tk.Tk()
+    monkeypatch.setattr("app.ui.history_view.messagebox.askyesno", lambda *a, **k: False)
+    controller = FakeController([_meeting(1, "Rapat A", "completed")])
+    view = HistoryView(root, controller)
+    view._tree.selection_set("1")
+    view._on_select()
+
+    view._handle_delete()
+    time.sleep(0.1)
+
+    assert controller.delete_calls == []
     root.destroy()
 
 

@@ -571,3 +571,48 @@ def test_live_session_stopped_when_recorder_start_fails(tmp_path):
     assert len(created_sessions) == 1
     assert created_sessions[0].started is True
     assert created_sessions[0].stopped is True
+
+
+def test_delete_meeting_removes_db_row_and_recording_dir(tmp_path):
+    engine = make_engine("sqlite+aiosqlite:///:memory:")
+    asyncio.run(init_db(engine))
+    session_factory = make_session_factory(engine)
+    controller = _make_controller(tmp_path, session_factory)
+
+    async def _seed():
+        recording_dir = tmp_path / "abc"
+        recording_dir.mkdir()
+        (recording_dir / "speaker.wav").write_bytes(b"fake wav data")
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(session, "Rapat", None, recording_dir=str(recording_dir))
+            await session.commit()
+            return meeting.id, recording_dir
+
+    meeting_id, recording_dir = asyncio.run(_seed())
+
+    controller.delete_meeting(meeting_id)
+
+    async def _get():
+        async with session_factory() as session:
+            from app.storage.models import Meeting
+            return await session.get(Meeting, meeting_id)
+
+    assert asyncio.run(_get()) is None
+    assert not recording_dir.exists()
+
+
+def test_delete_meeting_refuses_while_it_is_the_active_recording(tmp_path):
+    engine = make_engine("sqlite+aiosqlite:///:memory:")
+    asyncio.run(init_db(engine))
+    session_factory = make_session_factory(engine)
+    controller = _make_controller(tmp_path, session_factory)
+
+    meeting_id = controller.start_meeting("Rapat Aktif")
+
+    try:
+        controller.delete_meeting(meeting_id)
+        assert False, "expected ValueError"
+    except ValueError as e:
+        assert "sedang direkam" in str(e)
+
+    controller.stop_meeting()
