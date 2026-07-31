@@ -12,11 +12,12 @@ def _utcnow() -> datetime:
 
 async def create_meeting(
     session: AsyncSession, title: str, scheduled_time: datetime | None,
-    recording_dir: str | None = None,
+    recording_dir: str | None = None, device_id: str | None = None,
+    device_label: str | None = None,
 ) -> Meeting:
     meeting = Meeting(
         title=title, scheduled_time=scheduled_time, status="scheduled",
-        recording_dir=recording_dir,
+        recording_dir=recording_dir, device_id=device_id, device_label=device_label,
     )
     session.add(meeting)
     await session.flush()
