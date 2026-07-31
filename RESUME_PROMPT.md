@@ -24,28 +24,37 @@ first** — the rebrand was scoped to user-facing strings + packaging
 metadata only. Internal Python identifiers (the `app` package, module
 names, `RecorderController`, etc.) were deliberately left alone.
 
-## State as of 2026-08-01
+## State as of 2026-08-01 (end of session)
 
 **Worktree:** `C:\Project\meeting\.claude\worktrees\storage-backend-wizard`
 **Branch:** `worktree-storage-backend-wizard` (pushed to `origin`, tracking
 `origin/worktree-storage-backend-wizard`)
-**Latest commit:** `465edd7` (Plan #5 complete) on top of `480bc56` (rebrand)
+**Latest commit:** `ce72118` on top of `465edd7` (Plan #5 complete) on top of
+`480bc56` (rebrand). 44 commits total on this branch vs. its merge-base with
+master (`c08af97`).
 
-**Plan #5 (packaging) is now done — see its own section below.** The one
-remaining gate before merge is the **final whole-branch review** (never
-done yet across all 5 plans) plus the manual/real-world verification items
-listed further down (none of which an agent can do).
+**Plan #5 (packaging) is done, AND the final whole-branch review is now
+done too** — see its own section below for the 9 fixes it produced, all
+already committed and pushed. The only gate left before merge is the
+**manual/real-world verification items** listed further down (none of which
+an agent can do) — those were explicitly deferred by the human partner to
+be done themselves, after merge.
 
-**Merge-to-master status: still explicitly deferred, not a bug.** The human
-partner asked about merging to master earlier in this feature's work; when
-shown the open items (Plan #5 not started at the time, no final
-whole-branch review, the known Tk-threading crash risk, MinIO never tested
-against a real server) they chose "tunggu, selesaikan dulu" (wait, finish
-first) over merging as-is. **Do not merge this branch to master until a
-final whole-branch review has happened**, unless the human partner
-explicitly says otherwise in a future session. When it is time to merge:
-**direct `git merge`, not a GitLab merge request** — the human partner said
-so explicitly (the repo is hosted at
+**Merge-to-master status: still explicitly deferred, not a bug — but the
+main blocker (final review) is now cleared.** The human partner asked about
+merging to master earlier in this feature's work; when shown the open items
+at the time (Plan #5 not started, no final whole-branch review, the known
+Tk-threading crash risk, MinIO never tested against a real server) they
+chose "tunggu, selesaikan dulu" (wait, finish first) over merging as-is.
+Later in this same session they explicitly said: do the final review (1)
+before the Tk-threading fix (3, since renumbered) and skip the manual
+verification items (2) — "akan saya kerjakan sendiri" (I'll do those
+myself), implying after merge. **Do not merge this branch to master without
+checking with the human partner first** (they may want to review the 9
+review-fix commits themselves, or just say "go ahead") — but nothing
+code-side is blocking it anymore as far as an agent can tell. When it is
+time to merge: **direct `git merge`, not a GitLab merge request** — the
+human partner said so explicitly (the repo is hosted at
 `https://git.dev.ugm.ac.id/aksi_riset/meeting`, which offers an MR flow on
 push; skip it). Use `superpowers:finishing-a-development-branch` for that
 step.
@@ -113,25 +122,28 @@ Plan #5's changes, all of which are either pure-stdlib or Tk-widget-additive).
    Fixed in commit `a0aded5` with charset validation + resolved-path
    containment checks. Already covered by tests.
 
-2. **Pre-existing Tk/threading crash risk (Plan 4, Task 9) — NOT fully
-   fixed, flagged for follow-up:** `app/ui/history_view.py`'s
-   `_run_in_background()` (used by Transkrip/Ringkasan/Coba Lagi/Hapus,
-   predating all this session's work) has a real bug where its background
-   thread's `self.after(...)` calls race against Tk teardown, causing a
-   **hard process crash** (`Windows fatal exception 0x80000003`, not just a
-   Python exception) under full-suite load. Measured ~66% reproduction rate
-   when the new on-demand-download feature was ALSO routed through this
-   same pattern per the original plan text. Worked around for the new
-   Task 9 code by keeping `_handle_download` synchronous instead (see
-   commit `7e39db7`'s message for full reasoning) — this avoids adding a
-   new trigger site, but **does not fix the underlying bug for the
-   already-existing Transkrip/Ringkasan/Coba Lagi/Hapus buttons**, which
-   still carry this crash risk. Recommend a dedicated hardening task before
-   treating `pytest -q` as an unconditionally reliable gate long-term —
-   likely fix direction: replace direct `self.after()` calls from
-   background threads with a thread-safe queue drained only from the main
-   loop (the pattern `app/ui/window.py`'s `push_live_event`/
-   `_drain_live_events` already uses correctly).
+2. **Pre-existing Tk/threading crash risk (Plan 4, Task 9) — NOW FULLY
+   FIXED** (was flagged as outstanding at an earlier point in this same
+   session; resolved before the session ended). `app/ui/history_view.py`'s
+   `_run_in_background()`/`_handle_sync()` (Transkrip/Ringkasan/Coba
+   Lagi/Hapus/Sync Sekarang) and `app/ui/window.py`'s `on_start_clicked`/
+   `on_stop_clicked` (Mulai Rekam/Stop Rekam) all called `self.after(...)`
+   directly from a background thread — Tkinter only honors that while the
+   main thread is inside `mainloop()`, so it raced Tk teardown and could
+   hard-crash the process (`Windows fatal exception`, measured ~66%
+   reproduction rate under full-suite load). Fixed in three commits:
+   `de2e5d4` (history_view.py, added a `_pending_actions` queue +
+   `_drain_pending_actions`), `c224cfa` (window.py, reused the existing
+   `push_live_event`/`_drain_live_events` queue via two new event types),
+   and `e6fb40b` (the tray icon's `show_window`/`quit_app`, found during
+   the final review below — pystray drives those callbacks from its own
+   background thread too, the exact same bug class, missed in the first
+   two passes). All three fixes have regression tests that assert no
+   `self.after()`/`.after()` call ever originates off the main thread.
+   `_handle_download` (which had been kept deliberately synchronous
+   specifically because of this crash risk, per Plan 4 Task 9's own
+   comment) was then switched back to the safe background-thread pattern
+   in `7f7ed49`, now that the risk it was avoiding no longer exists.
 
 ## Manual/real-world verification still outstanding (cannot be done by an agent)
 
@@ -194,24 +206,93 @@ a clean machine) was **not attempted** — this matches the plan's own
 Testing section, which describes these as manual steps for a human, not a
 red/green cycle.
 
-## What's next: final review + merge decision
+## Final whole-branch review — done, 2026-08-01 (same session as Plan #5)
 
-Plan #5 is the last of the 5 implementation plans — there is no more
-planned application code left in this feature series. What's left:
+Adapted from the `code-review:code-review` skill (which assumes a GitHub PR
+and `gh` comments — this repo is on GitLab with no PR/MR open by design, so
+the `gh`-specific steps were skipped and results reported directly in chat
+instead). Ran 3 parallel review agents against the full diff
+(`c08af97e668889e04e183337c0290b6afc4a6d69..HEAD` at the time)
+— CLAUDE.md compliance, a shallow bug scan, and a git-history/thread-safety
+consistency check. Findings were deduped, prioritized, and presented to the
+human partner as a checklist; they selected everything (effectively items
+1-9 below, since their multi-select answer's options nested into each
+other). All 9 fixed with the same TDD rhythm as everything else in this
+branch, each its own commit:
 
-1. **A final whole-branch review** (never done across all 5 plans) — diff
-   the whole branch against wherever `master` is by then, using whatever
-   review process the human partner prefers (`code-review` skill, manual
-   read-through, etc.).
-2. **The manual/real-world verification items** listed above and in the
-   "Manual/real-world verification still outstanding" section further up —
-   none of these can be done by an agent.
-3. Once both of those are satisfactorily addressed, use
+1. **Tray icon race condition** (`show_window`/`quit_app` calling
+   `root.after()` from pystray's own thread) — `e6fb40b`. See the
+   thread-safety section above for full detail.
+2. **DB schema migration gap** — `Base.metadata.create_all` only creates
+   missing *tables*, never adds a column to a table that already exists.
+   An install with a pre-existing database (this team's dev Postgres
+   server, for one) upgrading past this branch's schema changes
+   (`device_id`/`device_label`/`synced_at`) would break with "no such
+   column" on every query. Fixed with a small in-house
+   `_add_missing_columns()` in `app/storage/db.py` (inspects existing
+   columns per table, issues a bare `ALTER TABLE ... ADD COLUMN` for any
+   missing ones — safe because every column ever added here is nullable
+   with no server-side default; no Alembic needed at this scale) —
+   `1a919fd`.
+3. **MinIO `pull()` resource leak** — `get_object()`'s response was never
+   `.close()`d/`.release_conn()`ed. Fixed alongside item 4 in `b8b5552`.
+4. **MinIO `pull()` could crash on a malformed object name** —
+   `object_name.split("/", 2)` unpacked into 3 variables raised
+   `ValueError` for a name with only one `/` before `manifest.json` (still
+   passes the `endswith` filter). Since `session.commit()` only happens
+   once at the end of the loop, one bad object name aborted the whole
+   `pull()` and discarded every other legitimately-pulled meeting in the
+   same batch. Now skipped instead — `b8b5552`.
+5. **Duplicate Tk root bug** in `_handle_startup_db_error` — it already
+   creates its own `root = tk.Tk()` for the messagebox, then called
+   `SetupWizard(parent=None)`, which (per the class's own docstring) makes
+   *another* independent `tk.Tk()`. Two live interpreters at once breaks
+   implicit-master widget bindings. Now passes `parent=root` — `2810cd5`.
+6. **`.env.example` (in the worktree) was stale** — missing
+   `DEVICE_ID`/`DEVICE_LABEL`/`MINIO_*`/`ASR_BACKEND_OVERRIDE`, all of
+   which `Settings` already reads via `.env`. Documented — `38f78a9`.
+7. **`_handle_download` blocked the Tk main thread** on a real MinIO
+   network round-trip (for a meeting pulled from another device, not yet
+   cached locally) — it had stayed synchronous specifically because of the
+   Tk-threading crash risk, which item 1's bug class is now fully fixed
+   everywhere. Switched to the same background-thread + queue pattern as
+   every other history action — `7f7ed49`.
+8. **MinIO `push()` marked a meeting "synced" even when zero files
+   existed yet** on disk (e.g. syncing right after meeting creation, before
+   recording finished) — permanently skipping the file-upload block on
+   every later sync for that meeting, since it only runs at all while
+   `synced_at` is `None`. Now only sets `synced_at` if at least one file
+   was actually found and uploaded — `762d51a`.
+9. **A second consecutive `init_db()` failure crashed uncaught** — after
+   the user reconfigures settings via the startup error dialog, the
+   retried `asyncio.run(init_db(engine))` had no `try/except`, crashing the
+   whole process invisibly in a console-less packaged `.exe`. Now shows
+   another error dialog and returns gracefully — `ce72118`.
+
+Full suite was green (all passed, only the two pre-existing flakes) after
+every single one of these — see individual commit messages for exact pass
+counts at each point; final count at end of session was **273 passed**, 2
+skipped, 2 deselected.
+
+## What's next: manual verification, then merge
+
+There is no more planned application code left in this feature series, and
+the final review is done. What's left is purely the items an agent cannot
+do:
+
+1. **The manual/real-world verification items** listed in "Manual/real-world
+   verification still outstanding" above — OpenVINO on real Intel Ultra 7
+   155H hardware, MinIO push→pull against a real server (not a mock;
+   `MINIO_BUCKET=rekamind` was set up in master's `.env` this session,
+   endpoint/keys already present, so this is ready to actually try), and a
+   clean-machine install of the packaged `.exe`. **The human partner said
+   they'll do these themselves after merge** — don't block on them if they
+   say to proceed.
+2. Once the human partner is satisfied, use
    `superpowers:finishing-a-development-branch` to decide how to merge into
    `master` (which will have diverged further by then — check again before
-   merging, `master` already had unrelated commits land while this branch
-   was in progress last time this was checked). **Direct `git merge`, not a
-   GitLab MR**, per the human partner's explicit instruction above.
+   merging). **Direct `git merge`, not a GitLab MR**, per the human
+   partner's explicit instruction above.
 
 ---
 
@@ -222,17 +303,21 @@ Lanjutkan pekerjaan multi-device/storage feature (Rekamind) dari sesi
 sebelumnya. Baca file RESUME_PROMPT.md di root repo
 (C:\Project\meeting\RESUME_PROMPT.md) untuk konteks lengkap -- termasuk
 rebranding ke "Rekamind" + lisensi MIT, Plan #5 (packaging .exe) yang sudah
-selesai (6/6 task), dan status merge-to-master yang SENGAJA ditunda (jangan
+selesai (6/6 task), final whole-branch review yang sudah selesai (9 bug
+ditemukan dan diperbaiki, lihat bagian "Final whole-branch review" di
+RESUME_PROMPT.md), dan status merge-to-master yang SENGAJA ditunda (jangan
 merge tanpa konfirmasi ulang).
 
-Semua 5 plan implementasi sudah selesai. Yang tersisa: (1) final
-whole-branch review yang belum pernah dilakukan di seluruh branch ini, (2)
-item verifikasi manual yang tidak bisa dikerjakan agent (lihat bagian
-"Manual/real-world verification still outstanding" di RESUME_PROMPT.md),
-(3) baru setelah itu putuskan cara merge ke master pakai
+Semua 5 plan implementasi + final review sudah selesai. Yang tersisa cuma
+item verifikasi manual yang tidak bisa dikerjakan agent (OpenVINO di
+hardware asli, MinIO ke server asli, install .exe di mesin bersih -- lihat
+bagian "Manual/real-world verification still outstanding" di
+RESUME_PROMPT.md) -- manusia sudah bilang akan kerjakan sendiri setelah
+merge. Baru setelah itu putuskan cara merge ke master pakai
 superpowers:finishing-a-development-branch -- direct git merge, BUKAN
 GitLab merge request.
 
 Worktree/branch: worktree-storage-backend-wizard (sudah di-push ke
-origin). Kerjakan langsung (tanpa subagent) kecuali diminta lain.
+origin, commit terakhir ce72118). Kerjakan langsung (tanpa subagent)
+kecuali diminta lain.
 ```
