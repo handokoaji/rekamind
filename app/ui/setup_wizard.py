@@ -1,5 +1,6 @@
 # app/ui/setup_wizard.py
 import asyncio
+import socket
 import tkinter as tk
 
 from app.settings_store import save_packaged_config
@@ -32,6 +33,12 @@ class SetupWizard:
             self.window, text="Postgres (lanjutan)", variable=self.storage_var,
             value="postgres", command=self._update_postgres_visibility,
         ).pack(anchor="w")
+
+        tk.Label(self.window, text="Nama perangkat:").pack(anchor="w")
+        self.device_label_var = tk.StringVar(
+            value=initial.get("device_label") or socket.gethostname()
+        )
+        tk.Entry(self.window, textvariable=self.device_label_var).pack(fill="x")
 
         self._postgres_frame = tk.Frame(self.window)
         self.postgres_host_var = tk.StringVar(value=initial.get("postgres_host") or "")
@@ -105,6 +112,7 @@ class SetupWizard:
             "storage_backend": self.storage_var.get(),
             "groq_api_key": self.groq_var.get(),
             "hf_token": self.hf_var.get(),
+            "device_label": self.device_label_var.get() or socket.gethostname(),
         }
         if self.storage_var.get() == "postgres":
             data["postgres_host"] = self.postgres_host_var.get()

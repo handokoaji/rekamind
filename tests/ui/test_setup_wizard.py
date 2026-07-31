@@ -83,10 +83,15 @@ def test_submit_sqlite_saves_config_without_connection_check(monkeypatch):
     wizard.groq_var.set("gk")
     wizard.hf_var.set("hf")
 
+    wizard.device_label_var.set("test-device")
+
     wizard._submit_button.invoke()
 
     assert make_engine_calls == []  # sqlite never needs a connectivity check
-    assert saved == {"storage_backend": "sqlite", "groq_api_key": "gk", "hf_token": "hf"}
+    assert saved == {
+        "storage_backend": "sqlite", "groq_api_key": "gk", "hf_token": "hf",
+        "device_label": "test-device",
+    }
     root.destroy()
 
 
@@ -145,4 +150,40 @@ def test_submit_postgres_connection_failure_shows_error_and_keeps_window_open(mo
     assert saved == {}
     assert "connection refused" in wizard.error_var.get()
     assert wizard.window.winfo_exists()  # window must stay open, not destroyed
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_device_label_defaults_to_hostname(monkeypatch):
+    monkeypatch.setattr(setup_wizard_module.socket, "gethostname", lambda: "DESKTOP-XYZ")
+    root = tk.Tk()
+
+    wizard = SetupWizard(parent=root)
+
+    assert wizard.device_label_var.get() == "DESKTOP-XYZ"
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_device_label_prefilled_from_initial():
+    root = tk.Tk()
+
+    wizard = SetupWizard(parent=root, initial={"device_label": "Laptop Budi"})
+
+    assert wizard.device_label_var.get() == "Laptop Budi"
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_submit_includes_device_label_and_falls_back_to_hostname_when_blank(monkeypatch):
+    saved = {}
+    monkeypatch.setattr(setup_wizard_module, "save_packaged_config", saved.update)
+    monkeypatch.setattr(setup_wizard_module.socket, "gethostname", lambda: "DESKTOP-XYZ")
+    root = tk.Tk()
+    wizard = SetupWizard(parent=root)
+    wizard.device_label_var.set("")  # user cleared the field
+
+    wizard._submit_button.invoke()
+
+    assert saved["device_label"] == "DESKTOP-XYZ"
     root.destroy()
