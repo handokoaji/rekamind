@@ -28,6 +28,8 @@ class Meeting(Base):
     recording_dir: Mapped[str | None] = mapped_column(default=None)
     error_message: Mapped[str | None] = mapped_column(default=None)
     failed_stage: Mapped[str | None] = mapped_column(default=None)
+    device_id: Mapped[str | None] = mapped_column(default=None)
+    device_label: Mapped[str | None] = mapped_column(default=None)
 
     speakers: Mapped[list["Speaker"]] = relationship(back_populates="meeting")
     segments: Mapped[list["TranscriptSegment"]] = relationship(back_populates="meeting")
