@@ -1,9 +1,17 @@
+import re
 from datetime import datetime
 from pathlib import Path
 
 from docx import Document
 
 from app.summarization.groq_client import MomResult
+
+
+def build_docx_filename(meeting_date: datetime, meeting_title: str) -> str:
+    """e.g. 2026-07-31-Test-Meeting-3.docx -- no spaces, safe on Windows."""
+    slug = re.sub(r"\s+", "-", meeting_title.strip())
+    slug = re.sub(r"[^A-Za-z0-9\-_]", "", slug) or "meeting"
+    return f"{meeting_date.strftime('%Y-%m-%d')}-{slug}.docx"
 
 
 def export_mom_docx(meeting_title: str, meeting_date: datetime, mom: MomResult, output_path: Path) -> Path:

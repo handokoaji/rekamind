@@ -15,6 +15,7 @@ from app.live.session import LiveSession
 from app.live.vad import SpeechSegmenter, load_silero_vad_iterator
 from app.pipeline.finalize import finalize_meeting
 from app.storage.db import init_db, make_engine, make_session_factory
+from app.summarization.docx_export import build_docx_filename
 from app.summarization.groq_client import GroqSummarizer
 from app.tray.icon import build_tray_icon
 from app.ui.controller import RecorderController
@@ -119,9 +120,10 @@ def main() -> None:
             models = build_models(backend_name, settings)
         return models
 
-    async def finalize_fn(session, meeting_id, meeting_title, meeting_date, mic_wav, speaker_wav):
+    async def finalize_fn(session, meeting_id, meeting_title, meeting_date, mic_wav, speaker_wav, on_progress=None):
         transcriber, diarizer, summarizer = load_models()
-        docx_path = settings.recordings_dir / str(meeting_id) / "mom.docx"
+        docx_filename = build_docx_filename(meeting_date, meeting_title)
+        docx_path = settings.recordings_dir / str(meeting_id) / docx_filename
         return await finalize_meeting(
             session=session,
             meeting_id=meeting_id,
@@ -133,6 +135,7 @@ def main() -> None:
             diarizer=diarizer,
             summarizer=summarizer,
             docx_output_path=docx_path,
+            on_progress=on_progress,
         )
 
     # Same lazy-singleton deal as load_models() above: the small live model and the

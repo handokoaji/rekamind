@@ -2,7 +2,7 @@
 import os
 import sys
 import tkinter as tk
-from tkinter import scrolledtext
+from tkinter import scrolledtext, ttk
 import threading
 import queue
 
@@ -35,7 +35,8 @@ class MainWindow:
         self.status_var = tk.StringVar(value=_STATUS_LABELS["idle"])
 
         tk.Label(root, text="Judul Meeting:").pack(anchor="w")
-        tk.Entry(root, textvariable=self.title_var, width=40).pack(fill="x")
+        self._title_entry = tk.Entry(root, textvariable=self.title_var, width=40)
+        self._title_entry.pack(fill="x")
 
         button_frame = tk.Frame(root)
         button_frame.pack(fill="x", pady=4)
@@ -46,6 +47,11 @@ class MainWindow:
 
         self.status_label = tk.Label(root, textvariable=self.status_var)
         self.status_label.pack(anchor="w")
+
+        self.progress_step_var = tk.StringVar(value="")
+        tk.Label(root, textvariable=self.progress_step_var, fg="gray").pack(anchor="w")
+        self._progress_bar = ttk.Progressbar(root, mode="indeterminate")
+        self._progress_running = False
 
         self._open_docx_button = tk.Button(
             root, text="Buka Hasil (docx)", command=self._handle_open_docx, state="disabled"
@@ -123,10 +129,37 @@ class MainWindow:
         self._stop_button.config(state="normal" if state == "recording" else "disabled")
         can_open_docx = state == "done" and bool(self._controller.last_docx_path)
         self._open_docx_button.config(state="normal" if can_open_docx else "disabled")
+        # Title is locked once a meeting is in flight so it can't drift from
+        # what was already saved to the DB / used for the docx filename.
+        self._title_entry.config(state="normal" if is_idle else "disabled")
+        self._update_progress_display()
+
+    def _update_progress_display(self) -> None:
+        state = self._controller.state
+        active = state in ("recording", "processing")
+        if active and not self._progress_running:
+            self._progress_bar.pack(fill="x", pady=2)
+            self._progress_bar.start(50)
+            self._progress_running = True
+        elif not active and self._progress_running:
+            self._progress_bar.stop()
+            self._progress_bar.pack_forget()
+            self._progress_running = False
+
+        if state == "processing":
+            self.progress_step_var.set(getattr(self._controller, "processing_step", "") or "Memproses...")
+        elif state == "recording":
+            self.progress_step_var.set("Merekam...")
+        else:
+            self.progress_step_var.set("")
 
     def push_live_event(self, event: dict) -> None:
         """Thread-safe: called from LiveSession's background threads."""
         self._live_events.put(event)
+
+    def _is_scrolled_to_bottom(self) -> bool:
+        _, bottom_fraction = self.transcript_view.yview()
+        return bottom_fraction >= 0.999
 
     def _drain_live_events(self) -> None:
         try:
@@ -135,12 +168,25 @@ class MainWindow:
                 if event["type"] == "text":
                     segment = event["segment"]
                     if segment is not None:
+                        follow = self._is_scrolled_to_bottom()
                         self.transcript_view.insert("end", f"{segment.text}\n")
+                        if follow:
+                            self.transcript_view.see("end")
                 elif event["type"] == "relabel":
+                    # A full clear+reinsert always resets the view to the top;
+                    # follow the bottom if the user was there, otherwise keep
+                    # them roughly where they were instead of yanking them up.
+                    follow = self._is_scrolled_to_bottom()
+                    scroll_fraction = self.transcript_view.yview()[0]
                     self.transcript_view.delete("1.0", "end")
                     for seg in event["segments"]:
                         self.transcript_view.insert("end", f"{seg.speaker_label}: {seg.text}\n")
+                    if follow:
+                        self.transcript_view.see("end")
+                    else:
+                        self.transcript_view.yview_moveto(scroll_fraction)
         except queue.Empty:
             pass
         finally:
+            self._update_progress_display()
             self._root.after(200, self._drain_live_events)

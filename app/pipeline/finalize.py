@@ -1,6 +1,7 @@
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,10 +24,18 @@ async def finalize_meeting(
     diarizer,
     summarizer: GroqSummarizer,
     docx_output_path: Path,
+    on_progress: Callable[[str], None] | None = None,
 ) -> Summary:
+    def report(step: str) -> None:
+        if on_progress is not None:
+            on_progress(step)
+
     try:
+        report("Transkrip mic...")
         mic_segments = transcriber.transcribe(mic_wav, language="id")
+        report("Transkrip speaker...")
         speaker_segments = transcriber.transcribe(speaker_wav, language="id")
+        report("Diarisasi speaker...")
         speaker_labels = diarizer.diarize(speaker_wav)
         merged = merge_segments(mic_segments, speaker_segments, speaker_labels)
 
@@ -64,7 +73,9 @@ async def finalize_meeting(
 
     transcript_text = "\n".join(f"{seg.speaker_label}: {seg.text}" for seg in merged)
     try:
+        report("Membuat ringkasan (Groq)...")
         mom = summarizer.summarize(meeting_title, transcript_text)
+        report("Ekspor docx...")
         docx_path = export_mom_docx(meeting_title, meeting_date, mom, docx_output_path)
         mom_json = json.dumps({
             "minute_by_minute": mom.minute_by_minute,

@@ -63,6 +63,36 @@ def test_start_then_stop_meeting_transitions_state(tmp_path):
     assert controller.last_docx_path == "C:/recordings/1/mom.docx"
 
 
+def test_start_meeting_auto_fills_scheduled_time(tmp_path):
+    """Users don't get a schedule_time input widget; the app just stamps
+    'now' at creation so the column is never left null."""
+    engine = make_engine("sqlite+aiosqlite:///:memory:")
+    asyncio.run(init_db(engine))
+    session_factory = make_session_factory(engine)
+
+    async def fake_finalize_fn(**kwargs):
+        from app.storage.models import Summary
+        return Summary(id=1, meeting_id=kwargs["meeting_id"], mom_json="{}",
+                        groq_model="llama-3.3-70b-versatile", status="ready")
+
+    controller = RecorderController(
+        session_factory=session_factory,
+        recorder_factory=lambda mic, speaker: FakeRecorder(mic, speaker),
+        finalize_fn=fake_finalize_fn,
+        recordings_dir=tmp_path,
+    )
+
+    meeting_id = controller.start_meeting("Rapat Harian")
+
+    async def _get():
+        async with session_factory() as session:
+            from app.storage.models import Meeting
+            return await session.get(Meeting, meeting_id)
+
+    meeting = asyncio.run(_get())
+    assert meeting.scheduled_time is not None
+
+
 class BrokenRecorder:
     def __init__(self, mic_path, speaker_path):
         pass

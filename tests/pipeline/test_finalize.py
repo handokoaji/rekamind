@@ -343,3 +343,50 @@ def test_finalize_meeting_clears_existing_drafts_before_saving_final_segments(tm
     assert "draft yang belum sempat dihapus" not in texts
     assert all(seg.is_final for seg in segments)
     assert "Selamat pagi" in texts
+
+
+def test_finalize_meeting_reports_progress_through_each_stage(tmp_path):
+    async def scenario():
+        engine = make_engine("sqlite+aiosqlite:///:memory:")
+        await init_db(engine)
+        session_factory = make_session_factory(engine)
+
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(session, "Rapat Uji", None)
+            await session.commit()
+            meeting_id = meeting.id
+
+        mic_wav = tmp_path / "mic.wav"
+        speaker_wav = tmp_path / "speaker.wav"
+        mic_wav.touch()
+        speaker_wav.touch()
+
+        transcriber_calls = {"mic.wav": [
+            TranscriptSegmentResult(start_ms=0, end_ms=500, text="Selamat pagi")
+        ], "speaker.wav": [
+            TranscriptSegmentResult(start_ms=600, end_ms=1500, text="Mari kita mulai")
+        ]}
+
+        class RoutingFakeTranscriber:
+            def transcribe(self, wav_path, language="id"):
+                return transcriber_calls[wav_path.name]
+
+        diarizer = FakeDiarizer([SpeakerSegment(start_ms=600, end_ms=1500, label="Speaker 1")])
+        summarizer = FakeSummarizer()
+        steps = []
+
+        async with session_factory() as session:
+            await finalize_meeting(
+                session=session, meeting_id=meeting_id, meeting_title="Rapat Uji",
+                meeting_date=datetime(2026, 7, 30, 9, 0), mic_wav=mic_wav, speaker_wav=speaker_wav,
+                transcriber=RoutingFakeTranscriber(), diarizer=diarizer, summarizer=summarizer,
+                docx_output_path=tmp_path / "mom.docx", on_progress=steps.append,
+            )
+            await session.commit()
+        return steps
+
+    steps = asyncio.run(scenario())
+    assert steps == [
+        "Transkrip mic...", "Transkrip speaker...", "Diarisasi speaker...",
+        "Membuat ringkasan (Groq)...", "Ekspor docx...",
+    ]

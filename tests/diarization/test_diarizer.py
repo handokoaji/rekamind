@@ -111,6 +111,36 @@ def test_diarize_passes_waveform_dict_not_path(monkeypatch, tmp_path):
     assert call_arg["waveform"].shape[0] == 1  # (channel, time), mono
 
 
+def test_diarize_returns_empty_list_for_missing_file(monkeypatch, tmp_path):
+    """A live meeting's first diarize tick can fire before the speaker WAV
+    has any frames written -- must not blow up, just report no speakers yet."""
+    fake_pipeline = MagicMock()
+    monkeypatch.setattr(
+        "app.diarization.diarizer.Pipeline.from_pretrained",
+        lambda *args, **kwargs: fake_pipeline,
+    )
+
+    diarizer = Diarizer(hf_token="fake-token")
+    assert diarizer.diarize(tmp_path / "does-not-exist.wav") == []
+    fake_pipeline.assert_not_called()
+
+
+def test_diarize_returns_empty_list_for_header_only_file(monkeypatch, tmp_path):
+    """WavFileWriter creates the file on open but only writes the RIFF header
+    once the first frame arrives; a header-only/empty file isn't diarizable yet."""
+    fake_pipeline = MagicMock()
+    monkeypatch.setattr(
+        "app.diarization.diarizer.Pipeline.from_pretrained",
+        lambda *args, **kwargs: fake_pipeline,
+    )
+
+    diarizer = Diarizer(hf_token="fake-token")
+    empty_wav = tmp_path / "speaker.wav"
+    empty_wav.touch()
+    assert diarizer.diarize(empty_wav) == []
+    fake_pipeline.assert_not_called()
+
+
 def test_device_is_applied_to_pipeline(monkeypatch):
     """The device= arg used to be stored and never applied, so diarization
     silently always ran on CPU."""

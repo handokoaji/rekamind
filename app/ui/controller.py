@@ -1,7 +1,7 @@
 import asyncio
 import uuid
 import wave
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Awaitable, Callable
 
@@ -34,6 +34,10 @@ class RecorderController:
         self._recorder = None
         self._live_session = None
         self.last_docx_path: str | None = None
+        self.processing_step: str = ""
+
+    def _set_processing_step(self, step: str) -> None:
+        self.processing_step = step
 
     def _stop_live_session(self) -> None:
         """Stopping live preview must never mask the real error or block the
@@ -78,7 +82,7 @@ class RecorderController:
 
         async def _create():
             async with self._session_factory() as session:
-                meeting = await repo.create_meeting(session, title, None)
+                meeting = await repo.create_meeting(session, title, datetime.now(timezone.utc))
                 await repo.start_recording(session, meeting.id)
                 await session.commit()
                 return meeting.id
@@ -111,6 +115,7 @@ class RecorderController:
 
         mic_path, speaker_path = self._recorder.stop()
         self.state = "processing"
+        self.processing_step = "Menyimpan rekaman..."
 
         async def _finalize():
             # Commit the recording metadata first, in its own transaction: if
@@ -134,6 +139,7 @@ class RecorderController:
                     meeting_date=datetime.now(),
                     mic_wav=mic_path,
                     speaker_wav=speaker_path,
+                    on_progress=self._set_processing_step,
                 )
                 await session.commit()
                 return summary.docx_path
@@ -146,3 +152,5 @@ class RecorderController:
             self.error_message = f"Gagal memproses hasil rekaman: {exc}"
             self.state = "error"
             raise
+        finally:
+            self.processing_step = ""

@@ -42,6 +42,13 @@ class Diarizer:
         self._device = device
 
     def diarize(self, wav_path: Path) -> list[SpeakerSegment]:
+        wav_path = Path(wav_path)
+        # A WavFileWriter creates its file on open but only writes the RIFF
+        # header once the first frame arrives, so during a live meeting's
+        # early ticks the file can be 0 bytes (or header-only, 44 bytes) --
+        # not yet readable by soundfile. Nothing to diarize yet either way.
+        if not wav_path.exists() or wav_path.stat().st_size <= 44:
+            return []
         output = self._pipeline(_load_waveform(wav_path))
         # pyannote.audio >= 4 returns a DiarizeOutput wrapping several
         # Annotations; older/legacy pipelines return the Annotation directly.

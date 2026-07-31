@@ -2,8 +2,19 @@ from datetime import datetime
 
 from docx import Document
 
-from app.summarization.docx_export import export_mom_docx
+from app.summarization.docx_export import build_docx_filename, export_mom_docx
 from app.summarization.groq_client import MomResult
+
+
+def test_build_docx_filename_replaces_spaces_with_dashes():
+    filename = build_docx_filename(datetime(2026, 7, 31, 14, 0), "Test Meeting 3")
+    assert filename == "2026-07-31-Test-Meeting-3.docx"
+
+
+def test_build_docx_filename_strips_unsafe_characters():
+    filename = build_docx_filename(datetime(2026, 7, 31), "Rapat: Q3 / Review?")
+    assert " " not in filename
+    assert all(c not in filename for c in ':/\\?*<>|"')
 
 
 def test_export_creates_docx_with_expected_sections(tmp_path):

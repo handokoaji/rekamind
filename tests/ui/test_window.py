@@ -269,6 +269,55 @@ def test_double_click_stop_during_processing():
 
 
 @pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_title_entry_locked_while_recording_and_processing():
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    controller = FakeController()
+    window = MainWindow(root, controller)
+
+    controller.state = "recording"
+    window.refresh_status()
+    assert window._title_entry.cget("state") == "disabled"
+
+    controller.state = "processing"
+    window.refresh_status()
+    assert window._title_entry.cget("state") == "disabled"
+
+    controller.state = "done"
+    window.refresh_status()
+    assert window._title_entry.cget("state") == "normal"
+
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_progress_step_label_reflects_controller_processing_step():
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    controller = FakeController()
+    controller.processing_step = "Transkrip mic..."
+    window = MainWindow(root, controller)
+
+    controller.state = "processing"
+    window.refresh_status()
+    assert window.progress_step_var.get() == "Transkrip mic..."
+    assert window._progress_running is True
+
+    controller.state = "done"
+    window.refresh_status()
+    assert window.progress_step_var.get() == ""
+    assert window._progress_running is False
+
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
 def test_text_event_appends_unlabeled_line():
     try:
         root = tk.Tk()
