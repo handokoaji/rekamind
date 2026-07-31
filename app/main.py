@@ -6,6 +6,7 @@ import sys
 import tkinter as tk
 import threading
 from pathlib import Path
+from tkinter import messagebox
 
 from app.asr.cuda_backend import FasterWhisperBackend
 from app.asr.detect import detect_backend
@@ -19,7 +20,7 @@ from app.logging_setup import configure_logging
 from app.pipeline.recovery import recover_abandoned_meetings
 from app.pipeline.summarize import summarize_and_export
 from app.pipeline.transcribe import transcribe_and_diarize
-from app.settings_store import is_dev_mode, load_packaged_config
+from app.settings_store import is_dev_mode, load_packaged_config, save_packaged_config
 from app.storage.db import init_db, make_engine, make_session_factory
 from app.summarization.docx_export import build_docx_filename
 from app.summarization.groq_client import GroqSummarizer
@@ -140,6 +141,26 @@ def run_first_run_wizard_if_needed() -> bool:
     return result is not None
 
 
+def _handle_startup_db_error(exc: Exception) -> bool:
+    """Returns True if the user updated settings via the wizard and startup
+    should retry; False if they declined and the app should just exit."""
+    root = tk.Tk()
+    root.withdraw()
+    reopen = messagebox.askyesno(
+        "Meeting Recorder - Error",
+        f"Tidak bisa konek ke database: {exc}\n\nBuka Pengaturan sekarang?",
+    )
+    if not reopen:
+        root.destroy()
+        return False
+    result = SetupWizard(parent=None).run()
+    root.destroy()
+    if result is None:
+        return False
+    save_packaged_config(result)
+    return True
+
+
 def main() -> None:
     configure_logging()
     if not run_first_run_wizard_if_needed():
@@ -148,7 +169,15 @@ def main() -> None:
     settings = get_settings()
     check_ffmpeg_available()
     engine = make_engine(settings.database_url)
-    asyncio.run(init_db(engine))
+    try:
+        asyncio.run(init_db(engine))
+    except Exception as exc:
+        if not _handle_startup_db_error(exc):
+            return
+        get_settings.cache_clear()
+        settings = get_settings()
+        engine = make_engine(settings.database_url)
+        asyncio.run(init_db(engine))
     session_factory = make_session_factory(engine)
 
     recovered = asyncio.run(recover_abandoned_meetings(session_factory))

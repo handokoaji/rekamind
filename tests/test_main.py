@@ -194,3 +194,34 @@ def test_main_skips_wizard_in_dev_mode(monkeypatch):
     main.run_first_run_wizard_if_needed()
 
     assert wizard_calls == []
+
+
+def test_handle_startup_db_error_reopens_wizard_on_yes(monkeypatch):
+    monkeypatch.setattr(main.messagebox, "askyesno", lambda *a, **k: True)
+    saved = []
+    monkeypatch.setattr(main, "save_packaged_config", saved.append)
+
+    class FakeWizard:
+        def __init__(self, parent=None):
+            pass
+
+        def run(self):
+            return {"storage_backend": "sqlite"}
+
+    monkeypatch.setattr(main, "SetupWizard", FakeWizard)
+
+    retried = main._handle_startup_db_error(RuntimeError("connection refused"))
+
+    assert retried is True
+    assert saved == [{"storage_backend": "sqlite"}]
+
+
+def test_handle_startup_db_error_returns_false_on_no(monkeypatch):
+    monkeypatch.setattr(main.messagebox, "askyesno", lambda *a, **k: False)
+    wizard_calls = []
+    monkeypatch.setattr(main, "SetupWizard", lambda **kw: wizard_calls.append(kw))
+
+    retried = main._handle_startup_db_error(RuntimeError("connection refused"))
+
+    assert retried is False
+    assert wizard_calls == []
