@@ -77,6 +77,14 @@ class MainWindow:
         self.live_warning_label = tk.Label(parent, textvariable=self.live_warning_var, fg="orange")
         self.live_warning_label.pack(anchor="w")
 
+        # Toggled only by real "heartbeat" events (WAV size actually grew) --
+        # not a timer -- so it freezes the instant capture dies instead of
+        # animating forever over a session that silently stopped recording.
+        self._pulse_on = False
+        self.recording_pulse_var = tk.StringVar()
+        self.recording_pulse_label = tk.Label(parent, textvariable=self.recording_pulse_var, fg="green")
+        self.recording_pulse_label.pack(anchor="w")
+
         self.transcript_view = scrolledtext.ScrolledText(parent, height=15, width=60)
         self.transcript_view.pack(fill="both", expand=True)
 
@@ -101,6 +109,7 @@ class MainWindow:
         # (Diarizer/VAD construction) runs off the UI thread.
         self._start_button.config(state="disabled")
         self.live_warning_var.set("")  # clear any stale warning from the previous meeting
+        self.recording_pulse_var.set("menunggu data rekaman...")
 
         def _start_in_background():
             try:
@@ -143,6 +152,8 @@ class MainWindow:
         is_idle = state in ("idle", "error")
         self._start_button.config(state="normal" if is_idle else "disabled")
         self._stop_button.config(state="normal" if state == "recording" else "disabled")
+        if state != "recording":
+            self.recording_pulse_var.set("")
         # Title is locked once a meeting is in flight so it can't drift from
         # what was already saved to the DB.
         self._title_entry.config(state="normal" if is_idle else "disabled")
@@ -168,6 +179,10 @@ class MainWindow:
                             self.transcript_view.see("end")
                 elif event["type"] == "warning":
                     self.live_warning_var.set(event["message"])
+                elif event["type"] == "heartbeat":
+                    self._pulse_on = not self._pulse_on
+                    symbol = "●" if self._pulse_on else "○"  # ● / ○
+                    self.recording_pulse_var.set(f"{symbol} merekam (data masuk)")
                 elif event["type"] == "relabel":
                     # A full clear+reinsert always resets the view to the top;
                     # follow the bottom if the user was there, otherwise keep

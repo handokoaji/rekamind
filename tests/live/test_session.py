@@ -382,6 +382,40 @@ def test_watchdog_warns_when_mic_wav_never_grows(tmp_path):
     assert len(mic_warnings) == 1
 
 
+def test_watchdog_emits_heartbeat_when_wav_grows(tmp_path):
+    mic_path = tmp_path / "mic.wav"
+    speaker_path = tmp_path / "speaker.wav"
+    mic_path.touch()
+    speaker_path.touch()
+    events = []
+
+    session = LiveSession(
+        mic_transcriber=FakeTranscriber("x"),
+        speaker_transcriber=FakeTranscriber("y"),
+        diarizer=FakeDiarizer(),
+        segmenter_factory=lambda: FakeSegmenter(),
+        mic_wav_path=mic_path,
+        speaker_wav_path=speaker_path,
+        scratch_dir=tmp_path / "live_scratch",
+        mic_queue=queue.Queue(),
+        speaker_queue=queue.Queue(),
+        diarize_interval_seconds=999,
+        on_update=events.append,
+        capture_watchdog_interval_seconds=0.02,
+        capture_stall_seconds=999,
+    )
+
+    session.start()
+    with open(mic_path, "ab") as f:
+        f.write(b"x")
+    deadline = time.time() + 5
+    while not any(e["type"] == "heartbeat" for e in events) and time.time() < deadline:
+        time.sleep(0.02)
+    session.stop()
+
+    assert any(e["type"] == "heartbeat" for e in events)
+
+
 def test_watchdog_does_not_warn_while_wav_keeps_growing(tmp_path):
     mic_path = tmp_path / "mic.wav"
     speaker_path = tmp_path / "speaker.wav"

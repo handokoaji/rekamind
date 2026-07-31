@@ -173,6 +173,47 @@ def test_warning_event_shows_message_in_live_warning_label():
 
 
 @pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_heartbeat_events_toggle_the_recording_pulse():
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    controller = FakeController()
+    window = MainWindow(root, controller)
+
+    window.push_live_event({"type": "heartbeat"})
+    _pump_until(root, lambda: window.recording_pulse_var.get() != "")
+    first = window.recording_pulse_var.get()
+
+    window.push_live_event({"type": "heartbeat"})
+    _pump_until(root, lambda: window.recording_pulse_var.get() != first)
+    second = window.recording_pulse_var.get()
+
+    assert first != second
+    assert "merekam" in first.lower() and "merekam" in second.lower()
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_recording_pulse_cleared_once_state_leaves_recording():
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    controller = FakeController()
+    window = MainWindow(root, controller)
+    window.recording_pulse_var.set("● merekam (data masuk)")
+
+    controller.state = "idle"
+    window.refresh_status()
+
+    assert window.recording_pulse_var.get() == ""
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
 def test_starting_a_new_meeting_clears_a_stale_warning():
     try:
         root = tk.Tk()

@@ -189,11 +189,13 @@ class LiveSession:
         warned: set[str] = set()
         while not self._stop_event.wait(self._capture_watchdog_interval_seconds):
             now = time.monotonic()
+            grew = False
             for name, path in sources.items():
                 size = path.stat().st_size if path.exists() else 0
                 if size != last_size[name]:
                     last_size[name] = size
                     last_change[name] = now
+                    grew = True
                     continue
                 if name not in warned and now - last_change[name] >= self._capture_stall_seconds:
                     warned.add(name)
@@ -205,6 +207,12 @@ class LiveSession:
                             f"{int(self._capture_stall_seconds)} detik -- cek perangkat/driver."
                         ),
                     })
+            if grew:
+                # Real evidence the capture pipeline is still alive, for the UI's
+                # recording-pulse indicator -- deliberately NOT a plain timer, so
+                # it stops the moment capture actually dies instead of animating
+                # forever over a session that silently stopped recording.
+                self._on_update({"type": "heartbeat"})
 
     def stop(self) -> None:
         # An Event, not a sentinel in the queue: the production queues are bounded
