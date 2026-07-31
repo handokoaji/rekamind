@@ -328,3 +328,61 @@ def test_pull_skips_manifests_already_known_locally(monkeypatch, tmp_path):
 
     assert result["pulled"] == 0
     fake_client.get_object.assert_not_called()
+
+
+def test_pull_skips_a_malformed_object_name_without_losing_other_meetings(monkeypatch, tmp_path):
+    """Regression test: object_name.split("/", 2) unpacked into 3 variables
+    raises ValueError for a name with only one "/" before "manifest.json"
+    (e.g. "onlyonelevel/manifest.json" -- still passes the endswith filter).
+    Previously this aborted the whole pull() and, since session.commit()
+    only happens once at the end, discarded every other legitimately-pulled
+    meeting in the same batch too."""
+    fake_module = _fake_minio_module()
+    fake_client = fake_module.Minio.return_value
+    monkeypatch.setitem(sys.modules, "minio", fake_module)
+
+    remote_manifest = {
+        "title": "Rapat Remote", "scheduled_time": None, "start_time": None, "end_time": None,
+        "status": "completed", "device_id": "dev2", "device_label": "Laptop Lain",
+        "segments": [], "summary": None,
+    }
+    fake_client.list_objects.return_value = [
+        _fake_object("onlyonelevel/manifest.json"),
+        _fake_object("dev2/uuid123/manifest.json"),
+    ]
+    fake_client.get_object.return_value = _fake_manifest_response(remote_manifest)
+
+    session_factory = _make_db()
+    settings = FakeSettings(device_id="dev1")
+    settings.recordings_dir = tmp_path
+
+    result = minio_client.pull(session_factory, settings)
+
+    assert result["pulled"] == 1  # the malformed entry skipped, the valid one still pulled
+
+
+def test_pull_closes_and_releases_the_get_object_response(monkeypatch, tmp_path):
+    """MinIO's get_object() returns an urllib3 HTTPResponse that must be
+    explicitly closed and its connection released back to the pool, or
+    repeated syncs against a multi-meeting bucket leak connections."""
+    fake_module = _fake_minio_module()
+    fake_client = fake_module.Minio.return_value
+    monkeypatch.setitem(sys.modules, "minio", fake_module)
+
+    remote_manifest = {
+        "title": "Rapat Remote", "scheduled_time": None, "start_time": None, "end_time": None,
+        "status": "completed", "device_id": "dev2", "device_label": "Laptop Lain",
+        "segments": [], "summary": None,
+    }
+    fake_client.list_objects.return_value = [_fake_object("dev2/uuid123/manifest.json")]
+    fake_response = _fake_manifest_response(remote_manifest)
+    fake_client.get_object.return_value = fake_response
+
+    session_factory = _make_db()
+    settings = FakeSettings(device_id="dev1")
+    settings.recordings_dir = tmp_path
+
+    minio_client.pull(session_factory, settings)
+
+    fake_response.close.assert_called_once()
+    fake_response.release_conn.assert_called_once()

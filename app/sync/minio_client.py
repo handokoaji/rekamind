@@ -130,7 +130,10 @@ def pull(session_factory, settings) -> dict:
             for obj in client.list_objects(settings.minio_bucket, recursive=True):
                 if not obj.object_name.endswith("/manifest.json"):
                     continue
-                device_id, meeting_uuid, _ = obj.object_name.split("/", 2)
+                parts = obj.object_name.split("/", 2)
+                if len(parts) != 3:
+                    continue  # not <device_id>/<meeting_uuid>/manifest.json -- malformed, skip
+                device_id, meeting_uuid, _ = parts
                 if device_id == settings.device_id:
                     continue
                 if not (_is_safe_path_component(device_id) and _is_safe_path_component(meeting_uuid)):
@@ -146,7 +149,11 @@ def pull(session_factory, settings) -> dict:
                     continue
 
                 response = client.get_object(settings.minio_bucket, obj.object_name)
-                manifest = json.loads(response.read())
+                try:
+                    manifest = json.loads(response.read())
+                finally:
+                    response.close()
+                    response.release_conn()
 
                 meeting = Meeting(
                     title=manifest["title"],
