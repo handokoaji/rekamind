@@ -16,6 +16,7 @@ class FakeController:
         self.error_message = ""
         self.start_raises = start_raises
         self.stop_raises = stop_raises
+        self.minio_configured = False
 
     def start_meeting(self, title):
         if self.start_raises:

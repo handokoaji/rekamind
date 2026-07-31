@@ -47,6 +47,7 @@ class HistoryView(tk.Frame):
         # refreshes until the status actually changes.
         self._busy_meeting_ids: set[int] = set()
         self._action_error: tuple[int, str] | None = None
+        self._sync_in_progress = False
 
         self._tree = ttk.Treeview(
             self, columns=("title", "date", "status", "device", "duration"), show="headings", height=10,
@@ -63,6 +64,12 @@ class HistoryView(tk.Frame):
         action_frame.pack(fill="x", pady=4)
         self._status_label = tk.Label(action_frame, text="")
         self._status_label.pack(anchor="w")
+        # Separate from _status_label: that one is reset to "" by
+        # _update_action_panel() whenever no meeting is selected (a global
+        # sync isn't tied to a selection), which would clobber a just-set
+        # sync result the moment refresh() runs right after it.
+        self._sync_status_label = tk.Label(action_frame, text="")
+        self._sync_status_label.pack(anchor="w")
 
         self._transcribe_button = tk.Button(action_frame, text="Transkrip", command=self._handle_transcribe)
         self._summarize_button = tk.Button(action_frame, text="Ringkasan", command=self._handle_summarize)
@@ -70,6 +77,7 @@ class HistoryView(tk.Frame):
         self._download_button = tk.Button(action_frame, text="Unduh Docx", command=self._handle_download)
         self._view_transcript_button = tk.Button(action_frame, text="Lihat Transkrip", command=self._handle_view_transcript)
         self._delete_button = tk.Button(action_frame, text="Hapus", command=self._handle_delete)
+        self._sync_button = tk.Button(action_frame, text="Sync Sekarang", command=self._handle_sync)
 
         self._transcript_view = scrolledtext.ScrolledText(self, height=10, width=60)
 
@@ -116,6 +124,12 @@ class HistoryView(tk.Frame):
         self._update_action_panel()
 
     def _update_action_panel(self) -> None:
+        if self._controller.minio_configured:
+            self._sync_button.config(state="disabled" if self._sync_in_progress else "normal")
+            self._sync_button.pack(side="right")
+        else:
+            self._sync_button.pack_forget()
+
         for button in (
             self._transcribe_button, self._summarize_button, self._retry_button,
             self._download_button, self._view_transcript_button, self._delete_button,
@@ -228,6 +242,29 @@ class HistoryView(tk.Frame):
         if not confirmed:
             return
         self._start_action(self._delete_button, self._controller.delete_meeting)
+
+    def _handle_sync(self) -> None:
+        if self._sync_in_progress:
+            return
+        self._sync_in_progress = True
+        self._sync_button.config(state="disabled")
+
+        def _worker():
+            try:
+                result = self._controller.sync_now()
+                message = (
+                    f"Sync selesai: {result['manifests']} meeting diunggah, "
+                    f"{result['uploaded']} file diunggah, {result['pulled']} meeting ditarik."
+                )
+            except Exception as exc:
+                logger.warning("sync failed: %s", exc)
+                message = f"Sync gagal: {exc}"
+            finally:
+                self._sync_in_progress = False
+                self.after(0, lambda: self._sync_status_label.config(text=message))
+                self.after(0, self.refresh)
+
+        threading.Thread(target=_worker, daemon=True).start()
 
     def _handle_view_transcript(self) -> None:
         meeting = self._selected_meeting()

@@ -258,6 +258,7 @@ def main() -> None:
         live_session_factory=live_session_factory,
         device_id=settings.device_id,
         device_label=settings.device_label,
+        settings=settings,
     )
 
     root = tk.Tk()

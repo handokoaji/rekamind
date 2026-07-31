@@ -9,6 +9,7 @@ from typing import Awaitable, Callable
 
 from app.storage import repository as repo
 from app.storage.models import Meeting
+from app.sync import minio_client
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ class RecorderController:
         live_session_factory: Callable[[Path, Path, Path], object] | None = None,
         device_id: str | None = None,
         device_label: str | None = None,
+        settings=None,
     ):
         self._session_factory = session_factory
         self._recorder_factory = recorder_factory
@@ -38,6 +40,7 @@ class RecorderController:
         self._live_session_factory = live_session_factory
         self._device_id = device_id
         self._device_label = device_label
+        self._settings = settings
         self.state = "idle"
         self.error_message: str | None = None
         self._meeting_id: int | None = None
@@ -227,6 +230,16 @@ class RecorderController:
         recording_dir = asyncio.run(_delete())
         if recording_dir:
             shutil.rmtree(recording_dir, ignore_errors=True)
+
+    @property
+    def minio_configured(self) -> bool:
+        return self._settings is not None and self._settings.minio_is_configured
+
+    def sync_now(self) -> dict:
+        """Blocking -- call from a background thread."""
+        push_result = minio_client.push(self._session_factory, self._settings)
+        pull_result = minio_client.pull(self._session_factory, self._settings)
+        return {**push_result, **pull_result}
 
     def get_docx_path(self, meeting_id: int) -> str | None:
         async def _get():

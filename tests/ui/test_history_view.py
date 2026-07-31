@@ -62,6 +62,13 @@ class FakeController:
         self.delete_calls = []
         self.transcript_by_id = {}
         self.list_meetings_calls = 0
+        self.minio_configured = False
+        self.sync_calls = 0
+        self.sync_result = {"manifests": 0, "uploaded": 0, "pulled": 0}
+
+    def sync_now(self):
+        self.sync_calls += 1
+        return self.sync_result
 
     def list_meetings(self):
         self.list_meetings_calls += 1
@@ -451,4 +458,33 @@ def test_riwayat_shows_fallback_for_unknown_device():
     values = view._tree.item("1", "values")
 
     assert values[3] == "Tidak diketahui"
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_sync_button_hidden_when_minio_not_configured():
+    root = tk.Tk()
+    controller = FakeController([])
+    controller.minio_configured = False
+    view = HistoryView(root, controller)
+
+    assert str(view._sync_button.winfo_manager()) == ""
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_sync_button_shown_and_calls_controller_when_configured():
+    root = tk.Tk()
+    controller = FakeController([])
+    controller.minio_configured = True
+    controller.sync_result = {"manifests": 2, "uploaded": 1, "pulled": 3}
+    view = HistoryView(root, controller)
+    assert str(view._sync_button.winfo_manager()) == "pack"
+
+    refreshes_before = controller.list_meetings_calls
+    root.after(10, view._handle_sync)
+    _pump_until(root, lambda: controller.list_meetings_calls > refreshes_before)
+
+    assert controller.sync_calls == 1
+    assert "3" in view._sync_status_label.cget("text")  # pulled count surfaced
     root.destroy()
