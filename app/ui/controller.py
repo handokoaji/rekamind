@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 from app.storage import repository as repo
+from app.storage.models import Meeting
 
 logger = logging.getLogger(__name__)
 
@@ -21,13 +22,15 @@ class RecorderController:
         self,
         session_factory,
         recorder_factory: Callable,
-        finalize_fn: Callable[..., Awaitable],
+        transcribe_fn: Callable[..., Awaitable],
+        summarize_fn: Callable[..., Awaitable],
         recordings_dir: Path,
         live_session_factory: Callable[[Path, Path, Path], object] | None = None,
     ):
         self._session_factory = session_factory
         self._recorder_factory = recorder_factory
-        self._finalize_fn = finalize_fn
+        self._transcribe_fn = transcribe_fn
+        self._summarize_fn = summarize_fn
         self._recordings_dir = recordings_dir
         self._live_session_factory = live_session_factory
         self.state = "idle"
@@ -36,11 +39,6 @@ class RecorderController:
         self._meeting_title: str | None = None
         self._recorder = None
         self._live_session = None
-        self.last_docx_path: str | None = None
-        self.processing_step: str = ""
-
-    def _set_processing_step(self, step: str) -> None:
-        self.processing_step = step
 
     def _stop_live_session(self) -> None:
         """Stopping live preview must never mask the real error or block the
@@ -113,19 +111,18 @@ class RecorderController:
         return meeting_id
 
     def stop_meeting(self) -> None:
+        """Stop only saves the recording and marks it "recorded" -- Fase 3
+        moved transcription/summarization to manual, per-meeting actions
+        (run_transcribe/run_summarize) triggered from the history view, so
+        this never blocks starting the next meeting."""
         if self._recorder is None:
             raise RuntimeError("cannot stop: no meeting is currently being recorded")
 
         self._stop_live_session()
 
         mic_path, speaker_path = self._recorder.stop()
-        self.state = "processing"
-        self.processing_step = "Menyimpan rekaman..."
 
-        async def _finalize():
-            # Commit the recording metadata first, in its own transaction: if
-            # finalize_fn later fails, end_time and the WAV file references must
-            # still be on disk-of-record instead of being rolled back with it.
+        async def _save():
             async with self._session_factory() as session:
                 await repo.stop_recording(session, self._meeting_id)
                 await repo.save_recording_file(
@@ -136,26 +133,75 @@ class RecorderController:
                 )
                 await session.commit()
 
-            async with self._session_factory() as session:
-                summary = await self._finalize_fn(
-                    session=session,
-                    meeting_id=self._meeting_id,
-                    meeting_title=self._meeting_title,
-                    meeting_date=datetime.now(),
-                    mic_wav=mic_path,
-                    speaker_wav=speaker_path,
-                    on_progress=self._set_processing_step,
-                )
-                await session.commit()
-                return summary.docx_path
-
         try:
-            self.last_docx_path = asyncio.run(_finalize())
-            self.state = "done"
+            asyncio.run(_save())
+            self.state = "idle"
             self._recorder = None
         except Exception as exc:
-            self.error_message = f"Gagal memproses hasil rekaman: {exc}"
+            self.error_message = f"Gagal menyimpan hasil rekaman: {exc}"
             self.state = "error"
             raise
-        finally:
-            self.processing_step = ""
+
+    def run_transcribe(self, meeting_id: int) -> None:
+        """Blocking -- call from a background thread (the UI layer owns
+        threading, matching start_meeting/stop_meeting's existing pattern)."""
+        async def _run():
+            async with self._session_factory() as session:
+                meeting = await session.get(Meeting, meeting_id)
+                if meeting is None:
+                    raise ValueError(f"Meeting {meeting_id} not found")
+                mic_wav = Path(meeting.recording_dir) / "mic.wav"
+                speaker_wav = Path(meeting.recording_dir) / "speaker.wav"
+            await self._transcribe_fn(meeting_id=meeting_id, mic_wav=mic_wav, speaker_wav=speaker_wav)
+
+        asyncio.run(_run())
+
+    def run_summarize(self, meeting_id: int) -> None:
+        """Blocking -- call from a background thread."""
+        async def _run():
+            async with self._session_factory() as session:
+                meeting = await session.get(Meeting, meeting_id)
+                if meeting is None:
+                    raise ValueError(f"Meeting {meeting_id} not found")
+                title = meeting.title
+                date = meeting.start_time or meeting.created_at
+            await self._summarize_fn(meeting_id=meeting_id, meeting_title=title, meeting_date=date)
+
+        asyncio.run(_run())
+
+    def retry(self, meeting_id: int) -> None:
+        """Blocking -- re-runs whichever stage failed."""
+        async def _get_stage():
+            async with self._session_factory() as session:
+                meeting = await session.get(Meeting, meeting_id)
+                if meeting is None:
+                    raise ValueError(f"Meeting {meeting_id} not found")
+                return meeting.failed_stage
+
+        stage = asyncio.run(_get_stage())
+        if stage == "summarize":
+            self.run_summarize(meeting_id)
+        else:
+            self.run_transcribe(meeting_id)
+
+    def list_meetings(self) -> list[Meeting]:
+        async def _list():
+            async with self._session_factory() as session:
+                return await repo.list_meetings(session)
+
+        return asyncio.run(_list())
+
+    def get_transcript(self, meeting_id: int) -> list[tuple[str, str]]:
+        async def _get():
+            async with self._session_factory() as session:
+                return await repo.get_final_transcript(session, meeting_id)
+
+        return asyncio.run(_get())
+
+    def get_docx_path(self, meeting_id: int) -> str | None:
+        async def _get():
+            async with self._session_factory() as session:
+                summary = await repo.get_summary(session, meeting_id)
+                return summary.docx_path if summary else None
+
+        return asyncio.run(_get())
