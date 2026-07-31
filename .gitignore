@@ -1,6 +1,7 @@
 .env
 .venv/
 recordings/
+logs/
 __pycache__/
 *.pyc
 .idea/

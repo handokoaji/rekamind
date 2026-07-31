@@ -315,7 +315,7 @@ def test_relabel_clears_old_drafts_and_resaves_with_resolved_speaker_ids(tmp_pat
     assert rows[2].speaker_id == speakers[0].id
 
 
-def test_draft_write_failure_is_logged_and_does_not_propagate(tmp_path, capsys):
+def test_draft_write_failure_is_logged_and_does_not_propagate(tmp_path, caplog):
     class BoomFactory:
         def __call__(self):
             raise RuntimeError("db is down")
@@ -339,8 +339,7 @@ def test_draft_write_failure_is_logged_and_does_not_propagate(tmp_path, capsys):
     session._save_draft(LiveSegment(source="mic", start_ms=0, end_ms=1, text="x"))
     session._save_relabeled_drafts([])
 
-    out = capsys.readouterr().out
-    assert "db is down" in out
+    assert "db is down" in caplog.text
 
 
 def test_no_session_factory_means_no_draft_writes(tmp_path):

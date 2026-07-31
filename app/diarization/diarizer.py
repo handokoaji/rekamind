@@ -1,4 +1,5 @@
 import warnings
+import wave
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -19,6 +20,14 @@ class SpeakerSegment:
     start_ms: int
     end_ms: int
     label: str
+
+
+# Below this, pyannote's embedding pooling layer gets a near-empty window
+# (see the "std(): degrees of freedom <= 0" warning) -- observed to crash the
+# whole process natively (access violation / heap corruption) on CUDA rather
+# than raise a catchable Python exception. A live meeting's early diarize
+# ticks can hit this before the speaker side has accumulated real audio.
+MIN_DIARIZE_DURATION_SECONDS = 1.0
 
 
 def _load_waveform(wav_path: Path) -> dict:
@@ -48,6 +57,10 @@ class Diarizer:
         # early ticks the file can be 0 bytes (or header-only, 44 bytes) --
         # not yet readable by soundfile. Nothing to diarize yet either way.
         if not wav_path.exists() or wav_path.stat().st_size <= 44:
+            return []
+        with wave.open(str(wav_path), "rb") as wf:
+            duration_seconds = wf.getnframes() / wf.getframerate()
+        if duration_seconds < MIN_DIARIZE_DURATION_SECONDS:
             return []
         output = self._pipeline(_load_waveform(wav_path))
         # pyannote.audio >= 4 returns a DiarizeOutput wrapping several

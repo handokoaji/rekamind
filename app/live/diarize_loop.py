@@ -1,9 +1,12 @@
+import logging
 import threading
 from pathlib import Path
 from typing import Callable
 
 from app.asr.base import TranscriptSegmentResult
 from app.pipeline.merge import MergedSegment, merge_segments
+
+logger = logging.getLogger(__name__)
 
 
 class LiveDiarizeLoop:
@@ -25,6 +28,8 @@ class LiveDiarizeLoop:
 
     def tick(self) -> None:
         mic_segments, speaker_segments = self._get_segments()
+        size = Path(self._speaker_wav_path).stat().st_size if Path(self._speaker_wav_path).exists() else -1
+        logger.info("diarize tick: wav=%s size=%d bytes", self._speaker_wav_path, size)
         speaker_labels = self._diarizer.diarize(self._speaker_wav_path)
         merged = merge_segments(
             [TranscriptSegmentResult(s.start_ms, s.end_ms, s.text) for s in mic_segments],
@@ -41,7 +46,7 @@ class LiveDiarizeLoop:
                 try:
                     self.tick()
                 except Exception as exc:
-                    print(f"WARNING: live diarize tick failed, will retry next interval: {exc}")
+                    logger.warning("live diarize tick failed, will retry next interval: %s", exc)
 
         self._thread = threading.Thread(target=_run, daemon=True)
         self._thread.start()

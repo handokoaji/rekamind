@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import queue
 import threading
 from pathlib import Path
@@ -8,6 +9,8 @@ from app.live.diarize_loop import LiveDiarizeLoop
 from app.live.pipeline import LiveSegment, StreamLivePipeline
 from app.live.vad import SpeechSegmenter
 from app.storage import repository as repo
+
+logger = logging.getLogger(__name__)
 
 
 class LiveSession:
@@ -96,7 +99,7 @@ class LiveSession:
             asyncio.run(_write())
         except Exception as exc:
             # A DB hiccup must never kill the consumer thread (spec §5).
-            print(f"WARNING: failed to save live draft segment: {exc}")
+            logger.warning("failed to save live draft segment: %s", exc)
 
     def _save_relabeled_drafts(self, merged) -> None:
         if self._session_factory is None or self.meeting_id is None:
@@ -132,7 +135,7 @@ class LiveSession:
         try:
             asyncio.run(_write())
         except Exception as exc:
-            print(f"WARNING: failed to persist relabeled live drafts: {exc}")
+            logger.warning("failed to persist relabeled live drafts: %s", exc)
 
     def get_segments(self) -> tuple[list[LiveSegment], list[LiveSegment]]:
         with self._lock:
@@ -153,7 +156,7 @@ class LiveSession:
                     # spec §5: a live-pipeline error must never crash the app or
                     # silently kill this consumer thread - log and keep consuming
                     # (WAV capture, on a separate path entirely, is unaffected).
-                    print(f"WARNING: live {source_name} pipeline error, skipping this chunk: {exc}")
+                    logger.warning("live %s pipeline error, skipping this chunk: %s", source_name, exc)
 
         mic_thread = threading.Thread(target=_consume, args=(self._mic_queue, self._mic_pipeline, "mic"), daemon=True)
         speaker_thread = threading.Thread(target=_consume, args=(self._speaker_queue, self._speaker_pipeline, "speaker"), daemon=True)

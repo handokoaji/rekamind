@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import uuid
 import wave
 from datetime import datetime, timezone
@@ -6,6 +7,8 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 from app.storage import repository as repo
+
+logger = logging.getLogger(__name__)
 
 
 def _wav_duration_ms(path: Path) -> int:
@@ -47,7 +50,7 @@ class RecorderController:
         try:
             self._live_session.stop()
         except Exception as exc:
-            print(f"WARNING: live session failed to stop cleanly: {exc}")
+            logger.warning("live session failed to stop cleanly: %s", exc)
         finally:
             self._live_session = None
 
@@ -67,7 +70,7 @@ class RecorderController:
                 self._live_session = self._live_session_factory(mic_path, speaker_path, meeting_dir / "live_scratch")
                 self._live_session.start()
             except Exception as exc:
-                print(f"WARNING: live preview unavailable this meeting: {exc}")
+                logger.warning("live preview unavailable this meeting: %s", exc)
                 self._live_session = None
 
         recorder = self._recorder_factory(mic_path, speaker_path)
@@ -82,7 +85,9 @@ class RecorderController:
 
         async def _create():
             async with self._session_factory() as session:
-                meeting = await repo.create_meeting(session, title, datetime.now(timezone.utc))
+                meeting = await repo.create_meeting(
+                    session, title, datetime.now(timezone.utc), recording_dir=str(meeting_dir),
+                )
                 await repo.start_recording(session, meeting.id)
                 await session.commit()
                 return meeting.id

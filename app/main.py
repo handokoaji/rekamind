@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import queue
 import shutil
 import sys
@@ -11,8 +12,10 @@ from app.asr.detect import detect_backend
 from app.asr.openvino_backend import OpenVinoWhisperBackend
 from app.config import get_settings
 from app.diarization.diarizer import Diarizer
+from app.live.diarize_worker import ProcessIsolatedDiarizer
 from app.live.session import LiveSession
 from app.live.vad import SpeechSegmenter, load_silero_vad_iterator
+from app.logging_setup import configure_logging
 from app.pipeline.finalize import finalize_meeting
 from app.storage.db import init_db, make_engine, make_session_factory
 from app.summarization.docx_export import build_docx_filename
@@ -20,6 +23,8 @@ from app.summarization.groq_client import GroqSummarizer
 from app.tray.icon import build_tray_icon
 from app.ui.controller import RecorderController
 from app.ui.window import MainWindow
+
+logger = logging.getLogger(__name__)
 
 
 def check_ffmpeg_available() -> bool:
@@ -77,10 +82,7 @@ def build_models(backend_name: str, settings):
         transcriber = build_transcriber(backend_name)
         effective_device = "cuda" if backend_name == "cuda" else "cpu"
     except Exception as exc:
-        print(
-            f"WARNING: failed to load {backend_name} backend ({exc}), falling back to CPU",
-            file=sys.stderr,
-        )
+        logger.warning("failed to load %s backend (%s), falling back to CPU", backend_name, exc)
         transcriber = build_transcriber("cpu")
         effective_device = "cpu"
     return (
@@ -102,6 +104,7 @@ def _real_recorder(mic_path: Path, speaker_path: Path):
 
 
 def main() -> None:
+    configure_logging()
     settings = get_settings()
     check_ffmpeg_available()
     engine = make_engine(settings.database_url)
@@ -153,7 +156,14 @@ def main() -> None:
         if live_transcriber is None:
             live_transcriber = build_live_transcriber(backend_name)
         if live_diarizer is None:
-            live_diarizer = Diarizer(hf_token=settings.hf_token, device="cuda" if backend_name == "cuda" else "cpu")
+            # Process-isolated (not the plain Diarizer main.py uses for the batch
+            # pass): pyannote/CUDA has been observed to crash the whole process
+            # natively on degenerate live audio, and no input validation in
+            # Diarizer.diarize() has fully prevented it. A worker crash here only
+            # loses one relabel tick, not the meeting in progress.
+            live_diarizer = ProcessIsolatedDiarizer(
+                hf_token=settings.hf_token, device="cuda" if backend_name == "cuda" else "cpu",
+            )
         mic_queue: "queue.Queue" = queue.Queue(maxsize=200)
         speaker_queue: "queue.Queue" = queue.Queue(maxsize=200)
         # The loopback device records at its native format (typically 48kHz

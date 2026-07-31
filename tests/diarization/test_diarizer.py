@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 from app.diarization.diarizer import Diarizer, SpeakerSegment
 
 
-def _write_silent_wav(path, samplerate=16000, channels=1, num_frames=160):
+def _write_silent_wav(path, samplerate=16000, channels=1, num_frames=32000):
     with wave.open(str(path), "wb") as wf:
         wf.setnchannels(channels)
         wf.setsampwidth(2)
@@ -100,7 +100,7 @@ def test_diarize_passes_waveform_dict_not_path(monkeypatch, tmp_path):
 
     diarizer = Diarizer(hf_token="fake-token")
     wav_path = tmp_path / "speaker.wav"
-    _write_silent_wav(wav_path, samplerate=16000, channels=1, num_frames=160)
+    _write_silent_wav(wav_path, samplerate=16000, channels=1, num_frames=32000)
     diarizer.diarize(wav_path)
 
     fake_pipeline.assert_called_once()
@@ -138,6 +138,25 @@ def test_diarize_returns_empty_list_for_header_only_file(monkeypatch, tmp_path):
     empty_wav = tmp_path / "speaker.wav"
     empty_wav.touch()
     assert diarizer.diarize(empty_wav) == []
+    fake_pipeline.assert_not_called()
+
+
+def test_diarize_returns_empty_list_for_sub_second_audio(monkeypatch, tmp_path):
+    """A live meeting's early diarize ticks can catch the speaker WAV with only
+    a fraction of a second of real audio. Feeding pyannote's pooling layer a
+    near-empty window has been observed to crash the process natively (access
+    violation / heap corruption) on CUDA rather than raise a Python exception
+    -- skip it instead of risking that."""
+    fake_pipeline = MagicMock()
+    monkeypatch.setattr(
+        "app.diarization.diarizer.Pipeline.from_pretrained",
+        lambda *args, **kwargs: fake_pipeline,
+    )
+
+    diarizer = Diarizer(hf_token="fake-token")
+    wav_path = tmp_path / "speaker.wav"
+    _write_silent_wav(wav_path, samplerate=16000, num_frames=4000)  # 0.25s
+    assert diarizer.diarize(wav_path) == []
     fake_pipeline.assert_not_called()
 
 
