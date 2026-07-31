@@ -4,7 +4,10 @@ from types import SimpleNamespace
 
 import sys
 
+import pytest
+
 import app.main as main
+from app.asr.detect import UnsupportedHardwareError
 
 
 def test_check_ffmpeg_available_true_when_on_path(monkeypatch):
@@ -225,3 +228,22 @@ def test_handle_startup_db_error_returns_false_on_no(monkeypatch):
 
     assert retried is False
     assert wizard_calls == []
+
+
+def test_main_shows_fatal_error_and_exits_on_unsupported_hardware(monkeypatch):
+    def _raise(*args, **kwargs):
+        raise UnsupportedHardwareError("Perangkat ini tidak mendukung transkripsi audio.")
+
+    monkeypatch.setattr(main, "detect_backend", _raise)
+    error_shown = []
+    monkeypatch.setattr(main.messagebox, "showerror", lambda title, msg: error_shown.append((title, msg)))
+    window_created = []
+    monkeypatch.setattr(main, "MainWindow", lambda *a, **k: window_created.append(True))
+    monkeypatch.setattr(main, "run_first_run_wizard_if_needed", lambda: True)
+
+    with pytest.raises(SystemExit) as exc_info:
+        main.main()
+
+    assert error_shown == [("Meeting Recorder", "Perangkat ini tidak mendukung transkripsi audio.")]
+    assert window_created == []
+    assert exc_info.value.code != 0

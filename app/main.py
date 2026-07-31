@@ -9,7 +9,7 @@ from pathlib import Path
 from tkinter import messagebox
 
 from app.asr.cuda_backend import FasterWhisperBackend
-from app.asr.detect import detect_backend
+from app.asr.detect import detect_backend, UnsupportedHardwareError
 from app.asr.openvino_backend import OpenVinoWhisperBackend
 from app.config import get_settings
 from app.diarization.diarizer import Diarizer
@@ -167,6 +167,11 @@ def main() -> None:
         return
     get_settings.cache_clear()
     settings = get_settings()
+    try:
+        backend_name = detect_backend(settings.asr_backend_override)
+    except UnsupportedHardwareError as exc:
+        messagebox.showerror("Meeting Recorder", str(exc))
+        sys.exit(1)
     check_ffmpeg_available()
     engine = make_engine(settings.database_url)
     try:
@@ -183,8 +188,6 @@ def main() -> None:
     recovered = asyncio.run(recover_abandoned_meetings(session_factory))
     if recovered:
         logger.info("recovered %d meeting(s) orphaned by a previous crash: %s", len(recovered), recovered)
-
-    backend_name = detect_backend(settings.asr_backend_override)
 
     async def transcribe_fn(meeting_id, mic_wav, speaker_wav):
         transcriber, diarizer, _summarizer = load_models(backend_name, settings)
