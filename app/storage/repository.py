@@ -10,8 +10,14 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-async def create_meeting(session: AsyncSession, title: str, scheduled_time: datetime | None) -> Meeting:
-    meeting = Meeting(title=title, scheduled_time=scheduled_time, status="scheduled")
+async def create_meeting(
+    session: AsyncSession, title: str, scheduled_time: datetime | None,
+    recording_dir: str | None = None,
+) -> Meeting:
+    meeting = Meeting(
+        title=title, scheduled_time=scheduled_time, status="scheduled",
+        recording_dir=recording_dir,
+    )
     session.add(meeting)
     await session.flush()
     return meeting
@@ -101,4 +107,14 @@ async def mark_meeting_status(session: AsyncSession, meeting_id: int, status: st
 
 async def list_meetings(session: AsyncSession) -> list[Meeting]:
     result = await session.execute(select(Meeting).order_by(Meeting.created_at.desc()))
+    return list(result.scalars().all())
+
+
+async def find_abandoned_meetings(session: AsyncSession) -> list[Meeting]:
+    """A meeting stuck in 'recording' or 'processing' never reached a terminal
+    status (completed/failed) -- the only way that happens is the app dying
+    before Stop finished, e.g. a crash."""
+    result = await session.execute(
+        select(Meeting).where(Meeting.status.in_(["recording", "processing"]))
+    )
     return list(result.scalars().all())
