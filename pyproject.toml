@@ -17,4 +17,5 @@ dependencies = [
     "pystray>=0.19",
     "pillow>=10.0",
     "silero-vad",
+    "tzdata",
 ]
