@@ -10,11 +10,13 @@ from groq import Groq
 _CHUNK_CHAR_BUDGET = 12000
 _TPM_LIMIT = 8000
 _CHARS_PER_TOKEN = 4
+_COMPLETION_TOKENS_ESTIMATE = 1500  # per-chunk JSON reply is small but counts toward TPM too
 
 
 def _pause_for_rate_limit() -> None:
-    tokens_per_request = _CHUNK_CHAR_BUDGET / _CHARS_PER_TOKEN
+    tokens_per_request = _CHUNK_CHAR_BUDGET / _CHARS_PER_TOKEN + _COMPLETION_TOKENS_ESTIMATE
     time.sleep(60 * tokens_per_request / _TPM_LIMIT)
+
 
 _PROMPT_TEMPLATE = """\
 Kamu adalah asisten yang membuat Minutes of Meeting (MoM) dalam Bahasa \
@@ -48,25 +50,6 @@ Balas HANYA dengan JSON valid persis dengan struktur ini, tanpa teks lain:
 }}
 """
 
-_REDUCE_PROMPT_TEMPLATE = """\
-Kamu adalah asisten yang menggabungkan beberapa catatan parsial rapat (JSON, \
-urut sesuai waktu) menjadi satu Minutes of Meeting (MoM) final dalam Bahasa \
-Indonesia. Judul rapat: "{title}".
-
-Catatan parsial:
-{parts_json}
-
-Gabungkan menjadi satu MoM utuh: urutkan minute_by_minute secara kronologis, \
-hilangkan duplikat, dan satukan detailed_notes jadi satu narasi. Balas HANYA \
-dengan JSON valid persis dengan struktur ini, tanpa teks lain:
-{{
-  "minute_by_minute": [{{"time": "mm:ss", "point": "..."}}],
-  "decisions": ["..."],
-  "action_items": [{{"item": "...", "assignee": "...", "due": "..."}}],
-  "detailed_notes": "catatan detail dan lengkap dalam Bahasa Indonesia"
-}}
-"""
-
 
 def _chunk_transcript(transcript_text: str, budget: int | None = None) -> list[str]:
     budget = budget if budget is not None else _CHUNK_CHAR_BUDGET
@@ -83,6 +66,34 @@ def _chunk_transcript(transcript_text: str, budget: int | None = None) -> list[s
         current_len += len(line) + 1
     chunks.append("\n".join(current))
     return chunks
+
+
+def _merge_parts(parts: list[dict]) -> dict:
+    minute_by_minute: list[dict] = []
+    decisions: list[str] = []
+    action_items: list[dict] = []
+    notes: list[str] = []
+    seen_decisions: set[str] = set()
+    seen_action_items: set[tuple] = set()
+    for part in parts:
+        minute_by_minute.extend(part["minute_by_minute"])
+        for decision in part["decisions"]:
+            if decision not in seen_decisions:
+                seen_decisions.add(decision)
+                decisions.append(decision)
+        for action in part["action_items"]:
+            key = (action.get("item"), action.get("assignee"), action.get("due"))
+            if key not in seen_action_items:
+                seen_action_items.add(key)
+                action_items.append(action)
+        if part["detailed_notes"]:
+            notes.append(part["detailed_notes"])
+    return {
+        "minute_by_minute": minute_by_minute,
+        "decisions": decisions,
+        "action_items": action_items,
+        "detailed_notes": "\n\n".join(notes),
+    }
 
 
 def _to_mom(data: dict) -> "MomResult":
@@ -136,8 +147,4 @@ class GroqSummarizer:
                     )
                 )
             )
-        _pause_for_rate_limit()
-        reduce_prompt = _REDUCE_PROMPT_TEMPLATE.format(
-            title=meeting_title, parts_json=json.dumps(parts, ensure_ascii=False)
-        )
-        return _to_mom(self._request(reduce_prompt))
+        return _to_mom(_merge_parts(parts))
