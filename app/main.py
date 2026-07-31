@@ -43,7 +43,10 @@ def check_ffmpeg_available() -> bool:
     """Diarization (pyannote/torchaudio) needs FFmpeg's shared libraries on
     PATH to decode audio. Missing FFmpeg doesn't stop the app — capture, ASR,
     and summarization all work without it — only diarization will fail later,
-    so we warn once at startup instead of silently installing anything."""
+    so we warn once at startup instead of silently installing anything. A
+    packaged .exe has no console window (console=False in the PyInstaller
+    spec), so the stderr print alone would never reach a real user -- a
+    dialog with install steps is needed too."""
     if shutil.which("ffmpeg") is not None:
         return True
     print(
@@ -51,6 +54,16 @@ def check_ffmpeg_available() -> bool:
         "berfungsi. Pasang dengan: winget install ffmpeg",
         file=sys.stderr,
     )
+    root = tk.Tk()
+    root.withdraw()
+    messagebox.showwarning(
+        "Rekamind",
+        "ffmpeg tidak ditemukan. Speaker diarization tidak akan berfungsi.\n\n"
+        "Cara pasang:\n"
+        "1. Buka terminal, jalankan: winget install ffmpeg\n"
+        "2. Tutup dan buka ulang Rekamind.",
+    )
+    root.destroy()
     return False
 
 

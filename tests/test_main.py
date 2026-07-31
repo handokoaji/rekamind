@@ -1,6 +1,7 @@
 import threading
 import time
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import sys
 
@@ -15,10 +16,25 @@ def test_check_ffmpeg_available_true_when_on_path(monkeypatch):
     assert main.check_ffmpeg_available() is True
 
 
-def test_check_ffmpeg_available_false_when_missing(monkeypatch, capsys):
+def test_check_ffmpeg_available_false_when_missing_shows_install_tutorial(monkeypatch, capsys):
+    """A packaged .exe has no console (console=False in the PyInstaller spec),
+    so the stderr warning alone is invisible to a real user -- it must also
+    surface as a dialog with install steps."""
     monkeypatch.setattr(main.shutil, "which", lambda name: None)
+    shown = []
+    monkeypatch.setattr(main.messagebox, "showwarning", lambda title, msg: shown.append((title, msg)))
+    fake_root = MagicMock()
+    monkeypatch.setattr(main.tk, "Tk", lambda: fake_root)
+
     assert main.check_ffmpeg_available() is False
+
     assert "ffmpeg" in capsys.readouterr().err.lower()
+    assert len(shown) == 1
+    title, msg = shown[0]
+    assert title == "Rekamind"
+    assert "winget install ffmpeg" in msg
+    fake_root.withdraw.assert_called_once()
+    fake_root.destroy.assert_called_once()
 
 
 class _FakeDiarizer:
