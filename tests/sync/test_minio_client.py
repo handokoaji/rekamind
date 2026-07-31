@@ -251,6 +251,59 @@ def test_pull_skips_manifests_owned_by_local_device(monkeypatch, tmp_path):
     fake_client.get_object.assert_not_called()
 
 
+def test_download_file_fetches_object_to_dest(monkeypatch, tmp_path):
+    fake_module = _fake_minio_module()
+    fake_client = fake_module.Minio.return_value
+    monkeypatch.setitem(sys.modules, "minio", fake_module)
+    dest = tmp_path / "mom.docx"
+
+    minio_client.download_file(FakeSettings(), "dev2", "uuid123", "mom.docx", dest)
+
+    fake_client.fget_object.assert_called_once_with("meetings", "dev2/uuid123/mom.docx", str(dest))
+
+
+def test_download_file_rejects_path_traversal_in_device_id(monkeypatch, tmp_path):
+    fake_module = _fake_minio_module()
+    monkeypatch.setitem(sys.modules, "minio", fake_module)
+
+    try:
+        minio_client.download_file(
+            FakeSettings(), "../../../../etc", "uuid123", "mom.docx", tmp_path / "mom.docx",
+        )
+        assert False, "expected ValueError"
+    except ValueError:
+        pass
+
+
+def test_download_file_rejects_path_traversal_in_meeting_dir(monkeypatch, tmp_path):
+    fake_module = _fake_minio_module()
+    monkeypatch.setitem(sys.modules, "minio", fake_module)
+
+    try:
+        minio_client.download_file(
+            FakeSettings(), "dev2", "..\\..\\Windows\\System32\\evil", "mom.docx", tmp_path / "mom.docx",
+        )
+        assert False, "expected ValueError"
+    except ValueError:
+        pass
+
+
+def test_pull_skips_manifest_with_path_traversal_in_object_name(monkeypatch, tmp_path):
+    fake_module = _fake_minio_module()
+    fake_client = fake_module.Minio.return_value
+    monkeypatch.setitem(sys.modules, "minio", fake_module)
+    fake_client.list_objects.return_value = [_fake_object("../../../etc/uuid123/manifest.json")]
+
+    session_factory = _make_db()
+    settings = FakeSettings(device_id="dev1")
+    settings.recordings_dir = tmp_path
+
+    result = minio_client.pull(session_factory, settings)
+
+    assert result["pulled"] == 0
+    fake_client.get_object.assert_not_called()
+
+
 def test_pull_skips_manifests_already_known_locally(monkeypatch, tmp_path):
     fake_module = _fake_minio_module()
     fake_client = fake_module.Minio.return_value

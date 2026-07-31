@@ -1,5 +1,6 @@
 import io
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -7,6 +8,19 @@ from sqlalchemy import select
 
 from app.storage.models import Meeting, Speaker, Summary, TranscriptSegment
 from app.storage import repository as repo
+
+# device_id and meeting_dir are always uuid4().hex on the writing side, but
+# pull() derives them from MinIO object names -- data written by other,
+# potentially untrusted or compromised devices sharing the same bucket. A
+# malicious "../../.." component there would otherwise let a remote object
+# name control where pull() writes on this local filesystem (path
+# traversal). Restricting to this charset also happens to be exactly what
+# uuid4().hex ever produces, so it rejects nothing legitimate.
+_SAFE_PATH_COMPONENT = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _is_safe_path_component(value: str) -> bool:
+    return bool(_SAFE_PATH_COMPONENT.match(value))
 
 
 def is_configured(settings) -> bool:
@@ -119,7 +133,12 @@ def pull(session_factory, settings) -> dict:
                 device_id, meeting_uuid, _ = obj.object_name.split("/", 2)
                 if device_id == settings.device_id:
                     continue
-                recording_dir = Path(settings.recordings_dir) / device_id / meeting_uuid
+                if not (_is_safe_path_component(device_id) and _is_safe_path_component(meeting_uuid)):
+                    continue  # malformed/malicious object name -- skip, don't let it touch the filesystem
+                recordings_root = Path(settings.recordings_dir).resolve()
+                recording_dir = (recordings_root / device_id / meeting_uuid).resolve()
+                if not recording_dir.is_relative_to(recordings_root):
+                    continue  # defense in depth -- should be unreachable once the charset check above passes
                 existing = await session.execute(
                     select(Meeting).where(Meeting.recording_dir == str(recording_dir))
                 )
@@ -164,3 +183,11 @@ def pull(session_factory, settings) -> dict:
         return {"pulled": pulled}
 
     return asyncio.run(_run())
+
+
+def download_file(settings, device_id: str, meeting_dir: str, filename: str, dest: Path) -> None:
+    if not (_is_safe_path_component(device_id) and _is_safe_path_component(meeting_dir)):
+        raise ValueError(f"unsafe device_id/meeting_dir for MinIO download: {device_id!r}/{meeting_dir!r}")
+    client = _client(settings)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    client.fget_object(settings.minio_bucket, f"{device_id}/{meeting_dir}/{filename}", str(dest))
