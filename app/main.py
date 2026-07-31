@@ -224,7 +224,11 @@ def main() -> None:
         get_settings.cache_clear()
         settings = get_settings()
         engine = make_engine(settings.database_url)
-        asyncio.run(init_db(engine))
+        try:
+            asyncio.run(init_db(engine))
+        except Exception as retry_exc:
+            messagebox.showerror("Rekamind", f"Tidak bisa konek ke database: {retry_exc}")
+            return
     session_factory = make_session_factory(engine)
 
     recovered = asyncio.run(recover_abandoned_meetings(session_factory))

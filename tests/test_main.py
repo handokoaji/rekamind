@@ -295,6 +295,48 @@ def test_main_shows_fatal_error_and_exits_on_unsupported_hardware(monkeypatch):
     assert exc_info.value.code != 0
 
 
+def test_main_shows_error_and_returns_when_retried_init_db_also_fails(monkeypatch):
+    """Regression test: after the user reconfigures settings via the startup
+    error dialog's wizard, the retried asyncio.run(init_db(engine)) had no
+    try/except -- a second consecutive DB failure crashed the whole process
+    uncaught, invisible in a console-less packaged .exe. It must instead show
+    another error dialog and return, same as the UnsupportedHardwareError
+    path just above."""
+    fake_settings = SimpleNamespace(
+        database_url="sqlite+aiosqlite:///:memory:", asr_backend_override="",
+        hf_token="", groq_api_key="", device_id="d", device_label="l",
+    )
+
+    def _fake_get_settings():
+        return fake_settings
+    _fake_get_settings.cache_clear = lambda: None
+    monkeypatch.setattr(main, "get_settings", _fake_get_settings)
+    monkeypatch.setattr(main, "run_first_run_wizard_if_needed", lambda: True)
+    monkeypatch.setattr(main, "detect_backend", lambda override: "cpu")
+    monkeypatch.setattr(main, "check_ffmpeg_available", lambda: True)
+    monkeypatch.setattr(main, "make_engine", lambda url: object())
+
+    init_db_calls = []
+
+    def _always_raise(engine):
+        init_db_calls.append(engine)
+        raise RuntimeError(f"connection refused (attempt {len(init_db_calls)})")
+
+    monkeypatch.setattr(main, "init_db", _always_raise)
+    monkeypatch.setattr(main, "_handle_startup_db_error", lambda exc: True)  # user chose to retry
+
+    error_shown = []
+    monkeypatch.setattr(main.messagebox, "showerror", lambda title, msg: error_shown.append((title, msg)))
+    window_created = []
+    monkeypatch.setattr(main, "MainWindow", lambda *a, **k: window_created.append(True))
+
+    main.main()  # must return gracefully, not raise
+
+    assert len(init_db_calls) == 2  # first attempt, then the retry -- both failed
+    assert error_shown  # a fatal error dialog was shown instead of crashing uncaught
+    assert window_created == []
+
+
 def test_prepend_bundled_ffmpeg_adds_to_path_when_dir_exists(monkeypatch, tmp_path):
     ffmpeg_dir = tmp_path / "ffmpeg"
     ffmpeg_dir.mkdir()
