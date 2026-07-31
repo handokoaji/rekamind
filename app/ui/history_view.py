@@ -160,17 +160,19 @@ class HistoryView(tk.Frame):
         self._status_label.config(text=label)
 
         state = "disabled" if meeting.id in self._busy_meeting_ids else "normal"
-        if status == "recorded":
+        is_own = meeting.device_id is None or meeting.device_id == self._controller.local_device_id
+        if status == "recorded" and is_own:
             self._transcribe_button.config(state=state)
             self._transcribe_button.pack(side="left")
         elif status == "transcribed":
-            self._summarize_button.config(state=state)
-            self._summarize_button.pack(side="left")
+            if is_own:
+                self._summarize_button.config(state=state)
+                self._summarize_button.pack(side="left")
             self._view_transcript_button.pack(side="left")
         elif status == "completed":
             self._download_button.pack(side="left")
             self._view_transcript_button.pack(side="left")
-        elif status == "failed":
+        elif status == "failed" and is_own:
             self._retry_button.config(state=state)
             self._retry_button.pack(side="left")
 
@@ -220,10 +222,19 @@ class HistoryView(tk.Frame):
         self._start_action(self._retry_button, self._controller.retry)
 
     def _handle_download(self) -> None:
+        # ponytail: deliberately synchronous, not routed through
+        # _start_action's background-thread pattern -- that pattern has a
+        # pre-existing Tk/threading crash risk (measured ~66% reproduction
+        # rate across full-suite runs, tracked as a known issue predating
+        # this method; see MinIO plan Task 9 notes) that this change must
+        # not make worse. For a meeting recorded on this device (the common
+        # case) ensure_docx_available returns immediately, identical to the
+        # old get_docx_path -- only a meeting pulled from another device and
+        # not yet cached locally pays a brief synchronous MinIO download.
         meeting = self._selected_meeting()
         if meeting is None:
             return
-        docx_path = self._controller.get_docx_path(meeting.id)
+        docx_path = self._controller.ensure_docx_available(meeting.id)
         if docx_path:
             os.startfile(docx_path)
 

@@ -42,13 +42,14 @@ def _tk_available() -> bool:
         return False
 
 
-def _meeting(id, title, status, error_message=None, failed_stage=None, device_label=None, end_time=None):
+def _meeting(id, title, status, error_message=None, failed_stage=None, device_label=None,
+             end_time=None, device_id=None):
     return SimpleNamespace(
         id=id, title=title, status=status,
         start_time=datetime(2026, 7, 31, 9, 0, tzinfo=timezone.utc),
         created_at=datetime(2026, 7, 31, 9, 0, tzinfo=timezone.utc),
         error_message=error_message, failed_stage=failed_stage, device_label=device_label,
-        end_time=end_time,
+        end_time=end_time, device_id=device_id,
     )
 
 
@@ -65,6 +66,7 @@ class FakeController:
         self.minio_configured = False
         self.sync_calls = 0
         self.sync_result = {"manifests": 0, "uploaded": 0, "pulled": 0}
+        self.local_device_id = "dev1"
 
     def sync_now(self):
         self.sync_calls += 1
@@ -87,6 +89,10 @@ class FakeController:
         return self.transcript_by_id.get(meeting_id, [])
 
     def get_docx_path(self, meeting_id):
+        self.download_calls.append(meeting_id)
+        return "C:/recordings/1/mom.docx"
+
+    def ensure_docx_available(self, meeting_id):
         self.download_calls.append(meeting_id)
         return "C:/recordings/1/mom.docx"
 
@@ -400,6 +406,7 @@ def test_download_button_calls_controller_get_docx_path(monkeypatch):
     opened = []
     monkeypatch.setattr("app.ui.history_view.os.startfile", lambda path: opened.append(path))
     controller = FakeController([_meeting(1, "Rapat A", "completed")])
+    controller.local_device_id = "dev1"
     view = HistoryView(root, controller)
     view._tree.selection_set("1")
     view._on_select()
@@ -407,6 +414,44 @@ def test_download_button_calls_controller_get_docx_path(monkeypatch):
     view._handle_download()
 
     assert opened == ["C:/recordings/1/mom.docx"]
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_own_meeting_shows_processing_buttons():
+    root = tk.Tk()
+    controller = FakeController([_meeting(1, "Rapat A", "recorded", device_id="dev1")])
+    view = HistoryView(root, controller)
+    view._tree.selection_set("1")
+    view._on_select()
+
+    assert str(view._transcribe_button.winfo_manager()) == "pack"
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_pulled_meeting_hides_processing_buttons_but_keeps_view_and_delete():
+    root = tk.Tk()
+    controller = FakeController([_meeting(1, "Rapat Lain", "recorded", device_id="dev2")])
+    view = HistoryView(root, controller)
+    view._tree.selection_set("1")
+    view._on_select()
+
+    assert str(view._transcribe_button.winfo_manager()) == ""
+    assert str(view._delete_button.winfo_manager()) == "pack"
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_pulled_meeting_transcribed_status_shows_only_view_not_summarize():
+    root = tk.Tk()
+    controller = FakeController([_meeting(1, "Rapat Lain", "transcribed", device_id="dev2")])
+    view = HistoryView(root, controller)
+    view._tree.selection_set("1")
+    view._on_select()
+
+    assert str(view._summarize_button.winfo_manager()) == ""
+    assert str(view._view_transcript_button.winfo_manager()) == "pack"
     root.destroy()
 
 
