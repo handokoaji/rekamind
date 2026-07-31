@@ -24,25 +24,31 @@ first** — the rebrand was scoped to user-facing strings + packaging
 metadata only. Internal Python identifiers (the `app` package, module
 names, `RecorderController`, etc.) were deliberately left alone.
 
-## State as of 2026-07-31
+## State as of 2026-08-01
 
 **Worktree:** `C:\Project\meeting\.claude\worktrees\storage-backend-wizard`
 **Branch:** `worktree-storage-backend-wizard` (pushed to `origin`, tracking
 `origin/worktree-storage-backend-wizard`)
-**Latest commit:** `480bc56` (rebrand) on top of `7e39db7` (Plan #4 complete)
+**Latest commit:** `465edd7` (Plan #5 complete) on top of `480bc56` (rebrand)
 
-**Merge-to-master status: explicitly deferred, not a bug.** The human
-partner asked about merging to master mid-session; when shown the open
-items below (Plan #5 not started, no final whole-branch review, the known
-Tk-threading crash risk, MinIO never tested against a real server) they
-chose "tunggu, selesaikan dulu" (wait, finish first) over merging as-is.
-**Do not merge this branch to master until Plan #5 is done and a final
-whole-branch review has happened**, unless the human partner explicitly
-says otherwise in a future session. When it is time to merge: **direct
-`git merge`, not a GitLab merge request** — the human partner said so
-explicitly (the repo is hosted at
+**Plan #5 (packaging) is now done — see its own section below.** The one
+remaining gate before merge is the **final whole-branch review** (never
+done yet across all 5 plans) plus the manual/real-world verification items
+listed further down (none of which an agent can do).
+
+**Merge-to-master status: still explicitly deferred, not a bug.** The human
+partner asked about merging to master earlier in this feature's work; when
+shown the open items (Plan #5 not started at the time, no final
+whole-branch review, the known Tk-threading crash risk, MinIO never tested
+against a real server) they chose "tunggu, selesaikan dulu" (wait, finish
+first) over merging as-is. **Do not merge this branch to master until a
+final whole-branch review has happened**, unless the human partner
+explicitly says otherwise in a future session. When it is time to merge:
+**direct `git merge`, not a GitLab merge request** — the human partner said
+so explicitly (the repo is hosted at
 `https://git.dev.ugm.ac.id/aksi_riset/meeting`, which offers an MR flow on
-push; skip it).
+push; skip it). Use `superpowers:finishing-a-development-branch` for that
+step.
 
 This worktree/branch was created via the `EnterWorktree` tool from a session
 using `superpowers:subagent-driven-development`. If the worktree directory
@@ -62,7 +68,7 @@ needed — running `C:\Project\meeting\.venv\Scripts\python.exe` from
 *within* the worktree directory correctly resolves the worktree's own
 `app`/`tests` packages (verified empirically this session).
 
-## What's done (5 design specs, 4 of 5 implementation plans fully executed)
+## What's done (5 design specs, all 5 implementation plans fully executed)
 
 All specs live in `docs/superpowers/specs/2026-07-31-*.md`, all plans in
 `docs/superpowers/plans/2026-07-31-*.md` (present in this worktree and
@@ -75,7 +81,7 @@ directly before implementation began).
 | 2 | `2026-07-31-device-identity.md` | ✅ 8/8 tasks done (+ the small "durasi meeting" item, folded into its Task 7) |
 | 3 | `2026-07-31-hardware-capability-check.md` | ✅ 3/3 tasks done |
 | 4 | `2026-07-31-minio-file-sync.md` | ✅ 10/10 tasks done |
-| 5 | `2026-07-31-exe-packaging.md` | ❌ **NOT STARTED — this is the next work** |
+| 5 | `2026-07-31-exe-packaging.md` | ✅ 6/6 tasks done (2026-08-01) |
 
 Every task across plans 1-4 was implemented directly by the controller
 (no subagent dispatch) after the session hit its monthly spend limit
@@ -91,9 +97,12 @@ directory itself still exists. If it's gone, the full history is still in
 the git commit messages (each commit message documents what it did and why
 in detail) — read `git log --stat` on the branch.
 
-Full test suite: **243 passed**, 2 skipped (pre-existing Tcl/Tk env flake,
+Full test suite: **257 passed**, 2 skipped (pre-existing Tcl/Tk env flake,
 harmless), 2 deselected (`hardware`/`postgres` markers, excluded by
-`pytest.ini` default). Verified clean across 4 consecutive runs.
+`pytest.ini` default). Verified clean across multiple consecutive runs on
+2026-08-01 (Plan #4's known intermittent Tk-teardown access-violation crash
+— see below — reproduced twice during these runs and is unrelated to
+Plan #5's changes, all of which are either pure-stdlib or Tk-widget-additive).
 
 ## Two things found and fixed along the way (worth knowing about)
 
@@ -137,45 +146,72 @@ harmless), 2 deselected (`hardware`/`postgres` markers, excluded by
   never against a real MinIO server. Worth a manual pass with two real
   device installs pointed at the same bucket before shipping this feature.
 
-## What's next: Plan 5 (packaging)
+## Plan #5 (packaging) — what was actually built (2026-08-01)
 
-Read `docs/superpowers/plans/2026-07-31-exe-packaging.md` in full before
-starting. 6 tasks:
+All 6 tasks done, TDD throughout (RED confirmed → GREEN → full suite →
+commit), same rhythm as plans 1-4:
 
-1. App version constant (`app/__init__.py::__version__`) + bundled-ffmpeg
-   PATH detection in `app/main.py`
-2. `app/update_check.py` — stdlib-only (`urllib.request`, no new
-   dependency) update-availability check against a Releases API
-3. Wire the update check into startup + a non-blocking UI notification
-4. PyInstaller build configuration (`packaging/MeetingRecorder.spec` +
-   `packaging/README.md`)
-5. Inno Setup installer script (`packaging/installer.iss`)
-6. Full regression pass + a manual distribution checklist (install on a
-   clean machine, confirm it runs without Python/venv present, etc.)
+1. `app/__init__.py::__version__ = "0.1.0"` (kept in sync with
+   `pyproject.toml` manually — two independent version strings by design,
+   see the file's own comment) + `app/main.py::prepend_bundled_ffmpeg_to_path()`,
+   called as the very first line of `main()`. Commit `a3d7d1f`.
+2. `app/update_check.py::check_for_update()` — stdlib `urllib.request` only,
+   silent on any failure (blank URL, network error, malformed JSON), handles
+   both GitHub (dict) and GitLab (list) Releases API response shapes.
+   `RELEASES_API_URL`/`RELEASES_PAGE_URL` are blank on purpose (zero network
+   activity until a maintainer fills them in once a real release exists —
+   see Task 6 note below). Commit `094956f`.
+3. `app/main.py::_start_update_check()` (background thread, calls the
+   on-startup callback only if a newer version exists) wired into `main()`
+   right after `window_ref["window"] = window`; `app/ui/window.py` gained
+   `update_notice_var`/`update_notice_label` (clickable, opens
+   `RELEASES_PAGE_URL` via `webbrowser.open`, no-op if blank) and an
+   `"update_available"` branch in `_drain_live_events`. Commit `9873fdf`.
+4. `packaging/MeetingRecorder.spec` (PyInstaller, `collect_all` for the
+   heavy ML deps, `console=False`) + `packaging/README.md` (build steps).
+   `.gitignore` gained `dist/`, `build/`, `packaging/ffmpeg/`,
+   `packaging/Output/`. Commit `70b6167`.
+5. `packaging/installer.iss` (Inno Setup — installs to `{autopf}`, Start
+   Menu shortcuts, uninstaller; `AppVersion`/`OutputBaseFilename` need
+   bumping by hand alongside `__version__` and `pyproject.toml` per
+   release). Commit `465edd7`.
+6. Full suite verified clean (257 passed) across multiple runs — see test
+   count note above. The manual distribution checklist (install on a clean
+   machine, etc.) is **not done** — cannot be done by an agent, see below.
 
-Tasks 1-3 are normal application code — TDD them the same way every task in
-plans 1-4 was done (see any commit in this branch for the exact
-established rhythm: write failing test → confirm RED → implement → confirm
-GREEN → run full suite → commit with a message explaining what and why).
+**One addition beyond the plan's own text, done at the human partner's
+request mid-session:** `check_ffmpeg_available()` in `app/main.py` now also
+shows a `messagebox.showwarning` dialog with install steps
+(`winget install ffmpeg`) when ffmpeg is missing, not just a stderr print —
+a packaged `.exe` has no console window (`console=False` in the spec), so
+the stderr warning alone would never reach a real user. Commit
+`0f1d84e`, between Task 2 and Task 3 in the git log.
 
-Tasks 4-5 are NOT Python code and have no pytest coverage by design (per
-the plan's own Testing section) — they end in "run this command, check
-this output" manual verification steps instead of a red/green cycle.
-Task 6 is verification-only.
+Tasks 4-5's own build/run/install verification (PyInstaller not installed
+in this venv; building requires downloading a real `ffmpeg.exe`, running a
+multi-minute build with heavy ML deps, then Inno Setup, then installing on
+a clean machine) was **not attempted** — this matches the plan's own
+Testing section, which describes these as manual steps for a human, not a
+red/green cycle.
 
-**Continue in the SAME worktree/branch** (`worktree-storage-backend-wizard`)
-— don't start a fresh worktree for Plan 5, since it doesn't depend on
-anything from Plans 1-4 code-wise per the plan's own Global Constraints,
-but keeping one branch for the whole "multi-device distribution" feature
-set makes the eventual merge to `master` simpler (one PR/branch, not five).
+## What's next: final review + merge decision
 
-After Plan 5 is done, the whole branch needs a final review pass and a
-decision on how to merge into `master` (which will have diverged further
-by then — `master` already gained unrelated Groq-chunking commits while
-this branch was in progress; that's a clean, non-overlapping merge, not a
-conflict, but check again before merging since more time will have
-passed). Use `superpowers:finishing-a-development-branch` for that step
-once Plan 5 is done and reviewed.
+Plan #5 is the last of the 5 implementation plans — there is no more
+planned application code left in this feature series. What's left:
+
+1. **A final whole-branch review** (never done across all 5 plans) — diff
+   the whole branch against wherever `master` is by then, using whatever
+   review process the human partner prefers (`code-review` skill, manual
+   read-through, etc.).
+2. **The manual/real-world verification items** listed above and in the
+   "Manual/real-world verification still outstanding" section further up —
+   none of these can be done by an agent.
+3. Once both of those are satisfactorily addressed, use
+   `superpowers:finishing-a-development-branch` to decide how to merge into
+   `master` (which will have diverged further by then — check again before
+   merging, `master` already had unrelated commits land while this branch
+   was in progress last time this was checked). **Direct `git merge`, not a
+   GitLab MR**, per the human partner's explicit instruction above.
 
 ---
 
@@ -185,13 +221,18 @@ once Plan 5 is done and reviewed.
 Lanjutkan pekerjaan multi-device/storage feature (Rekamind) dari sesi
 sebelumnya. Baca file RESUME_PROMPT.md di root repo
 (C:\Project\meeting\RESUME_PROMPT.md) untuk konteks lengkap -- termasuk
-rebranding ke "Rekamind" + lisensi MIT yang sudah selesai, dan status
-merge-to-master yang SENGAJA ditunda (jangan merge tanpa konfirmasi ulang).
-Lanjutkan ke Plan #5 (packaging .exe) --
-docs/superpowers/plans/2026-07-31-exe-packaging.md -- di worktree/branch
-yang sama (worktree-storage-backend-wizard, sudah di-push ke origin).
-Kerjakan langsung (tanpa subagent) mengikuti ritme TDD yang sudah dipakai
-di semua commit sebelumnya di branch ini: tulis test gagal dulu, konfirmasi
-RED, implementasi, konfirmasi GREEN, jalankan full suite, baru commit dan
-push ke origin.
+rebranding ke "Rekamind" + lisensi MIT, Plan #5 (packaging .exe) yang sudah
+selesai (6/6 task), dan status merge-to-master yang SENGAJA ditunda (jangan
+merge tanpa konfirmasi ulang).
+
+Semua 5 plan implementasi sudah selesai. Yang tersisa: (1) final
+whole-branch review yang belum pernah dilakukan di seluruh branch ini, (2)
+item verifikasi manual yang tidak bisa dikerjakan agent (lihat bagian
+"Manual/real-world verification still outstanding" di RESUME_PROMPT.md),
+(3) baru setelah itu putuskan cara merge ke master pakai
+superpowers:finishing-a-development-branch -- direct git merge, BUKAN
+GitLab merge request.
+
+Worktree/branch: worktree-storage-backend-wizard (sudah di-push ke
+origin). Kerjakan langsung (tanpa subagent) kecuali diminta lain.
 ```
