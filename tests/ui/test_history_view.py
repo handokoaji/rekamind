@@ -533,3 +533,60 @@ def test_sync_button_shown_and_calls_controller_when_configured():
     assert controller.sync_calls == 1
     assert "3" in view._sync_status_label.cget("text")  # pulled count surfaced
     root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_run_in_background_worker_never_calls_after_from_its_own_thread():
+    """Regression test for a pre-existing crash risk: Tkinter only honors
+    self.after(...) while the main thread is inside mainloop() -- calling it
+    from a background thread races Tk teardown and can hard-crash the process
+    (Windows fatal exception, not just a Python exception). The worker must
+    only hand work to the main thread via a thread-safe queue, mirroring
+    window.py's push_live_event/_drain_live_events pattern."""
+    root = tk.Tk()
+    controller = FakeController([_meeting(1, "Rapat A", "recorded")])
+    view = HistoryView(root, controller)
+
+    main_thread = threading.current_thread()
+    calls_from_wrong_thread = []
+    original_after = view.after
+
+    def _tracking_after(*args, **kwargs):
+        if threading.current_thread() is not main_thread:
+            calls_from_wrong_thread.append(threading.current_thread())
+        return original_after(*args, **kwargs)
+
+    view.after = _tracking_after
+
+    thread = view._run_in_background(lambda meeting_id: None, 1)
+    thread.join(timeout=2)
+
+    assert calls_from_wrong_thread == []
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_handle_sync_worker_never_calls_after_from_its_own_thread():
+    root = tk.Tk()
+    controller = FakeController([])
+    controller.minio_configured = True
+    view = HistoryView(root, controller)
+
+    main_thread = threading.current_thread()
+    calls_from_wrong_thread = []
+    original_after = view.after
+
+    def _tracking_after(*args, **kwargs):
+        if threading.current_thread() is not main_thread:
+            calls_from_wrong_thread.append(threading.current_thread())
+        return original_after(*args, **kwargs)
+
+    view.after = _tracking_after
+
+    view._handle_sync()
+    deadline = time.time() + 2
+    while view._sync_in_progress and time.time() < deadline:
+        time.sleep(0.01)
+
+    assert calls_from_wrong_thread == []
+    root.destroy()

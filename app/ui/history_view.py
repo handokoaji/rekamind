@@ -1,5 +1,6 @@
 import logging
 import os
+import queue
 import threading
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
@@ -48,6 +49,13 @@ class HistoryView(tk.Frame):
         self._busy_meeting_ids: set[int] = set()
         self._action_error: tuple[int, str] | None = None
         self._sync_in_progress = False
+        # Background threads (transcribe/summarize/retry/delete/sync workers)
+        # must never call self.after() themselves -- Tkinter only honors it
+        # while the main thread is inside mainloop(), so a call from a worker
+        # thread races Tk teardown and can hard-crash the process. They only
+        # put callables here; only the main thread (via _drain_pending_actions,
+        # itself scheduled through self.after) ever runs them.
+        self._pending_actions: "queue.Queue" = queue.Queue()
 
         self._tree = ttk.Treeview(
             self, columns=("title", "date", "status", "device", "duration"), show="headings", height=10,
@@ -83,6 +91,7 @@ class HistoryView(tk.Frame):
 
         self.refresh()
         self.after(_REFRESH_INTERVAL_MS, self._poll)
+        self.after(100, self._drain_pending_actions)
 
     def set_active(self, is_active: bool) -> None:
         """Called by MainWindow when this tab is raised/left. Refreshing once on
@@ -182,7 +191,17 @@ class HistoryView(tk.Frame):
             self._delete_button.config(state=state)
             self._delete_button.pack(side="right")
 
-    def _run_in_background(self, fn, meeting_id: int) -> None:
+    def _drain_pending_actions(self) -> None:
+        try:
+            while True:
+                callback = self._pending_actions.get_nowait()
+                callback()
+        except queue.Empty:
+            pass
+        finally:
+            self.after(100, self._drain_pending_actions)
+
+    def _run_in_background(self, fn, meeting_id: int) -> threading.Thread:
         def _worker():
             try:
                 fn(meeting_id)
@@ -192,12 +211,14 @@ class HistoryView(tk.Frame):
                 # Kept in a field, not just written to the label: the refresh
                 # scheduled below rebuilds the panel and would wipe a bare label.
                 self._action_error = (meeting_id, message)
-                self.after(0, lambda: self._status_label.config(text=message))
+                self._pending_actions.put(lambda: self._status_label.config(text=message))
             finally:
                 self._busy_meeting_ids.discard(meeting_id)
-                self.after(0, self.refresh)
+                self._pending_actions.put(self.refresh)
 
-        threading.Thread(target=_worker, daemon=True).start()
+        thread = threading.Thread(target=_worker, daemon=True)
+        thread.start()
+        return thread
 
     def _start_action(self, button: tk.Button, fn) -> None:
         """Disable the button synchronously BEFORE the thread starts (same
@@ -222,15 +243,12 @@ class HistoryView(tk.Frame):
         self._start_action(self._retry_button, self._controller.retry)
 
     def _handle_download(self) -> None:
-        # ponytail: deliberately synchronous, not routed through
-        # _start_action's background-thread pattern -- that pattern has a
-        # pre-existing Tk/threading crash risk (measured ~66% reproduction
-        # rate across full-suite runs, tracked as a known issue predating
-        # this method; see MinIO plan Task 9 notes) that this change must
-        # not make worse. For a meeting recorded on this device (the common
-        # case) ensure_docx_available returns immediately, identical to the
-        # old get_docx_path -- only a meeting pulled from another device and
-        # not yet cached locally pays a brief synchronous MinIO download.
+        # Deliberately synchronous, not routed through _start_action's
+        # background-thread pattern. For a meeting recorded on this device
+        # (the common case) ensure_docx_available returns immediately,
+        # identical to the old get_docx_path -- only a meeting pulled from
+        # another device and not yet cached locally pays a brief synchronous
+        # MinIO download.
         meeting = self._selected_meeting()
         if meeting is None:
             return
@@ -272,8 +290,8 @@ class HistoryView(tk.Frame):
                 message = f"Sync gagal: {exc}"
             finally:
                 self._sync_in_progress = False
-                self.after(0, lambda: self._sync_status_label.config(text=message))
-                self.after(0, self.refresh)
+                self._pending_actions.put(lambda: self._sync_status_label.config(text=message))
+                self._pending_actions.put(self.refresh)
 
         threading.Thread(target=_worker, daemon=True).start()
 
