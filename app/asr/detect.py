@@ -1,13 +1,24 @@
+class UnsupportedHardwareError(RuntimeError):
+    """Tidak ada backend ASR (GPU maupun CPU) yang bisa jalan di perangkat ini."""
+
+
+def _ctranslate2_importable() -> bool:
+    try:
+        import ctranslate2  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
 def _cuda_available() -> bool:
     """faster-whisper runs on ctranslate2, not torch — checking torch.cuda
     here would report no-GPU on a machine with CUDA-capable ctranslate2 but
     a CPU-only torch wheel (torch is only pulled in transitively, by the
     diarizer)."""
-    try:
-        import ctranslate2
-        return ctranslate2.get_cuda_device_count() > 0
-    except ImportError:
+    if not _ctranslate2_importable():
         return False
+    import ctranslate2
+    return ctranslate2.get_cuda_device_count() > 0
 
 
 def _openvino_gpu_or_npu_available() -> bool:
@@ -26,4 +37,10 @@ def detect_backend(override: str = "") -> str:
         return "cuda"
     if _openvino_gpu_or_npu_available():
         return "openvino"
-    return "cpu"
+    if _ctranslate2_importable():
+        return "cpu"
+    raise UnsupportedHardwareError(
+        "Perangkat ini tidak mendukung transkripsi audio (GPU tidak "
+        "terdeteksi dan CPU tidak sanggup menjalankan mesin ASR). "
+        "Aplikasi tidak bisa dijalankan di perangkat ini."
+    )
