@@ -120,12 +120,13 @@ def test_vad_module_importable_without_torch_at_module_level():
         "torch should not be imported at module level; it should only be imported inside _bytes_to_tensor"
 
 
-def test_load_silero_vad_iterator_reuses_the_model_but_not_the_iterator(monkeypatch):
-    """I7: the model load is the expensive part and is cached; the iterator
-    carries per-session trigger state and must be fresh every meeting."""
+def test_load_silero_vad_iterator_never_shares_the_model(monkeypatch):
+    """The model (not the iterator) holds the VAD's mutable trigger state
+    (_state/_context), mutated on every call. Mic and speaker run concurrently
+    on separate threads; a shared model there is a data race that corrupts VAD
+    state and crashes the process natively. Every call must get its own model."""
     import app.live.vad as vad_module
 
-    vad_module._load_silero_model.cache_clear()
     loads = []
 
     class _FakeSileroModule:
@@ -143,7 +144,6 @@ def test_load_silero_vad_iterator_reuses_the_model_but_not_the_iterator(monkeypa
     first = vad_module.load_silero_vad_iterator()
     second = vad_module.load_silero_vad_iterator()
 
-    assert len(loads) == 1  # model loaded once...
+    assert len(loads) == 2  # model loaded fresh each time...
     assert first is not second  # ...iterator built fresh each time
-    assert first.model is second.model
-    vad_module._load_silero_model.cache_clear()
+    assert first.model is not second.model  # ...and never shares mutable VAD state

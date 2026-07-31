@@ -1,4 +1,3 @@
-import functools
 from dataclasses import dataclass
 
 import numpy as np
@@ -95,17 +94,13 @@ class SpeechSegmenter:
         return completed
 
 
-@functools.lru_cache(maxsize=1)
-def _load_silero_model():
-    # The model load is the expensive part (~seconds) and is stateless; the
-    # iterator wrapped around it is not, so only this half is cached.
-    from silero_vad import load_silero_vad
-    return load_silero_vad()
-
-
 def load_silero_vad_iterator(samplerate: int = 16000):
-    from silero_vad import VADIterator
+    from silero_vad import VADIterator, load_silero_vad
 
-    # Always a FRESH iterator: it carries per-session trigger state that must not
-    # leak from one meeting into the next.
-    return VADIterator(_load_silero_model(), sampling_rate=samplerate)
+    # A fresh model per call, not a shared singleton: the model object (not the
+    # iterator) holds the VAD's trigger state (_state/_context), mutated on every
+    # call. Mic and speaker each get their own iterator but were sharing one
+    # cached model -- two threads mutating the same tensors concurrently, which
+    # both corrupted VAD state across streams and crashed the process natively
+    # (STATUS_HEAP_CORRUPTION / access violation in torch_python.dll).
+    return VADIterator(load_silero_vad(), sampling_rate=samplerate)
