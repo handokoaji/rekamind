@@ -26,6 +26,8 @@ class Meeting(Base):
     # crash can be found again on restart -- Recording rows only get written
     # at Stop, which never happened for an abandoned meeting.
     recording_dir: Mapped[str | None] = mapped_column(default=None)
+    error_message: Mapped[str | None] = mapped_column(default=None)
+    failed_stage: Mapped[str | None] = mapped_column(default=None)
 
     speakers: Mapped[list["Speaker"]] = relationship(back_populates="meeting")
     segments: Mapped[list["TranscriptSegment"]] = relationship(back_populates="meeting")

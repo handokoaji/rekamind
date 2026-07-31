@@ -35,7 +35,7 @@ async def stop_recording(session: AsyncSession, meeting_id: int) -> None:
     meeting = await session.get(Meeting, meeting_id)
     if meeting is None:
         raise ValueError(f"Meeting {meeting_id} not found")
-    meeting.status = "processing"
+    meeting.status = "recorded"
     meeting.end_time = _utcnow()
 
 
@@ -111,10 +111,54 @@ async def list_meetings(session: AsyncSession) -> list[Meeting]:
 
 
 async def find_abandoned_meetings(session: AsyncSession) -> list[Meeting]:
-    """A meeting stuck in 'recording' or 'processing' never reached a terminal
-    status (completed/failed) -- the only way that happens is the app dying
-    before Stop finished, e.g. a crash."""
+    """A meeting stuck in recording/transcribing/summarizing never reached a
+    terminal or resting status (recorded/transcribed/completed/failed) -- the
+    only way that happens is the app dying mid-action, e.g. a crash."""
     result = await session.execute(
-        select(Meeting).where(Meeting.status.in_(["recording", "processing"]))
+        select(Meeting).where(Meeting.status.in_(["recording", "transcribing", "summarizing"]))
     )
     return list(result.scalars().all())
+
+
+async def mark_meeting_failed(session: AsyncSession, meeting_id: int, stage: str, error_message: str) -> None:
+    meeting = await session.get(Meeting, meeting_id)
+    if meeting is None:
+        raise ValueError(f"Meeting {meeting_id} not found")
+    meeting.status = "failed"
+    meeting.failed_stage = stage
+    meeting.error_message = error_message
+
+
+async def has_final_segments(session: AsyncSession, meeting_id: int) -> bool:
+    result = await session.execute(
+        select(TranscriptSegment.id).where(
+            TranscriptSegment.meeting_id == meeting_id,
+            TranscriptSegment.is_final.is_(True),
+        ).limit(1)
+    )
+    return result.scalar_one_or_none() is not None
+
+
+async def get_final_transcript(session: AsyncSession, meeting_id: int) -> list[tuple[str, str]]:
+    """[(speaker_label, text), ...] ordered by start_ms, read straight from the
+    DB so summarize_and_export never needs the in-memory result of an earlier
+    transcribe_and_diarize call -- they can run in different app sessions."""
+    result = await session.execute(
+        select(TranscriptSegment)
+        .where(TranscriptSegment.meeting_id == meeting_id, TranscriptSegment.is_final.is_(True))
+        .order_by(TranscriptSegment.start_ms)
+    )
+    rows = []
+    for seg in result.scalars().all():
+        if seg.speaker_id is None:
+            label = "Anda"
+        else:
+            speaker = await session.get(Speaker, seg.speaker_id)
+            label = speaker.label if speaker else "Speaker ?"
+        rows.append((label, seg.text))
+    return rows
+
+
+async def get_summary(session: AsyncSession, meeting_id: int) -> Summary | None:
+    result = await session.execute(select(Summary).where(Summary.meeting_id == meeting_id))
+    return result.scalar_one_or_none()

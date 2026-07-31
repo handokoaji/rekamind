@@ -179,3 +179,162 @@ def test_save_transcript_segments_honors_is_final_false_and_clear_draft_segments
     assert len(segments) == 1
     assert segments[0].text == "final segment"
     assert segments[0].is_final is True
+
+
+def test_stop_recording_sets_status_to_recorded():
+    async def scenario():
+        engine = make_engine("sqlite+aiosqlite:///:memory:")
+        await init_db(engine)
+        session_factory = make_session_factory(engine)
+
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(session, "Rapat", None)
+            await repo.start_recording(session, meeting.id)
+            await session.commit()
+            meeting_id = meeting.id
+
+        async with session_factory() as session:
+            await repo.stop_recording(session, meeting_id)
+            await session.commit()
+
+        async with session_factory() as session:
+            meetings = await repo.list_meetings(session)
+        return meetings
+
+    meetings = asyncio.run(scenario())
+    assert meetings[0].status == "recorded"
+
+
+def test_mark_meeting_failed_sets_stage_and_message():
+    async def scenario():
+        engine = make_engine("sqlite+aiosqlite:///:memory:")
+        await init_db(engine)
+        session_factory = make_session_factory(engine)
+
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(session, "Rapat", None)
+            await session.commit()
+            meeting_id = meeting.id
+
+        async with session_factory() as session:
+            await repo.mark_meeting_failed(session, meeting_id, "summarize", "Groq timeout")
+            await session.commit()
+
+        async with session_factory() as session:
+            meetings = await repo.list_meetings(session)
+        return meetings
+
+    meetings = asyncio.run(scenario())
+    assert meetings[0].status == "failed"
+    assert meetings[0].failed_stage == "summarize"
+    assert meetings[0].error_message == "Groq timeout"
+
+
+def test_has_final_segments_true_only_for_is_final_true():
+    async def scenario():
+        engine = make_engine("sqlite+aiosqlite:///:memory:")
+        await init_db(engine)
+        session_factory = make_session_factory(engine)
+
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(session, "Rapat", None)
+            await session.commit()
+            meeting_id = meeting.id
+
+        async with session_factory() as session:
+            before = await repo.has_final_segments(session, meeting_id)
+            await repo.save_transcript_segments(session, [
+                {"meeting_id": meeting_id, "speaker_id": None, "source": "mic",
+                 "start_ms": 0, "end_ms": 500, "text": "draft", "is_final": False},
+            ])
+            await session.commit()
+
+        async with session_factory() as session:
+            only_draft = await repo.has_final_segments(session, meeting_id)
+            await repo.save_transcript_segments(session, [
+                {"meeting_id": meeting_id, "speaker_id": None, "source": "mic",
+                 "start_ms": 0, "end_ms": 500, "text": "final", "is_final": True},
+            ])
+            await session.commit()
+
+        async with session_factory() as session:
+            with_final = await repo.has_final_segments(session, meeting_id)
+
+        return before, only_draft, with_final
+
+    before, only_draft, with_final = asyncio.run(scenario())
+    assert before is False
+    assert only_draft is False
+    assert with_final is True
+
+
+def test_get_final_transcript_orders_by_start_ms_and_resolves_labels():
+    async def scenario():
+        engine = make_engine("sqlite+aiosqlite:///:memory:")
+        await init_db(engine)
+        session_factory = make_session_factory(engine)
+
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(session, "Rapat", None)
+            await session.commit()
+            meeting_id = meeting.id
+
+        async with session_factory() as session:
+            speaker = await repo.get_or_create_speaker(session, meeting_id, "Speaker 1")
+            await repo.save_transcript_segments(session, [
+                {"meeting_id": meeting_id, "speaker_id": speaker.id, "source": "speaker",
+                 "start_ms": 600, "end_ms": 1200, "text": "Mari mulai"},
+                {"meeting_id": meeting_id, "speaker_id": None, "source": "mic",
+                 "start_ms": 0, "end_ms": 500, "text": "Selamat pagi"},
+                {"meeting_id": meeting_id, "speaker_id": None, "source": "mic",
+                 "start_ms": 100, "end_ms": 200, "text": "draft lama", "is_final": False},
+            ])
+            await session.commit()
+
+        async with session_factory() as session:
+            rows = await repo.get_final_transcript(session, meeting_id)
+        return rows
+
+    rows = asyncio.run(scenario())
+    assert rows == [("Anda", "Selamat pagi"), ("Speaker 1", "Mari mulai")]
+
+
+def test_get_summary_returns_none_when_absent():
+    async def scenario():
+        engine = make_engine("sqlite+aiosqlite:///:memory:")
+        await init_db(engine)
+        session_factory = make_session_factory(engine)
+
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(session, "Rapat", None)
+            await session.commit()
+            meeting_id = meeting.id
+
+        async with session_factory() as session:
+            return await repo.get_summary(session, meeting_id)
+
+    assert asyncio.run(scenario()) is None
+
+
+def test_find_abandoned_meetings_matches_new_statuses():
+    async def scenario():
+        engine = make_engine("sqlite+aiosqlite:///:memory:")
+        await init_db(engine)
+        session_factory = make_session_factory(engine)
+
+        async with session_factory() as session:
+            m1 = await repo.create_meeting(session, "A", None)
+            await repo.mark_meeting_status(session, m1.id, "transcribing")
+            m2 = await repo.create_meeting(session, "B", None)
+            await repo.mark_meeting_status(session, m2.id, "summarizing")
+            m3 = await repo.create_meeting(session, "C", None)
+            await repo.mark_meeting_status(session, m3.id, "recorded")
+            await session.commit()
+            ids = {m1.id, m2.id}
+
+        async with session_factory() as session:
+            abandoned = await repo.find_abandoned_meetings(session)
+        return ids, {m.id for m in abandoned}
+
+    expected, found = asyncio.run(scenario())
+    assert found == expected

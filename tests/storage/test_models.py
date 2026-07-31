@@ -41,3 +41,21 @@ def test_meeting_with_related_rows_round_trips():
 
     meeting_id = asyncio.run(scenario())
     assert isinstance(meeting_id, int)
+
+
+def test_meeting_failure_fields_round_trip():
+    async def scenario():
+        session_factory = await _make_session_factory()
+        async with session_factory() as session:
+            meeting = Meeting(
+                title="Standup", status="failed",
+                failed_stage="transcribe", error_message="CUDA out of memory",
+            )
+            session.add(meeting)
+            await session.commit()
+            return meeting.id
+
+        return meeting.id
+
+    meeting_id = asyncio.run(scenario())
+    assert isinstance(meeting_id, int)
