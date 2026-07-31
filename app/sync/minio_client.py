@@ -100,3 +100,67 @@ def push(session_factory, settings) -> dict:
         return {"manifests": manifests, "uploaded": uploaded}
 
     return asyncio.run(_run())
+
+
+def _parse_iso(value: str | None):
+    return datetime.fromisoformat(value) if value else None
+
+
+def pull(session_factory, settings) -> dict:
+    import asyncio
+
+    async def _run():
+        client = _client(settings)
+        pulled = 0
+        async with session_factory() as session:
+            for obj in client.list_objects(settings.minio_bucket, recursive=True):
+                if not obj.object_name.endswith("/manifest.json"):
+                    continue
+                device_id, meeting_uuid, _ = obj.object_name.split("/", 2)
+                if device_id == settings.device_id:
+                    continue
+                recording_dir = Path(settings.recordings_dir) / device_id / meeting_uuid
+                existing = await session.execute(
+                    select(Meeting).where(Meeting.recording_dir == str(recording_dir))
+                )
+                if existing.scalar_one_or_none() is not None:
+                    continue
+
+                response = client.get_object(settings.minio_bucket, obj.object_name)
+                manifest = json.loads(response.read())
+
+                meeting = Meeting(
+                    title=manifest["title"],
+                    scheduled_time=_parse_iso(manifest.get("scheduled_time")),
+                    start_time=_parse_iso(manifest.get("start_time")),
+                    end_time=_parse_iso(manifest.get("end_time")),
+                    status=manifest["status"], device_id=manifest["device_id"],
+                    device_label=manifest.get("device_label"), recording_dir=str(recording_dir),
+                )
+                session.add(meeting)
+                await session.flush()
+
+                label_to_speaker_id: dict[str, int | None] = {"Anda": None}
+                for seg in manifest["segments"]:
+                    label = seg["speaker_label"]
+                    if label not in label_to_speaker_id:
+                        speaker = await repo.get_or_create_speaker(session, meeting.id, label)
+                        label_to_speaker_id[label] = speaker.id
+                    session.add(TranscriptSegment(
+                        meeting_id=meeting.id, speaker_id=label_to_speaker_id[label],
+                        source=seg["source"], start_ms=seg["start_ms"], end_ms=seg["end_ms"],
+                        text=seg["text"], is_final=True,
+                    ))
+
+                if manifest.get("summary"):
+                    s = manifest["summary"]
+                    session.add(Summary(
+                        meeting_id=meeting.id, mom_json=s["mom_json"],
+                        docx_path=str(recording_dir / "mom.docx") if s.get("has_docx") else None,
+                        groq_model=s.get("groq_model", ""), status=s.get("status", "ready"),
+                    ))
+                pulled += 1
+            await session.commit()
+        return {"pulled": pulled}
+
+    return asyncio.run(_run())

@@ -1,4 +1,7 @@
+import json
 from datetime import datetime, timezone
+
+from sqlalchemy import select
 
 from app.storage.models import Speaker, Summary, TranscriptSegment, Meeting
 from app.sync import minio_client
@@ -164,3 +167,111 @@ def test_push_skips_re_uploading_files_when_already_synced(monkeypatch, tmp_path
 
     fake_client.put_object.assert_called()  # manifest still re-uploaded
     fake_client.fput_object.assert_not_called()  # but not the WAV, already synced
+
+
+def _fake_object(name):
+    obj = MagicMock()
+    obj.object_name = name
+    return obj
+
+
+def _fake_manifest_response(manifest: dict):
+    resp = MagicMock()
+    resp.read.return_value = json.dumps(manifest).encode("utf-8")
+    return resp
+
+
+def test_pull_creates_local_meeting_from_remote_manifest(monkeypatch, tmp_path):
+    fake_module = _fake_minio_module()
+    fake_client = fake_module.Minio.return_value
+    monkeypatch.setitem(sys.modules, "minio", fake_module)
+
+    remote_manifest = {
+        "title": "Rapat Remote", "scheduled_time": None, "start_time": None, "end_time": None,
+        "status": "completed", "device_id": "dev2", "device_label": "Laptop Lain",
+        "segments": [
+            {"speaker_label": "Anda", "source": "mic", "start_ms": 0, "end_ms": 500, "text": "Halo"},
+            {"speaker_label": "Speaker 1", "source": "speaker", "start_ms": 500, "end_ms": 900, "text": "Mari mulai"},
+        ],
+        "summary": {"mom_json": "{}", "has_docx": True, "groq_model": "m", "status": "ready"},
+    }
+    fake_client.list_objects.return_value = [_fake_object("dev2/uuid123/manifest.json")]
+    fake_client.get_object.return_value = _fake_manifest_response(remote_manifest)
+
+    session_factory = _make_db()
+    settings = FakeSettings(device_id="dev1")
+    settings.recordings_dir = tmp_path
+
+    result = minio_client.pull(session_factory, settings)
+
+    assert result["pulled"] == 1
+
+    async def _get():
+        async with session_factory() as session:
+            r = await session.execute(select(Meeting))
+            return r.scalars().all()
+
+    meetings = asyncio.run(_get())
+    assert len(meetings) == 1
+    assert meetings[0].title == "Rapat Remote"
+    assert meetings[0].device_id == "dev2"
+    assert meetings[0].recording_dir == str(tmp_path / "dev2" / "uuid123")
+
+    async def _get_segments():
+        async with session_factory() as session:
+            r = await session.execute(select(TranscriptSegment))
+            return r.scalars().all()
+
+    segments = asyncio.run(_get_segments())
+    assert len(segments) == 2
+    assert {s.text for s in segments} == {"Halo", "Mari mulai"}
+
+    async def _get_summary():
+        async with session_factory() as session:
+            return await repo.get_summary(session, meetings[0].id)
+
+    summary = asyncio.run(_get_summary())
+    assert summary.mom_json == "{}"
+    assert summary.docx_path == str(tmp_path / "dev2" / "uuid123" / "mom.docx")
+
+
+def test_pull_skips_manifests_owned_by_local_device(monkeypatch, tmp_path):
+    fake_module = _fake_minio_module()
+    fake_client = fake_module.Minio.return_value
+    monkeypatch.setitem(sys.modules, "minio", fake_module)
+    fake_client.list_objects.return_value = [_fake_object("dev1/uuid123/manifest.json")]
+
+    session_factory = _make_db()
+    settings = FakeSettings(device_id="dev1")
+    settings.recordings_dir = tmp_path
+
+    result = minio_client.pull(session_factory, settings)
+
+    assert result["pulled"] == 0
+    fake_client.get_object.assert_not_called()
+
+
+def test_pull_skips_manifests_already_known_locally(monkeypatch, tmp_path):
+    fake_module = _fake_minio_module()
+    fake_client = fake_module.Minio.return_value
+    monkeypatch.setitem(sys.modules, "minio", fake_module)
+    fake_client.list_objects.return_value = [_fake_object("dev2/uuid123/manifest.json")]
+
+    session_factory = _make_db()
+
+    async def _seed_existing():
+        async with session_factory() as session:
+            await repo.create_meeting(
+                session, "Sudah Ada", None,
+                recording_dir=str(tmp_path / "dev2" / "uuid123"), device_id="dev2",
+            )
+            await session.commit()
+
+    asyncio.run(_seed_existing())
+    settings = FakeSettings(device_id="dev1")
+    settings.recordings_dir = tmp_path
+
+    result = minio_client.pull(session_factory, settings)
+
+    assert result["pulled"] == 0
+    fake_client.get_object.assert_not_called()
