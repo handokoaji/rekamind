@@ -1,4 +1,5 @@
 import tkinter as tk
+import time
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -120,6 +121,12 @@ def test_transcribe_button_calls_controller_run_transcribe():
     view._on_select()
 
     view._handle_transcribe()
+
+    # Wait for background thread to complete (polling with timeout)
+    timeout = 2.0
+    start = time.time()
+    while len(controller.transcribe_calls) == 0 and time.time() - start < timeout:
+        time.sleep(0.01)
 
     assert controller.transcribe_calls == [1]
     root.destroy()
