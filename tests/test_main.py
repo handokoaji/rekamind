@@ -284,3 +284,26 @@ def test_prepend_bundled_ffmpeg_no_op_when_dir_missing(monkeypatch, tmp_path):
     main.prepend_bundled_ffmpeg_to_path()
 
     assert main.os.environ["PATH"] == "C:\\existing"
+
+
+def test_start_update_check_runs_in_background_and_reports_via_callback(monkeypatch):
+    monkeypatch.setattr(main.update_check, "check_for_update", lambda cur, url: "0.2.0")
+    reported = []
+
+    main._start_update_check(on_update_available=reported.append)
+
+    deadline = time.time() + 2
+    while not reported and time.time() < deadline:
+        time.sleep(0.01)
+
+    assert reported == ["0.2.0"]
+
+
+def test_start_update_check_calls_nothing_when_no_update(monkeypatch):
+    monkeypatch.setattr(main.update_check, "check_for_update", lambda cur, url: None)
+    reported = []
+
+    thread = main._start_update_check(on_update_available=reported.append)
+    thread.join(timeout=2)
+
+    assert reported == []

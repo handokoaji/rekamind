@@ -453,4 +453,60 @@ def test_pengaturan_button_reopens_wizard_prefilled_and_saves_on_submit(monkeypa
         "groq_api_key": "gk", "hf_token": "hf",
     })]
     assert saved == [{"storage_backend": "sqlite", "groq_api_key": "gk2", "hf_token": "hf"}]
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_update_available_event_shows_notice_with_version():
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    controller = FakeController()
+    window = MainWindow(root, controller)
+
+    window.push_live_event({"type": "update_available", "version": "0.2.0"})
+    _pump_until(root, lambda: window.update_notice_var.get() != "")
+
+    assert "0.2.0" in window.update_notice_var.get()
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_update_notice_click_opens_releases_page_when_configured(monkeypatch):
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    import app.ui.window as window_module
+    monkeypatch.setattr(window_module.update_check, "RELEASES_PAGE_URL", "https://example/releases")
+    opened = []
+    monkeypatch.setattr(window_module.webbrowser, "open", opened.append)
+    controller = FakeController()
+    window = MainWindow(root, controller)
+
+    window._handle_update_notice_click()
+
+    assert opened == ["https://example/releases"]
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_update_notice_click_no_op_when_url_blank(monkeypatch):
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    import app.ui.window as window_module
+    monkeypatch.setattr(window_module.update_check, "RELEASES_PAGE_URL", "")
+    opened = []
+    monkeypatch.setattr(window_module.webbrowser, "open", opened.append)
+    controller = FakeController()
+    window = MainWindow(root, controller)
+
+    window._handle_update_notice_click()
+
+    assert opened == []
     root.destroy()

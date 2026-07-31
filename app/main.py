@@ -29,6 +29,8 @@ from app.tray.icon import build_tray_icon
 from app.ui.controller import RecorderController
 from app.ui.setup_wizard import SetupWizard
 from app.ui.window import MainWindow
+from app import update_check
+from app import __version__
 
 logger = logging.getLogger(__name__)
 
@@ -181,6 +183,17 @@ def _handle_startup_db_error(exc: Exception) -> bool:
     return True
 
 
+def _start_update_check(on_update_available) -> threading.Thread:
+    def _worker():
+        new_version = update_check.check_for_update(__version__, update_check.RELEASES_API_URL)
+        if new_version:
+            on_update_available(new_version)
+
+    thread = threading.Thread(target=_worker, daemon=True)
+    thread.start()
+    return thread
+
+
 def main() -> None:
     prepend_bundled_ffmpeg_to_path()
     configure_logging()
@@ -285,6 +298,9 @@ def main() -> None:
     root = tk.Tk()
     window = MainWindow(root, controller)
     window_ref["window"] = window
+    _start_update_check(
+        on_update_available=lambda v: window.push_live_event({"type": "update_available", "version": v})
+    )
 
     def show_window():
         root.after(0, root.deiconify)

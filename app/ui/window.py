@@ -4,7 +4,9 @@ import tkinter as tk
 from tkinter import messagebox, scrolledtext
 import threading
 import queue
+import webbrowser
 
+from app import update_check
 from app.config import get_settings
 from app.settings_store import save_packaged_config
 from app.ui.controller import RecorderController
@@ -106,6 +108,11 @@ class MainWindow:
         self.recording_pulse_label = tk.Label(parent, textvariable=self.recording_pulse_var, fg="green")
         self.recording_pulse_label.pack(anchor="w")
 
+        self.update_notice_var = tk.StringVar()
+        self.update_notice_label = tk.Label(parent, textvariable=self.update_notice_var, fg="blue", cursor="hand2")
+        self.update_notice_label.pack(anchor="w")
+        self.update_notice_label.bind("<Button-1>", self._handle_update_notice_click)
+
         self.transcript_view = scrolledtext.ScrolledText(parent, height=15, width=60)
         self.transcript_view.pack(fill="both", expand=True)
 
@@ -179,6 +186,10 @@ class MainWindow:
         # what was already saved to the DB.
         self._title_entry.config(state="normal" if is_idle else "disabled")
 
+    def _handle_update_notice_click(self, event=None) -> None:
+        if update_check.RELEASES_PAGE_URL:
+            webbrowser.open(update_check.RELEASES_PAGE_URL)
+
     def push_live_event(self, event: dict) -> None:
         """Thread-safe: called from LiveSession's background threads."""
         self._live_events.put(event)
@@ -204,6 +215,8 @@ class MainWindow:
                     self._pulse_on = not self._pulse_on
                     symbol = "●" if self._pulse_on else "○"  # ● / ○
                     self.recording_pulse_var.set(f"{symbol} merekam (data masuk)")
+                elif event["type"] == "update_available":
+                    self.update_notice_var.set(f"Update tersedia: v{event['version']} -- klik untuk buka halaman unduh")
                 elif event["type"] == "relabel":
                     # A full clear+reinsert always resets the view to the top;
                     # follow the bottom if the user was there, otherwise keep
