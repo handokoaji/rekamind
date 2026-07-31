@@ -22,6 +22,14 @@ _STATUS_LABELS = {
 _REFRESH_INTERVAL_MS = 2000
 
 
+def _format_duration(meeting) -> str:
+    if not meeting.start_time or not meeting.end_time:
+        return "-"
+    total_minutes = int((meeting.end_time - meeting.start_time).total_seconds() // 60)
+    hours, minutes = divmod(total_minutes, 60)
+    return f"{hours}j {minutes}m"
+
+
 class HistoryView(tk.Frame):
     def __init__(self, parent: tk.Widget, controller):
         super().__init__(parent)
@@ -40,11 +48,14 @@ class HistoryView(tk.Frame):
         self._busy_meeting_ids: set[int] = set()
         self._action_error: tuple[int, str] | None = None
 
-        self._tree = ttk.Treeview(self, columns=("title", "date", "status", "device"), show="headings", height=10)
+        self._tree = ttk.Treeview(
+            self, columns=("title", "date", "status", "device", "duration"), show="headings", height=10,
+        )
         self._tree.heading("title", text="Judul")
         self._tree.heading("date", text="Tanggal")
         self._tree.heading("status", text="Status")
         self._tree.heading("device", text="Perangkat")
+        self._tree.heading("duration", text="Durasi")
         self._tree.pack(fill="both", expand=True)
         self._tree.bind("<<TreeviewSelect>>", self._on_select)
 
@@ -88,7 +99,7 @@ class HistoryView(tk.Frame):
             iid = str(meeting.id)
             self._tree.insert("", "end", iid=iid, values=(
                 meeting.title, date_str, _STATUS_LABELS.get(meeting.status, meeting.status),
-                meeting.device_label or "Tidak diketahui",
+                meeting.device_label or "Tidak diketahui", _format_duration(meeting),
             ))
             self._meetings_by_iid[iid] = meeting
         if previously_selected and previously_selected[0] in self._meetings_by_iid:

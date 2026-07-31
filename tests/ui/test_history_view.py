@@ -42,12 +42,13 @@ def _tk_available() -> bool:
         return False
 
 
-def _meeting(id, title, status, error_message=None, failed_stage=None, device_label=None):
+def _meeting(id, title, status, error_message=None, failed_stage=None, device_label=None, end_time=None):
     return SimpleNamespace(
         id=id, title=title, status=status,
         start_time=datetime(2026, 7, 31, 9, 0, tzinfo=timezone.utc),
         created_at=datetime(2026, 7, 31, 9, 0, tzinfo=timezone.utc),
         error_message=error_message, failed_stage=failed_stage, device_label=device_label,
+        end_time=end_time,
     )
 
 
@@ -399,6 +400,33 @@ def test_download_button_calls_controller_get_docx_path(monkeypatch):
     view._handle_download()
 
     assert opened == ["C:/recordings/1/mom.docx"]
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_riwayat_shows_duration_column():
+    root = tk.Tk()
+    # start_time is fixed at 09:00 by the _meeting() helper.
+    meeting = _meeting(1, "Rapat A", "completed", end_time=datetime(2026, 7, 31, 10, 41, tzinfo=timezone.utc))
+    controller = FakeController([meeting])
+    view = HistoryView(root, controller)
+
+    values = view._tree.item("1", "values")
+
+    assert values[4] == "1j 41m"
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_riwayat_shows_dash_duration_when_meeting_not_finished():
+    root = tk.Tk()
+    meeting = _meeting(1, "Rapat A", "recording")  # end_time defaults to None
+    controller = FakeController([meeting])
+    view = HistoryView(root, controller)
+
+    values = view._tree.item("1", "values")
+
+    assert values[4] == "-"
     root.destroy()
 
 
