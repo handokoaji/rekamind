@@ -104,12 +104,19 @@ def push(session_factory, settings) -> dict:
 
                 if meeting.synced_at is None:
                     recording_dir = Path(meeting.recording_dir)
+                    any_uploaded = False
                     for filename in ("mic.wav", "speaker.wav", "mom.docx"):
                         local_path = recording_dir / filename
                         if local_path.exists():
                             client.fput_object(settings.minio_bucket, f"{prefix}/{filename}", str(local_path))
                             uploaded += 1
-                    meeting.synced_at = datetime.now(timezone.utc)
+                            any_uploaded = True
+                    # Not yet: syncing before any file has been written (e.g. right
+                    # after meeting creation) must not permanently mark this meeting
+                    # "synced" -- that would skip the file-upload block on every
+                    # later sync, forever, once the files finally do exist.
+                    if any_uploaded:
+                        meeting.synced_at = datetime.now(timezone.utc)
             await session.commit()
         return {"manifests": manifests, "uploaded": uploaded}
 

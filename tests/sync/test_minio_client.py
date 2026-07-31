@@ -142,6 +142,45 @@ def test_push_uploads_manifest_and_files_for_own_meetings_only(monkeypatch, tmp_
     assert not any(k.startswith("dev2/") for k in uploaded_keys)
 
 
+def test_push_does_not_mark_synced_when_no_files_exist_yet(monkeypatch, tmp_path):
+    """Regression test: synced_at was set unconditionally after the upload
+    loop even when zero files existed on disk yet (e.g. syncing a meeting
+    right after it's created, before any WAV has been written). That
+    permanently marked the meeting "synced" so its files would never be
+    uploaded on any later sync, since push() only looks at a meeting's
+    files at all when synced_at is still None."""
+    fake_module = _fake_minio_module()
+    fake_client = fake_module.Minio.return_value
+    monkeypatch.setitem(sys.modules, "minio", fake_module)
+
+    session_factory = _make_db()
+
+    async def _seed():
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(
+                session, "Rapat Baru", None, recording_dir=str(tmp_path / "own"),
+                device_id="dev1", device_label="Laptop Budi",
+            )
+            await session.commit()
+            return meeting.id
+
+    meeting_id = asyncio.run(_seed())
+    # Deliberately no tmp_path/"own" directory at all -- recording hasn't
+    # started writing files yet, matches the real timing this bug hits.
+
+    result = minio_client.push(session_factory, FakeSettings())
+
+    assert result["uploaded"] == 0
+    fake_client.fput_object.assert_not_called()
+
+    async def _get_synced_at():
+        async with session_factory() as session:
+            m = await session.get(Meeting, meeting_id)
+            return m.synced_at
+
+    assert asyncio.run(_get_synced_at()) is None
+
+
 def test_push_skips_re_uploading_files_when_already_synced(monkeypatch, tmp_path):
     fake_module = _fake_minio_module()
     fake_client = fake_module.Minio.return_value
