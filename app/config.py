@@ -25,6 +25,8 @@ class Settings(BaseSettings):
 
     groq_api_key: str = ""
     hf_token: str = ""
+    device_id: str = ""
+    device_label: str = ""
     recordings_dir: Path = Path("./recordings")
     asr_backend_override: str = ""
 
