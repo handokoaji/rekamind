@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Language
+
+Always respond to the user in Bahasa Indonesia in this repository, regardless of the language of their message.
+
 ## What this is
 
 **Rekamind** — a Windows-only desktop app (Tkinter UI) that records mic + system-audio (WASAPI loopback) during a meeting, transcribes it (faster-whisper), diarizes speakers (pyannote), and generates a Bahasa Indonesia Minutes-of-Meeting docx via a Groq-hosted LLM. Recording and processing are deliberately decoupled: "Mulai Rekam"/"Stop Rekam" only captures audio; transcription and summarization are separate, manually-triggered, per-meeting actions from the Riwayat (history) tab. Local-first by default (SQLite, on-device ASR/diarization); Postgres and MinIO-based multi-device sync are opt-in for office/team deployments.
