@@ -21,7 +21,7 @@ class SetupWizard:
         self._result: dict | None = None
         self._is_root = parent is None
         self.window = tk.Tk() if self._is_root else tk.Toplevel(parent)
-        self.window.title("Pengaturan Meeting Recorder")
+        self.window.title("Pengaturan Rekamind")
 
         tk.Label(self.window, text="Penyimpanan:").pack(anchor="w")
         self.storage_var = tk.StringVar(value=initial.get("storage_backend", "sqlite"))

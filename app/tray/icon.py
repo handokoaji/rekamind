@@ -23,4 +23,4 @@ def build_tray_icon(on_show: Callable[[], None], on_quit: Callable[[], None]) ->
         pystray.MenuItem("Buka Dashboard", _show),
         pystray.MenuItem("Keluar", _quit),
     )
-    return pystray.Icon("meeting-recorder", _default_image(), "Meeting Recorder", menu)
+    return pystray.Icon("rekamind", _default_image(), "Rekamind", menu)

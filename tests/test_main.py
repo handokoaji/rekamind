@@ -244,6 +244,6 @@ def test_main_shows_fatal_error_and_exits_on_unsupported_hardware(monkeypatch):
     with pytest.raises(SystemExit) as exc_info:
         main.main()
 
-    assert error_shown == [("Meeting Recorder", "Perangkat ini tidak mendukung transkripsi audio.")]
+    assert error_shown == [("Rekamind", "Perangkat ini tidak mendukung transkripsi audio.")]
     assert window_created == []
     assert exc_info.value.code != 0

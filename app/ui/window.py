@@ -28,7 +28,7 @@ class MainWindow:
     def __init__(self, root: tk.Tk, controller: RecorderController):
         self._root = root
         self._controller = controller
-        self._root.title("Meeting Recorder")
+        self._root.title("Rekamind")
 
         nav = tk.Frame(root)
         nav.pack(fill="x")

@@ -147,7 +147,7 @@ def _handle_startup_db_error(exc: Exception) -> bool:
     root = tk.Tk()
     root.withdraw()
     reopen = messagebox.askyesno(
-        "Meeting Recorder - Error",
+        "Rekamind - Error",
         f"Tidak bisa konek ke database: {exc}\n\nBuka Pengaturan sekarang?",
     )
     if not reopen:
@@ -170,7 +170,7 @@ def main() -> None:
     try:
         backend_name = detect_backend(settings.asr_backend_override)
     except UnsupportedHardwareError as exc:
-        messagebox.showerror("Meeting Recorder", str(exc))
+        messagebox.showerror("Rekamind", str(exc))
         sys.exit(1)
     check_ffmpeg_available()
     engine = make_engine(settings.database_url)
