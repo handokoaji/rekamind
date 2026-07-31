@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     hf_token: str = ""
     device_id: str = ""
     device_label: str = ""
+    minio_endpoint: str = ""
+    minio_access_key: str = ""
+    minio_secret_key: str = ""
+    minio_bucket: str = ""
     recordings_dir: Path = Path("./recordings")
     asr_backend_override: str = ""
 
@@ -37,6 +41,13 @@ class Settings(BaseSettings):
         return (
             f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        )
+
+    @property
+    def minio_is_configured(self) -> bool:
+        return bool(
+            self.minio_endpoint and self.minio_access_key
+            and self.minio_secret_key and self.minio_bucket
         )
 
 

@@ -95,3 +95,28 @@ def test_dev_mode_device_identity_defaults_to_empty(monkeypatch, tmp_path):
 
     assert settings.device_id == ""
     assert settings.device_label == ""
+
+
+def test_minio_is_configured_false_when_any_field_blank(monkeypatch, tmp_path):
+    (tmp_path / ".env").write_text("STORAGE_BACKEND=postgres\nMINIO_ENDPOINT=play.min.io\n")
+    monkeypatch.chdir(tmp_path)
+    get_settings.cache_clear()
+
+    settings = get_settings()
+
+    assert settings.minio_endpoint == "play.min.io"
+    assert settings.minio_is_configured is False  # access/secret/bucket still blank
+
+
+def test_minio_is_configured_true_when_all_fields_set(monkeypatch, tmp_path):
+    (tmp_path / ".env").write_text(
+        "STORAGE_BACKEND=postgres\n"
+        "MINIO_ENDPOINT=play.min.io\nMINIO_ACCESS_KEY=ak\n"
+        "MINIO_SECRET_KEY=sk\nMINIO_BUCKET=meetings\n"
+    )
+    monkeypatch.chdir(tmp_path)
+    get_settings.cache_clear()
+
+    settings = get_settings()
+
+    assert settings.minio_is_configured is True
