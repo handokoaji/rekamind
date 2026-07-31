@@ -1,5 +1,9 @@
 # app/ui/setup_wizard.py
+import asyncio
 import tkinter as tk
+
+from app.settings_store import save_packaged_config
+from app.storage.db import make_engine
 
 
 class SetupWizard:
@@ -79,8 +83,46 @@ class SetupWizard:
         else:
             self._postgres_frame.pack_forget()
 
+    def _check_postgres_connection(self, url: str) -> str | None:
+        """Returns an error message, or None if the connection succeeded."""
+        async def _try() -> None:
+            engine = make_engine(url)
+            try:
+                async with asyncio.timeout(5):
+                    async with engine.connect():
+                        pass
+            finally:
+                await engine.dispose()
+
+        try:
+            asyncio.run(_try())
+            return None
+        except Exception as exc:
+            return str(exc)
+
     def _on_submit(self) -> None:
-        self.window.destroy()  # replaced with real validation/save in Task 4
+        data = {
+            "storage_backend": self.storage_var.get(),
+            "groq_api_key": self.groq_var.get(),
+            "hf_token": self.hf_var.get(),
+        }
+        if self.storage_var.get() == "postgres":
+            data["postgres_host"] = self.postgres_host_var.get()
+            data["postgres_port"] = int(self.postgres_port_var.get() or 0)
+            data["postgres_user"] = self.postgres_user_var.get()
+            data["postgres_password"] = self.postgres_password_var.get()
+            data["postgres_db"] = self.postgres_db_var.get()
+            url = (
+                f"postgresql+asyncpg://{data['postgres_user']}:{data['postgres_password']}"
+                f"@{data['postgres_host']}:{data['postgres_port']}/{data['postgres_db']}"
+            )
+            error = self._check_postgres_connection(url)
+            if error:
+                self.error_var.set(f"Tidak bisa konek ke Postgres: {error}")
+                return
+        save_packaged_config(data)
+        self._result = data
+        self.window.destroy()
 
     def run(self) -> dict | None:
         if self._is_root:
