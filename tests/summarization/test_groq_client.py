@@ -39,6 +39,8 @@ def test_summarize_parses_json_response(monkeypatch):
 
 def test_summarize_chunks_long_transcript_and_reduces(monkeypatch):
     monkeypatch.setattr("app.summarization.groq_client._CHUNK_CHAR_BUDGET", 50)
+    sleep_calls = []
+    monkeypatch.setattr("app.summarization.groq_client.time.sleep", sleep_calls.append)
 
     part_mom = {
         "minute_by_minute": [{"time": "00:00", "point": "bagian"}],
@@ -76,4 +78,7 @@ def test_summarize_chunks_long_transcript_and_reduces(monkeypatch):
         action_items=[{"item": "Update changelog", "assignee": "Budi", "due": "2026-08-01"}],
         detailed_notes="Rapat membahas kesiapan rilis.",
     )
-    assert fake_client.chat.completions.create.call_count > 2
+    call_count = fake_client.chat.completions.create.call_count
+    assert call_count > 2
+    # one pause between each map call, plus one before the reduce call
+    assert len(sleep_calls) == call_count - 1

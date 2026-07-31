@@ -1,4 +1,5 @@
 import json
+import time
 from dataclasses import dataclass
 
 from groq import Groq
@@ -7,6 +8,13 @@ from groq import Groq
 # Groq's on_demand TPM cap (8000) including prompt overhead + response. Bump
 # down if a model/tier with a smaller cap is ever configured.
 _CHUNK_CHAR_BUDGET = 12000
+_TPM_LIMIT = 8000
+_CHARS_PER_TOKEN = 4
+
+
+def _pause_for_rate_limit() -> None:
+    tokens_per_request = _CHUNK_CHAR_BUDGET / _CHARS_PER_TOKEN
+    time.sleep(60 * tokens_per_request / _TPM_LIMIT)
 
 _PROMPT_TEMPLATE = """\
 Kamu adalah asisten yang membuat Minutes of Meeting (MoM) dalam Bahasa \
@@ -117,14 +125,18 @@ class GroqSummarizer:
             prompt = _PROMPT_TEMPLATE.format(title=meeting_title, transcript=chunks[0])
             return _to_mom(self._request(prompt))
 
-        parts = [
-            self._request(
-                _MAP_PROMPT_TEMPLATE.format(
-                    title=meeting_title, part=i + 1, total=len(chunks), transcript=chunk
+        parts = []
+        for i, chunk in enumerate(chunks):
+            if i:
+                _pause_for_rate_limit()
+            parts.append(
+                self._request(
+                    _MAP_PROMPT_TEMPLATE.format(
+                        title=meeting_title, part=i + 1, total=len(chunks), transcript=chunk
+                    )
                 )
             )
-            for i, chunk in enumerate(chunks)
-        ]
+        _pause_for_rate_limit()
         reduce_prompt = _REDUCE_PROMPT_TEMPLATE.format(
             title=meeting_title, parts_json=json.dumps(parts, ensure_ascii=False)
         )
