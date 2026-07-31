@@ -10,3 +10,7 @@ model_cache/
 *.egg-info/
 .claude/
 *.log
+dist/
+build/
+packaging/ffmpeg/
+packaging/Output/

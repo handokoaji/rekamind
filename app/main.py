@@ -1,14 +1,16 @@
 import asyncio
 import logging
+import os
 import queue
 import shutil
 import sys
 import tkinter as tk
 import threading
 from pathlib import Path
+from tkinter import messagebox
 
 from app.asr.cuda_backend import FasterWhisperBackend
-from app.asr.detect import detect_backend
+from app.asr.detect import detect_backend, UnsupportedHardwareError
 from app.asr.openvino_backend import OpenVinoWhisperBackend
 from app.config import get_settings
 from app.diarization.diarizer import Diarizer
@@ -19,21 +21,34 @@ from app.logging_setup import configure_logging
 from app.pipeline.recovery import recover_abandoned_meetings
 from app.pipeline.summarize import summarize_and_export
 from app.pipeline.transcribe import transcribe_and_diarize
+from app.settings_store import is_dev_mode, load_packaged_config, save_packaged_config
 from app.storage.db import init_db, make_engine, make_session_factory
 from app.summarization.docx_export import build_docx_filename
 from app.summarization.groq_client import GroqSummarizer
 from app.tray.icon import build_tray_icon
 from app.ui.controller import RecorderController
+from app.ui.setup_wizard import SetupWizard
 from app.ui.window import MainWindow
+from app import update_check
+from app import __version__
 
 logger = logging.getLogger(__name__)
+
+
+def prepend_bundled_ffmpeg_to_path() -> None:
+    bundled_ffmpeg_dir = Path(sys.executable).parent / "ffmpeg"
+    if bundled_ffmpeg_dir.exists():
+        os.environ["PATH"] = f"{bundled_ffmpeg_dir}{os.pathsep}{os.environ['PATH']}"
 
 
 def check_ffmpeg_available() -> bool:
     """Diarization (pyannote/torchaudio) needs FFmpeg's shared libraries on
     PATH to decode audio. Missing FFmpeg doesn't stop the app — capture, ASR,
     and summarization all work without it — only diarization will fail later,
-    so we warn once at startup instead of silently installing anything."""
+    so we warn once at startup instead of silently installing anything. A
+    packaged .exe has no console window (console=False in the PyInstaller
+    spec), so the stderr print alone would never reach a real user -- a
+    dialog with install steps is needed too."""
     if shutil.which("ffmpeg") is not None:
         return True
     print(
@@ -41,6 +56,16 @@ def check_ffmpeg_available() -> bool:
         "berfungsi. Pasang dengan: winget install ffmpeg",
         file=sys.stderr,
     )
+    root = tk.Tk()
+    root.withdraw()
+    messagebox.showwarning(
+        "Rekamind",
+        "ffmpeg tidak ditemukan. Speaker diarization tidak akan berfungsi.\n\n"
+        "Cara pasang:\n"
+        "1. Buka terminal, jalankan: winget install ffmpeg\n"
+        "2. Tutup dan buka ulang Rekamind.",
+    )
+    root.destroy()
     return False
 
 
@@ -129,19 +154,86 @@ def _real_recorder(mic_path: Path, speaker_path: Path):
     )
 
 
+def run_first_run_wizard_if_needed() -> bool:
+    """Returns False if the app must not proceed (packaged mode, no config
+    yet, and the user closed the wizard without submitting)."""
+    if is_dev_mode() or load_packaged_config() is not None:
+        return True
+    result = SetupWizard(parent=None).run()
+    return result is not None
+
+
+def _handle_startup_db_error(exc: Exception) -> bool:
+    """Returns True if the user updated settings via the wizard and startup
+    should retry; False if they declined and the app should just exit."""
+    root = tk.Tk()
+    root.withdraw()
+    reopen = messagebox.askyesno(
+        "Rekamind - Error",
+        f"Tidak bisa konek ke database: {exc}\n\nBuka Pengaturan sekarang?",
+    )
+    if not reopen:
+        root.destroy()
+        return False
+    result = SetupWizard(parent=root).run()
+    root.destroy()
+    if result is None:
+        return False
+    save_packaged_config(result)
+    return True
+
+
+def _handle_tray_show(window) -> None:
+    window.push_live_event({"type": "show_window"})
+
+
+def _handle_tray_quit(window) -> None:
+    window.push_live_event({"type": "quit_app"})
+
+
+def _start_update_check(on_update_available) -> threading.Thread:
+    def _worker():
+        new_version = update_check.check_for_update(__version__, update_check.RELEASES_API_URL)
+        if new_version:
+            on_update_available(new_version)
+
+    thread = threading.Thread(target=_worker, daemon=True)
+    thread.start()
+    return thread
+
+
 def main() -> None:
+    prepend_bundled_ffmpeg_to_path()
     configure_logging()
+    if not run_first_run_wizard_if_needed():
+        return
+    get_settings.cache_clear()
     settings = get_settings()
+    try:
+        backend_name = detect_backend(settings.asr_backend_override)
+    except UnsupportedHardwareError as exc:
+        messagebox.showerror("Rekamind", str(exc))
+        sys.exit(1)
     check_ffmpeg_available()
     engine = make_engine(settings.database_url)
-    asyncio.run(init_db(engine))
+    try:
+        asyncio.run(init_db(engine))
+    except Exception as exc:
+        if not _handle_startup_db_error(exc):
+            return
+        get_settings.cache_clear()
+        settings = get_settings()
+        engine = make_engine(settings.database_url)
+        try:
+            asyncio.run(init_db(engine))
+        except Exception as retry_exc:
+            messagebox.showerror("Rekamind", f"Tidak bisa konek ke database: {retry_exc}")
+            return
     session_factory = make_session_factory(engine)
 
     recovered = asyncio.run(recover_abandoned_meetings(session_factory))
     if recovered:
         logger.info("recovered %d meeting(s) orphaned by a previous crash: %s", len(recovered), recovered)
-
-    backend_name = detect_backend(settings.asr_backend_override)
 
     async def transcribe_fn(meeting_id, mic_wav, speaker_wav):
         transcriber, diarizer, _summarizer = load_models(backend_name, settings)
@@ -210,22 +302,25 @@ def main() -> None:
         summarize_fn=summarize_fn,
         recordings_dir=settings.recordings_dir,
         live_session_factory=live_session_factory,
+        device_id=settings.device_id,
+        device_label=settings.device_label,
+        settings=settings,
     )
 
     root = tk.Tk()
     window = MainWindow(root, controller)
     window_ref["window"] = window
-
-    def show_window():
-        root.after(0, root.deiconify)
-
-    def quit_app():
-        root.after(0, root.quit)
+    _start_update_check(
+        on_update_available=lambda v: window.push_live_event({"type": "update_available", "version": v})
+    )
 
     # X button hides to tray instead of killing the app; "Buka Dashboard" reopens.
     root.protocol("WM_DELETE_WINDOW", root.withdraw)
 
-    icon = build_tray_icon(on_show=show_window, on_quit=quit_app)
+    icon = build_tray_icon(
+        on_show=lambda: _handle_tray_show(window),
+        on_quit=lambda: _handle_tray_quit(window),
+    )
 
     threading.Thread(target=icon.run, daemon=True).start()
     root.mainloop()

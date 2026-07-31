@@ -9,6 +9,7 @@ from typing import Awaitable, Callable
 
 from app.storage import repository as repo
 from app.storage.models import Meeting
+from app.sync import minio_client
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,9 @@ class RecorderController:
         summarize_fn: Callable[..., Awaitable],
         recordings_dir: Path,
         live_session_factory: Callable[[Path, Path, Path], object] | None = None,
+        device_id: str | None = None,
+        device_label: str | None = None,
+        settings=None,
     ):
         self._session_factory = session_factory
         self._recorder_factory = recorder_factory
@@ -34,6 +38,9 @@ class RecorderController:
         self._summarize_fn = summarize_fn
         self._recordings_dir = recordings_dir
         self._live_session_factory = live_session_factory
+        self._device_id = device_id
+        self._device_label = device_label
+        self._settings = settings
         self.state = "idle"
         self.error_message: str | None = None
         self._meeting_id: int | None = None
@@ -86,6 +93,7 @@ class RecorderController:
             async with self._session_factory() as session:
                 meeting = await repo.create_meeting(
                     session, title, datetime.now(timezone.utc), recording_dir=str(meeting_dir),
+                    device_id=self._device_id, device_label=self._device_label,
                 )
                 await repo.start_recording(session, meeting.id)
                 await session.commit()
@@ -222,6 +230,44 @@ class RecorderController:
         recording_dir = asyncio.run(_delete())
         if recording_dir:
             shutil.rmtree(recording_dir, ignore_errors=True)
+
+    @property
+    def minio_configured(self) -> bool:
+        return self._settings is not None and self._settings.minio_is_configured
+
+    def sync_now(self) -> dict:
+        """Blocking -- call from a background thread."""
+        push_result = minio_client.push(self._session_factory, self._settings)
+        pull_result = minio_client.pull(self._session_factory, self._settings)
+        return {**push_result, **pull_result}
+
+    @property
+    def local_device_id(self) -> str | None:
+        return self._device_id
+
+    def ensure_docx_available(self, meeting_id: int) -> str | None:
+        """Blocking -- call from a background thread. Downloads the docx from
+        MinIO on demand if this meeting was pulled from another device and
+        the file isn't on disk locally yet."""
+        async def _get():
+            async with self._session_factory() as session:
+                meeting = await session.get(Meeting, meeting_id)
+                summary = await repo.get_summary(session, meeting_id)
+                return meeting, summary
+
+        meeting, summary = asyncio.run(_get())
+        if summary is None or summary.docx_path is None:
+            return None
+        docx_path = Path(summary.docx_path)
+        if docx_path.exists():
+            return str(docx_path)
+        if meeting.device_id and meeting.device_id != self._device_id:
+            meeting_dir_name = Path(meeting.recording_dir).name
+            minio_client.download_file(
+                self._settings, meeting.device_id, meeting_dir_name, "mom.docx", docx_path,
+            )
+            return str(docx_path)
+        return None
 
     def get_docx_path(self, meeting_id: int) -> str | None:
         async def _get():

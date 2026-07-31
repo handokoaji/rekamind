@@ -1,4 +1,5 @@
 # tests/ui/test_window.py
+import threading
 import time
 import tkinter as tk
 
@@ -16,6 +17,7 @@ class FakeController:
         self.error_message = ""
         self.start_raises = start_raises
         self.stop_raises = stop_raises
+        self.minio_configured = False
 
     def start_meeting(self, title):
         if self.start_raises:
@@ -406,4 +408,216 @@ def test_history_polling_follows_the_visible_tab():
     window._show_recording()
     assert window._history_view._active is False
 
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_pengaturan_button_reopens_wizard_prefilled_and_saves_on_submit(monkeypatch):
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    import app.ui.window as window_module
+
+    class FakeSettings:
+        storage_backend = "sqlite"
+        postgres_host = None
+        postgres_port = None
+        postgres_user = None
+        postgres_password = None
+        postgres_db = None
+        groq_api_key = "gk"
+        hf_token = "hf"
+
+    monkeypatch.setattr(window_module, "get_settings", lambda: FakeSettings())
+    wizard_calls = []
+    saved = []
+
+    class FakeWizard:
+        def __init__(self, parent=None, initial=None):
+            wizard_calls.append((parent, initial))
+
+        def run(self):
+            return {"storage_backend": "sqlite", "groq_api_key": "gk2", "hf_token": "hf"}
+
+    monkeypatch.setattr(window_module, "SetupWizard", FakeWizard)
+    monkeypatch.setattr(window_module, "save_packaged_config", saved.append)
+    monkeypatch.setattr(window_module.messagebox, "showinfo", lambda *a, **k: None)
+
+    controller = FakeController()
+    window = MainWindow(root, controller)
+
+    window._handle_open_settings()
+
+    assert wizard_calls == [(root, {
+        "storage_backend": "sqlite", "postgres_host": None, "postgres_port": None,
+        "postgres_user": None, "postgres_password": None, "postgres_db": None,
+        "groq_api_key": "gk", "hf_token": "hf",
+    })]
+    assert saved == [{"storage_backend": "sqlite", "groq_api_key": "gk2", "hf_token": "hf"}]
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_update_available_event_shows_notice_with_version():
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    controller = FakeController()
+    window = MainWindow(root, controller)
+
+    window.push_live_event({"type": "update_available", "version": "0.2.0"})
+    _pump_until(root, lambda: window.update_notice_var.get() != "")
+
+    assert "0.2.0" in window.update_notice_var.get()
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_update_notice_click_opens_releases_page_when_configured(monkeypatch):
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    import app.ui.window as window_module
+    monkeypatch.setattr(window_module.update_check, "RELEASES_PAGE_URL", "https://example/releases")
+    opened = []
+    monkeypatch.setattr(window_module.webbrowser, "open", opened.append)
+    controller = FakeController()
+    window = MainWindow(root, controller)
+
+    window._handle_update_notice_click()
+
+    assert opened == ["https://example/releases"]
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_update_notice_click_no_op_when_url_blank(monkeypatch):
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    import app.ui.window as window_module
+    monkeypatch.setattr(window_module.update_check, "RELEASES_PAGE_URL", "")
+    opened = []
+    monkeypatch.setattr(window_module.webbrowser, "open", opened.append)
+    controller = FakeController()
+    window = MainWindow(root, controller)
+
+    window._handle_update_notice_click()
+
+    assert opened == []
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_on_start_clicked_worker_never_calls_after_from_its_own_thread():
+    """Same regression class as history_view.py's fix: Tkinter only honors
+    self.after(...) while the main thread is inside mainloop() -- a background
+    thread calling it directly races Tk teardown and can hard-crash the
+    process. The worker must hand off through push_live_event's thread-safe
+    queue instead, same as live session events already do."""
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    controller = FakeController()
+    window = MainWindow(root, controller)
+
+    main_thread = threading.current_thread()
+    calls_from_wrong_thread = []
+    original_after = root.after
+
+    def _tracking_after(*args, **kwargs):
+        if threading.current_thread() is not main_thread:
+            calls_from_wrong_thread.append(threading.current_thread())
+        return original_after(*args, **kwargs)
+
+    root.after = _tracking_after
+
+    window.on_start_clicked("Rapat Sore")
+    _pump_until(root, lambda: controller.state == "recording")
+
+    assert calls_from_wrong_thread == []
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_on_stop_clicked_worker_never_calls_after_from_its_own_thread():
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    controller = FakeController()
+    window = MainWindow(root, controller)
+    window.on_start_clicked("Rapat Sore")
+    _pump_until(root, lambda: controller.state == "recording")
+
+    main_thread = threading.current_thread()
+    calls_from_wrong_thread = []
+    original_after = root.after
+
+    def _tracking_after(*args, **kwargs):
+        if threading.current_thread() is not main_thread:
+            calls_from_wrong_thread.append(threading.current_thread())
+        return original_after(*args, **kwargs)
+
+    root.after = _tracking_after
+
+    window.on_stop_clicked()
+    _pump_until(root, lambda: controller.stopped)
+
+    assert calls_from_wrong_thread == []
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_show_window_event_deiconifies_root(monkeypatch):
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    controller = FakeController()
+    window = MainWindow(root, controller)
+    calls = []
+    monkeypatch.setattr(root, "deiconify", lambda: calls.append(True))
+
+    window.push_live_event({"type": "show_window"})
+    _pump_until(root, lambda: len(calls) > 0)
+
+    assert calls == [True]
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_quit_app_event_quits_root(monkeypatch):
+    """root.quit() is also what _pump_until itself relies on to stop the pumped
+    mainloop, so the tracking wrapper must call through to the original --
+    replacing it with a no-op would hang this very test."""
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    controller = FakeController()
+    window = MainWindow(root, controller)
+    calls = []
+    original_quit = root.quit
+
+    def _tracking_quit():
+        calls.append(True)
+        original_quit()
+
+    monkeypatch.setattr(root, "quit", _tracking_quit)
+
+    window.push_live_event({"type": "quit_app"})
+    _pump_until(root, lambda: len(calls) > 0)
+
+    assert calls == [True]
     root.destroy()

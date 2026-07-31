@@ -1,12 +1,17 @@
 # app/ui/window.py
 import sys
 import tkinter as tk
-from tkinter import scrolledtext
+from tkinter import messagebox, scrolledtext
 import threading
 import queue
+import webbrowser
 
+from app import update_check
+from app.config import get_settings
+from app.settings_store import save_packaged_config
 from app.ui.controller import RecorderController
 from app.ui.history_view import HistoryView
+from app.ui.setup_wizard import SetupWizard
 
 _STATUS_LABELS = {
     "idle": "Siap",
@@ -25,12 +30,13 @@ class MainWindow:
     def __init__(self, root: tk.Tk, controller: RecorderController):
         self._root = root
         self._controller = controller
-        self._root.title("Meeting Recorder")
+        self._root.title("Rekamind")
 
         nav = tk.Frame(root)
         nav.pack(fill="x")
         tk.Button(nav, text="Meeting Baru", command=self._show_recording).pack(side="left")
         tk.Button(nav, text="Riwayat", command=self._show_history).pack(side="left")
+        tk.Button(nav, text="Pengaturan", command=self._handle_open_settings).pack(side="left")
 
         container = tk.Frame(root)
         container.pack(fill="both", expand=True)
@@ -54,6 +60,23 @@ class MainWindow:
     def _show_history(self) -> None:
         self._history_view.tkraise()
         self._history_view.set_active(True)
+
+    def _handle_open_settings(self) -> None:
+        settings = get_settings()
+        initial = {
+            "storage_backend": settings.storage_backend,
+            "postgres_host": settings.postgres_host,
+            "postgres_port": settings.postgres_port,
+            "postgres_user": settings.postgres_user,
+            "postgres_password": settings.postgres_password,
+            "postgres_db": settings.postgres_db,
+            "groq_api_key": settings.groq_api_key,
+            "hf_token": settings.hf_token,
+        }
+        result = SetupWizard(parent=self._root, initial=initial).run()
+        if result is not None:
+            save_packaged_config(result)
+            messagebox.showinfo("Pengaturan", "Restart aplikasi untuk menerapkan perubahan.")
 
     def _build_recording_frame(self, parent: tk.Widget) -> None:
         self.title_var = tk.StringVar()
@@ -84,6 +107,11 @@ class MainWindow:
         self.recording_pulse_var = tk.StringVar()
         self.recording_pulse_label = tk.Label(parent, textvariable=self.recording_pulse_var, fg="green")
         self.recording_pulse_label.pack(anchor="w")
+
+        self.update_notice_var = tk.StringVar()
+        self.update_notice_label = tk.Label(parent, textvariable=self.update_notice_var, fg="blue", cursor="hand2")
+        self.update_notice_label.pack(anchor="w")
+        self.update_notice_label.bind("<Button-1>", self._handle_update_notice_click)
 
         self.transcript_view = scrolledtext.ScrolledText(parent, height=15, width=60)
         self.transcript_view.pack(fill="both", expand=True)
@@ -117,7 +145,7 @@ class MainWindow:
             except Exception as exc:
                 print(f"Error starting meeting: {exc}", file=sys.stderr)
             finally:
-                self._root.after(0, self.refresh_status)
+                self.push_live_event({"type": "refresh_status"})
 
         threading.Thread(target=_start_in_background, daemon=True).start()
 
@@ -136,8 +164,8 @@ class MainWindow:
             except Exception as exc:
                 print(f"Error stopping meeting: {exc}", file=sys.stderr)
             finally:
-                self._root.after(0, self.refresh_status)
-                self._root.after(0, self._history_view.refresh)
+                self.push_live_event({"type": "refresh_status"})
+                self.push_live_event({"type": "refresh_history"})
 
         threading.Thread(target=_stop_in_background, daemon=True).start()
 
@@ -157,6 +185,10 @@ class MainWindow:
         # Title is locked once a meeting is in flight so it can't drift from
         # what was already saved to the DB.
         self._title_entry.config(state="normal" if is_idle else "disabled")
+
+    def _handle_update_notice_click(self, event=None) -> None:
+        if update_check.RELEASES_PAGE_URL:
+            webbrowser.open(update_check.RELEASES_PAGE_URL)
 
     def push_live_event(self, event: dict) -> None:
         """Thread-safe: called from LiveSession's background threads."""
@@ -183,6 +215,16 @@ class MainWindow:
                     self._pulse_on = not self._pulse_on
                     symbol = "●" if self._pulse_on else "○"  # ● / ○
                     self.recording_pulse_var.set(f"{symbol} merekam (data masuk)")
+                elif event["type"] == "update_available":
+                    self.update_notice_var.set(f"Update tersedia: v{event['version']} -- klik untuk buka halaman unduh")
+                elif event["type"] == "refresh_status":
+                    self.refresh_status()
+                elif event["type"] == "refresh_history":
+                    self._history_view.refresh()
+                elif event["type"] == "show_window":
+                    self._root.deiconify()
+                elif event["type"] == "quit_app":
+                    self._root.quit()
                 elif event["type"] == "relabel":
                     # A full clear+reinsert always resets the view to the top;
                     # follow the bottom if the user was there, otherwise keep

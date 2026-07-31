@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from app.storage.db import make_engine, init_db, make_session_factory
 from app.storage import repository as repo
+from app.storage.models import Meeting
 
 
 def test_full_meeting_lifecycle():
@@ -464,3 +465,38 @@ def test_find_abandoned_meetings_matches_new_statuses():
 
     expected, found = asyncio.run(scenario())
     assert found == expected
+
+
+def test_create_meeting_stores_device_identity():
+    async def scenario():
+        engine = make_engine("sqlite+aiosqlite:///:memory:")
+        await init_db(engine)
+        session_factory = make_session_factory(engine)
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(
+                session, "Rapat", None, device_id="abc123", device_label="Laptop Budi",
+            )
+            await session.commit()
+            meeting_id = meeting.id
+        async with session_factory() as session:
+            fetched = await session.get(Meeting, meeting_id)
+            return fetched.device_id, fetched.device_label
+
+    device_id, device_label = asyncio.run(scenario())
+    assert device_id == "abc123"
+    assert device_label == "Laptop Budi"
+
+
+def test_create_meeting_without_device_args_leaves_fields_none():
+    async def scenario():
+        engine = make_engine("sqlite+aiosqlite:///:memory:")
+        await init_db(engine)
+        session_factory = make_session_factory(engine)
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(session, "Rapat", None)
+            await session.commit()
+            return meeting.device_id, meeting.device_label
+
+    device_id, device_label = asyncio.run(scenario())
+    assert device_id is None
+    assert device_label is None

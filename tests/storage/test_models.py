@@ -43,6 +43,30 @@ def test_meeting_with_related_rows_round_trips():
     assert isinstance(meeting_id, int)
 
 
+def test_meeting_device_fields_default_to_none():
+    meeting = Meeting(title="Rapat", device_id=None, device_label=None)
+    assert meeting.device_id is None
+    assert meeting.device_label is None
+
+
+def test_meeting_accepts_device_fields():
+    meeting = Meeting(title="Rapat", device_id="abc123", device_label="Laptop Budi")
+    assert meeting.device_id == "abc123"
+    assert meeting.device_label == "Laptop Budi"
+
+
+def test_meeting_synced_at_defaults_to_none():
+    meeting = Meeting(title="Rapat")
+    assert meeting.synced_at is None
+
+
+def test_meeting_accepts_synced_at():
+    from datetime import datetime, timezone
+    ts = datetime(2026, 7, 31, 10, 0, tzinfo=timezone.utc)
+    meeting = Meeting(title="Rapat", synced_at=ts)
+    assert meeting.synced_at == ts
+
+
 def test_meeting_failure_fields_round_trip():
     async def scenario():
         session_factory = await _make_session_factory()

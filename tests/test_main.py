@@ -1,10 +1,15 @@
 import threading
 import time
+import tkinter as tk
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import sys
 
+import pytest
+
 import app.main as main
+from app.asr.detect import UnsupportedHardwareError
 
 
 def test_check_ffmpeg_available_true_when_on_path(monkeypatch):
@@ -12,10 +17,25 @@ def test_check_ffmpeg_available_true_when_on_path(monkeypatch):
     assert main.check_ffmpeg_available() is True
 
 
-def test_check_ffmpeg_available_false_when_missing(monkeypatch, capsys):
+def test_check_ffmpeg_available_false_when_missing_shows_install_tutorial(monkeypatch, capsys):
+    """A packaged .exe has no console (console=False in the PyInstaller spec),
+    so the stderr warning alone is invisible to a real user -- it must also
+    surface as a dialog with install steps."""
     monkeypatch.setattr(main.shutil, "which", lambda name: None)
+    shown = []
+    monkeypatch.setattr(main.messagebox, "showwarning", lambda title, msg: shown.append((title, msg)))
+    fake_root = MagicMock()
+    monkeypatch.setattr(main.tk, "Tk", lambda: fake_root)
+
     assert main.check_ffmpeg_available() is False
+
     assert "ffmpeg" in capsys.readouterr().err.lower()
+    assert len(shown) == 1
+    title, msg = shown[0]
+    assert title == "Rekamind"
+    assert "winget install ffmpeg" in msg
+    fake_root.withdraw.assert_called_once()
+    fake_root.destroy.assert_called_once()
 
 
 class _FakeDiarizer:
@@ -149,3 +169,237 @@ def test_build_models_openvino_uses_cpu_diarizer(monkeypatch):
     settings = SimpleNamespace(hf_token="t", groq_api_key="k")
     _, diarizer, _ = main.build_models("openvino", settings)
     assert diarizer.device == "cpu"
+
+
+def test_main_shows_wizard_on_first_run_and_reports_cancellation(monkeypatch):
+    """Packaged mode, no config.json yet: the wizard must run, and if the
+    user closes it without submitting, the gate reports False so main()
+    knows not to proceed to creating MainWindow."""
+    monkeypatch.setattr(main, "is_dev_mode", lambda: False)
+    monkeypatch.setattr(main, "load_packaged_config", lambda: None)
+
+    wizard_calls = []
+
+    class FakeWizard:
+        def __init__(self, parent=None, initial=None):
+            wizard_calls.append((parent, initial))
+
+        def run(self):
+            return None  # user closed without submitting
+
+    monkeypatch.setattr(main, "SetupWizard", FakeWizard)
+
+    proceed = main.run_first_run_wizard_if_needed()
+
+    assert wizard_calls == [(None, None)]
+    assert proceed is False
+
+
+def test_main_skips_wizard_when_config_already_exists(monkeypatch):
+    monkeypatch.setattr(main, "is_dev_mode", lambda: False)
+    monkeypatch.setattr(main, "load_packaged_config", lambda: {"storage_backend": "sqlite"})
+    wizard_calls = []
+    monkeypatch.setattr(main, "SetupWizard", lambda **kw: wizard_calls.append(kw))
+
+    main.run_first_run_wizard_if_needed()
+
+    assert wizard_calls == []
+
+
+def test_main_skips_wizard_in_dev_mode(monkeypatch):
+    monkeypatch.setattr(main, "is_dev_mode", lambda: True)
+    wizard_calls = []
+    monkeypatch.setattr(main, "SetupWizard", lambda **kw: wizard_calls.append(kw))
+
+    main.run_first_run_wizard_if_needed()
+
+    assert wizard_calls == []
+
+
+def test_handle_startup_db_error_reopens_wizard_on_yes(monkeypatch):
+    monkeypatch.setattr(main.messagebox, "askyesno", lambda *a, **k: True)
+    saved = []
+    monkeypatch.setattr(main, "save_packaged_config", saved.append)
+
+    class FakeWizard:
+        def __init__(self, parent=None):
+            pass
+
+        def run(self):
+            return {"storage_backend": "sqlite"}
+
+    monkeypatch.setattr(main, "SetupWizard", FakeWizard)
+
+    retried = main._handle_startup_db_error(RuntimeError("connection refused"))
+
+    assert retried is True
+    assert saved == [{"storage_backend": "sqlite"}]
+
+
+def test_handle_startup_db_error_reopens_wizard_as_toplevel_on_existing_root(monkeypatch):
+    """Regression test: SetupWizard(parent=None) makes SetupWizard create its
+    OWN new tk.Tk() root (per its docstring), while _handle_startup_db_error's
+    own `root` (used for the messagebox) is still alive at that point -- two
+    live Tk() interpreters at once breaks implicit-master widget bindings
+    (a StringVar()/etc. created without an explicit master binds to whichever
+    interpreter is _default_root, not necessarily the new window's own
+    interpreter). SetupWizard must be reopened as a Toplevel on the existing
+    root instead, same as every other reopen call site in this codebase."""
+    monkeypatch.setattr(main.messagebox, "askyesno", lambda *a, **k: True)
+    monkeypatch.setattr(main, "save_packaged_config", lambda result: None)
+
+    captured_parent = []
+
+    class FakeWizard:
+        def __init__(self, parent=None):
+            captured_parent.append(parent)
+
+        def run(self):
+            return {"storage_backend": "sqlite"}
+
+    monkeypatch.setattr(main, "SetupWizard", FakeWizard)
+
+    main._handle_startup_db_error(RuntimeError("connection refused"))
+
+    assert len(captured_parent) == 1
+    assert isinstance(captured_parent[0], tk.Tk)
+
+
+def test_handle_startup_db_error_returns_false_on_no(monkeypatch):
+    monkeypatch.setattr(main.messagebox, "askyesno", lambda *a, **k: False)
+    wizard_calls = []
+    monkeypatch.setattr(main, "SetupWizard", lambda **kw: wizard_calls.append(kw))
+
+    retried = main._handle_startup_db_error(RuntimeError("connection refused"))
+
+    assert retried is False
+    assert wizard_calls == []
+
+
+def test_main_shows_fatal_error_and_exits_on_unsupported_hardware(monkeypatch):
+    def _raise(*args, **kwargs):
+        raise UnsupportedHardwareError("Perangkat ini tidak mendukung transkripsi audio.")
+
+    monkeypatch.setattr(main, "detect_backend", _raise)
+    error_shown = []
+    monkeypatch.setattr(main.messagebox, "showerror", lambda title, msg: error_shown.append((title, msg)))
+    window_created = []
+    monkeypatch.setattr(main, "MainWindow", lambda *a, **k: window_created.append(True))
+    monkeypatch.setattr(main, "run_first_run_wizard_if_needed", lambda: True)
+
+    with pytest.raises(SystemExit) as exc_info:
+        main.main()
+
+    assert error_shown == [("Rekamind", "Perangkat ini tidak mendukung transkripsi audio.")]
+    assert window_created == []
+    assert exc_info.value.code != 0
+
+
+def test_main_shows_error_and_returns_when_retried_init_db_also_fails(monkeypatch):
+    """Regression test: after the user reconfigures settings via the startup
+    error dialog's wizard, the retried asyncio.run(init_db(engine)) had no
+    try/except -- a second consecutive DB failure crashed the whole process
+    uncaught, invisible in a console-less packaged .exe. It must instead show
+    another error dialog and return, same as the UnsupportedHardwareError
+    path just above."""
+    fake_settings = SimpleNamespace(
+        database_url="sqlite+aiosqlite:///:memory:", asr_backend_override="",
+        hf_token="", groq_api_key="", device_id="d", device_label="l",
+    )
+
+    def _fake_get_settings():
+        return fake_settings
+    _fake_get_settings.cache_clear = lambda: None
+    monkeypatch.setattr(main, "get_settings", _fake_get_settings)
+    monkeypatch.setattr(main, "run_first_run_wizard_if_needed", lambda: True)
+    monkeypatch.setattr(main, "detect_backend", lambda override: "cpu")
+    monkeypatch.setattr(main, "check_ffmpeg_available", lambda: True)
+    monkeypatch.setattr(main, "make_engine", lambda url: object())
+
+    init_db_calls = []
+
+    def _always_raise(engine):
+        init_db_calls.append(engine)
+        raise RuntimeError(f"connection refused (attempt {len(init_db_calls)})")
+
+    monkeypatch.setattr(main, "init_db", _always_raise)
+    monkeypatch.setattr(main, "_handle_startup_db_error", lambda exc: True)  # user chose to retry
+
+    error_shown = []
+    monkeypatch.setattr(main.messagebox, "showerror", lambda title, msg: error_shown.append((title, msg)))
+    window_created = []
+    monkeypatch.setattr(main, "MainWindow", lambda *a, **k: window_created.append(True))
+
+    main.main()  # must return gracefully, not raise
+
+    assert len(init_db_calls) == 2  # first attempt, then the retry -- both failed
+    assert error_shown  # a fatal error dialog was shown instead of crashing uncaught
+    assert window_created == []
+
+
+def test_prepend_bundled_ffmpeg_adds_to_path_when_dir_exists(monkeypatch, tmp_path):
+    ffmpeg_dir = tmp_path / "ffmpeg"
+    ffmpeg_dir.mkdir()
+    monkeypatch.setattr(main.sys, "executable", str(tmp_path / "MeetingRecorder.exe"))
+    monkeypatch.setenv("PATH", "C:\\existing")
+
+    main.prepend_bundled_ffmpeg_to_path()
+
+    assert str(ffmpeg_dir) in main.os.environ["PATH"]
+    assert main.os.environ["PATH"].startswith(str(ffmpeg_dir))
+
+
+def test_prepend_bundled_ffmpeg_no_op_when_dir_missing(monkeypatch, tmp_path):
+    monkeypatch.setattr(main.sys, "executable", str(tmp_path / "python.exe"))
+    monkeypatch.setenv("PATH", "C:\\existing")
+
+    main.prepend_bundled_ffmpeg_to_path()
+
+    assert main.os.environ["PATH"] == "C:\\existing"
+
+
+def test_start_update_check_runs_in_background_and_reports_via_callback(monkeypatch):
+    monkeypatch.setattr(main.update_check, "check_for_update", lambda cur, url: "0.2.0")
+    reported = []
+
+    main._start_update_check(on_update_available=reported.append)
+
+    deadline = time.time() + 2
+    while not reported and time.time() < deadline:
+        time.sleep(0.01)
+
+    assert reported == ["0.2.0"]
+
+
+def test_start_update_check_calls_nothing_when_no_update(monkeypatch):
+    monkeypatch.setattr(main.update_check, "check_for_update", lambda cur, url: None)
+    reported = []
+
+    thread = main._start_update_check(on_update_available=reported.append)
+    thread.join(timeout=2)
+
+    assert reported == []
+
+
+def test_handle_tray_show_pushes_a_live_event_instead_of_calling_after_directly():
+    """Regression test for the same crash-risk bug class already fixed twice in
+    app/ui/window.py and app/ui/history_view.py: pystray's Icon.run() drives its
+    tray callbacks from its OWN background thread (not the Tk main thread), so
+    calling root.after(...) directly from show_window()/quit_app() races Tk
+    teardown. They must instead hand off through the existing thread-safe
+    push_live_event queue, same as every other cross-thread UI update."""
+    pushed = []
+    window = SimpleNamespace(push_live_event=pushed.append)
+
+    main._handle_tray_show(window)
+
+    assert pushed == [{"type": "show_window"}]
+
+
+def test_handle_tray_quit_pushes_a_live_event_instead_of_calling_after_directly():
+    pushed = []
+    window = SimpleNamespace(push_live_event=pushed.append)
+
+    main._handle_tray_quit(window)
+
+    assert pushed == [{"type": "quit_app"}]

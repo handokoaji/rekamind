@@ -42,12 +42,14 @@ def _tk_available() -> bool:
         return False
 
 
-def _meeting(id, title, status, error_message=None, failed_stage=None):
+def _meeting(id, title, status, error_message=None, failed_stage=None, device_label=None,
+             end_time=None, device_id=None):
     return SimpleNamespace(
         id=id, title=title, status=status,
         start_time=datetime(2026, 7, 31, 9, 0, tzinfo=timezone.utc),
         created_at=datetime(2026, 7, 31, 9, 0, tzinfo=timezone.utc),
-        error_message=error_message, failed_stage=failed_stage,
+        error_message=error_message, failed_stage=failed_stage, device_label=device_label,
+        end_time=end_time, device_id=device_id,
     )
 
 
@@ -61,6 +63,14 @@ class FakeController:
         self.delete_calls = []
         self.transcript_by_id = {}
         self.list_meetings_calls = 0
+        self.minio_configured = False
+        self.sync_calls = 0
+        self.sync_result = {"manifests": 0, "uploaded": 0, "pulled": 0}
+        self.local_device_id = "dev1"
+
+    def sync_now(self):
+        self.sync_calls += 1
+        return self.sync_result
 
     def list_meetings(self):
         self.list_meetings_calls += 1
@@ -82,6 +92,10 @@ class FakeController:
         self.download_calls.append(meeting_id)
         return "C:/recordings/1/mom.docx"
 
+    def ensure_docx_available(self, meeting_id):
+        self.download_calls.append(meeting_id)
+        return "C:/recordings/1/mom.docx"
+
     def delete_meeting(self, meeting_id):
         self.delete_calls.append(meeting_id)
         self._meetings = [m for m in self._meetings if m.id != meeting_id]
@@ -98,6 +112,20 @@ class GatedController(FakeController):
     def run_transcribe(self, meeting_id):
         self.gate.wait(5)
         self.transcribe_calls.append(meeting_id)
+
+
+class GatedDownloadController(FakeController):
+    """ensure_docx_available blocks until the test releases it, so a
+    download "in flight" is a state the test can actually observe."""
+
+    def __init__(self, meetings):
+        super().__init__(meetings)
+        self.gate = threading.Event()
+
+    def ensure_docx_available(self, meeting_id):
+        self.gate.wait(5)
+        self.download_calls.append(meeting_id)
+        return "C:/recordings/1/mom.docx"
 
 
 class ExplodingController(FakeController):
@@ -387,16 +415,228 @@ def test_delete_does_nothing_when_confirmation_declined(monkeypatch):
 
 
 @pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
-def test_download_button_calls_controller_get_docx_path(monkeypatch):
+def test_download_button_calls_controller_ensure_docx_available(monkeypatch):
     root = tk.Tk()
     opened = []
     monkeypatch.setattr("app.ui.history_view.os.startfile", lambda path: opened.append(path))
     controller = FakeController([_meeting(1, "Rapat A", "completed")])
+    controller.local_device_id = "dev1"
     view = HistoryView(root, controller)
     view._tree.selection_set("1")
     view._on_select()
 
     view._handle_download()
 
+    timeout = 2.0
+    start = time.time()
+    while not opened and time.time() - start < timeout:
+        time.sleep(0.01)
+
     assert opened == ["C:/recordings/1/mom.docx"]
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_download_button_disables_synchronously_and_runs_in_background(monkeypatch):
+    """Regression test: _handle_download used to call ensure_docx_available
+    directly on the Tk main thread -- a meeting pulled from another device
+    and not yet cached locally pays a real MinIO network round-trip there,
+    freezing the whole app for its duration. Now that the Tk-threading crash
+    risk that originally justified staying synchronous is fixed (queue-based
+    _pending_actions), download must go through the same background-thread
+    pattern as every other history action."""
+    root = tk.Tk()
+    opened = []
+    monkeypatch.setattr("app.ui.history_view.os.startfile", lambda path: opened.append(path))
+    controller = GatedDownloadController([_meeting(1, "Rapat A", "completed")])
+    controller.local_device_id = "dev1"
+    view = HistoryView(root, controller)
+    view._tree.selection_set("1")
+    view._on_select()
+
+    view._handle_download()
+
+    assert view._download_button.cget("state") == "disabled", "must disable synchronously, not block the Tk thread"
+    assert opened == [], "must not have completed yet -- the gate hasn't been released"
+
+    refreshes_before = controller.list_meetings_calls
+    root.after(10, controller.gate.set)
+    _pump_until(root, lambda: controller.list_meetings_calls > refreshes_before)
+
+    assert opened == ["C:/recordings/1/mom.docx"]
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_own_meeting_shows_processing_buttons():
+    root = tk.Tk()
+    controller = FakeController([_meeting(1, "Rapat A", "recorded", device_id="dev1")])
+    view = HistoryView(root, controller)
+    view._tree.selection_set("1")
+    view._on_select()
+
+    assert str(view._transcribe_button.winfo_manager()) == "pack"
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_pulled_meeting_hides_processing_buttons_but_keeps_view_and_delete():
+    root = tk.Tk()
+    controller = FakeController([_meeting(1, "Rapat Lain", "recorded", device_id="dev2")])
+    view = HistoryView(root, controller)
+    view._tree.selection_set("1")
+    view._on_select()
+
+    assert str(view._transcribe_button.winfo_manager()) == ""
+    assert str(view._delete_button.winfo_manager()) == "pack"
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_pulled_meeting_transcribed_status_shows_only_view_not_summarize():
+    root = tk.Tk()
+    controller = FakeController([_meeting(1, "Rapat Lain", "transcribed", device_id="dev2")])
+    view = HistoryView(root, controller)
+    view._tree.selection_set("1")
+    view._on_select()
+
+    assert str(view._summarize_button.winfo_manager()) == ""
+    assert str(view._view_transcript_button.winfo_manager()) == "pack"
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_riwayat_shows_duration_column():
+    root = tk.Tk()
+    # start_time is fixed at 09:00 by the _meeting() helper.
+    meeting = _meeting(1, "Rapat A", "completed", end_time=datetime(2026, 7, 31, 10, 41, tzinfo=timezone.utc))
+    controller = FakeController([meeting])
+    view = HistoryView(root, controller)
+
+    values = view._tree.item("1", "values")
+
+    assert values[4] == "1j 41m"
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_riwayat_shows_dash_duration_when_meeting_not_finished():
+    root = tk.Tk()
+    meeting = _meeting(1, "Rapat A", "recording")  # end_time defaults to None
+    controller = FakeController([meeting])
+    view = HistoryView(root, controller)
+
+    values = view._tree.item("1", "values")
+
+    assert values[4] == "-"
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_riwayat_shows_device_label_column():
+    root = tk.Tk()
+    controller = FakeController([_meeting(1, "Rapat A", "recorded", device_label="Laptop Budi")])
+    view = HistoryView(root, controller)
+
+    values = view._tree.item("1", "values")
+
+    assert values[3] == "Laptop Budi"
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_riwayat_shows_fallback_for_unknown_device():
+    root = tk.Tk()
+    controller = FakeController([_meeting(1, "Rapat A", "recorded", device_label=None)])
+    view = HistoryView(root, controller)
+
+    values = view._tree.item("1", "values")
+
+    assert values[3] == "Tidak diketahui"
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_sync_button_hidden_when_minio_not_configured():
+    root = tk.Tk()
+    controller = FakeController([])
+    controller.minio_configured = False
+    view = HistoryView(root, controller)
+
+    assert str(view._sync_button.winfo_manager()) == ""
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_sync_button_shown_and_calls_controller_when_configured():
+    root = tk.Tk()
+    controller = FakeController([])
+    controller.minio_configured = True
+    controller.sync_result = {"manifests": 2, "uploaded": 1, "pulled": 3}
+    view = HistoryView(root, controller)
+    assert str(view._sync_button.winfo_manager()) == "pack"
+
+    refreshes_before = controller.list_meetings_calls
+    root.after(10, view._handle_sync)
+    _pump_until(root, lambda: controller.list_meetings_calls > refreshes_before)
+
+    assert controller.sync_calls == 1
+    assert "3" in view._sync_status_label.cget("text")  # pulled count surfaced
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_run_in_background_worker_never_calls_after_from_its_own_thread():
+    """Regression test for a pre-existing crash risk: Tkinter only honors
+    self.after(...) while the main thread is inside mainloop() -- calling it
+    from a background thread races Tk teardown and can hard-crash the process
+    (Windows fatal exception, not just a Python exception). The worker must
+    only hand work to the main thread via a thread-safe queue, mirroring
+    window.py's push_live_event/_drain_live_events pattern."""
+    root = tk.Tk()
+    controller = FakeController([_meeting(1, "Rapat A", "recorded")])
+    view = HistoryView(root, controller)
+
+    main_thread = threading.current_thread()
+    calls_from_wrong_thread = []
+    original_after = view.after
+
+    def _tracking_after(*args, **kwargs):
+        if threading.current_thread() is not main_thread:
+            calls_from_wrong_thread.append(threading.current_thread())
+        return original_after(*args, **kwargs)
+
+    view.after = _tracking_after
+
+    thread = view._run_in_background(lambda meeting_id: None, 1)
+    thread.join(timeout=2)
+
+    assert calls_from_wrong_thread == []
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_handle_sync_worker_never_calls_after_from_its_own_thread():
+    root = tk.Tk()
+    controller = FakeController([])
+    controller.minio_configured = True
+    view = HistoryView(root, controller)
+
+    main_thread = threading.current_thread()
+    calls_from_wrong_thread = []
+    original_after = view.after
+
+    def _tracking_after(*args, **kwargs):
+        if threading.current_thread() is not main_thread:
+            calls_from_wrong_thread.append(threading.current_thread())
+        return original_after(*args, **kwargs)
+
+    view.after = _tracking_after
+
+    view._handle_sync()
+    deadline = time.time() + 2
+    while view._sync_in_progress and time.time() < deadline:
+        time.sleep(0.01)
+
+    assert calls_from_wrong_thread == []
     root.destroy()

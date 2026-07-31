@@ -7,7 +7,7 @@ def test_build_tray_icon_has_show_and_quit_menu_items():
 
     icon = build_tray_icon(on_show=lambda: shown.append(True), on_quit=lambda: quit_called.append(True))
 
-    assert icon.title == "Meeting Recorder"
+    assert icon.title == "Rekamind"
     item_texts = [item.text for item in icon.menu.items]
     assert any("Buka" in t for t in item_texts)
     assert any("Keluar" in t for t in item_texts)
