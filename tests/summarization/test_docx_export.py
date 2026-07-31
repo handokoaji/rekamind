@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from docx import Document
 
@@ -15,6 +15,28 @@ def test_build_docx_filename_strips_unsafe_characters():
     filename = build_docx_filename(datetime(2026, 7, 31), "Rapat: Q3 / Review?")
     assert " " not in filename
     assert all(c not in filename for c in ':/\\?*<>|"')
+
+
+def test_build_docx_filename_uses_the_wib_date_not_the_utc_one():
+    """Timestamps are stored UTC and displayed WIB. 2026-07-31 20:00 UTC is a
+    2026-08-01 03:00 WIB meeting, so the file must be dated 2026-08-01."""
+    filename = build_docx_filename(
+        datetime(2026, 7, 31, 20, 0, tzinfo=timezone.utc), "Rapat Malam",
+    )
+    assert filename == "2026-08-01-Rapat-Malam.docx"
+
+
+def test_docx_body_date_matches_the_filename_date(tmp_path):
+    mom = MomResult(minute_by_minute=[], decisions=[], action_items=[], detailed_notes="-")
+    meeting_date = datetime(2026, 7, 31, 20, 0, tzinfo=timezone.utc)
+    output_path = tmp_path / build_docx_filename(meeting_date, "Rapat Malam")
+
+    export_mom_docx("Rapat Malam", meeting_date, mom, output_path)
+
+    doc = Document(str(output_path))
+    full_text = "\n".join(p.text for p in doc.paragraphs)
+    assert "01 August 2026 03:00 WIB" in full_text
+    assert output_path.name.startswith("2026-08-01")
 
 
 def test_export_creates_docx_with_expected_sections(tmp_path):

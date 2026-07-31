@@ -96,6 +96,24 @@ def build_models(backend_name: str, settings):
 
 recorder_queues: dict = {"mic": None, "speaker": None}
 
+# Heavy batch models are loaded on the first Transkrip/Ringkasan click, not at
+# startup: the window must appear at once, and a meeting sitting in Riwayat
+# waiting to be processed shouldn't cost anything until clicked.
+_models = None
+_models_lock = threading.Lock()
+
+
+def load_models(backend_name: str, settings):
+    """Thread-safe lazy singleton. Transkrip/Ringkasan on two different meetings
+    may run at the same time (spec §6, "boleh bersamaan"); without the lock both
+    threads see `_models is None` and each builds its own large-v3 + pyannote
+    pair, which is a straight path to CUDA OOM."""
+    global _models
+    with _models_lock:
+        if _models is None:
+            _models = build_models(backend_name, settings)
+        return _models
+
 
 def _real_recorder(mic_path: Path, speaker_path: Path):
     from app.audio.capture import MicSpeakerRecorder
@@ -119,23 +137,12 @@ def main() -> None:
 
     backend_name = detect_backend(settings.asr_backend_override)
 
-    # Heavy models are loaded on the first Transkrip/Ringkasan click, not at
-    # startup: the window must appear at once, and a meeting sitting in
-    # Riwayat waiting to be processed shouldn't cost anything until clicked.
-    models = None
-
-    def load_models():
-        nonlocal models
-        if models is None:
-            models = build_models(backend_name, settings)
-        return models
-
     async def transcribe_fn(meeting_id, mic_wav, speaker_wav):
-        transcriber, diarizer, _summarizer = load_models()
+        transcriber, diarizer, _summarizer = load_models(backend_name, settings)
         await transcribe_and_diarize(session_factory, meeting_id, mic_wav, speaker_wav, transcriber, diarizer)
 
     async def summarize_fn(meeting_id, meeting_title, meeting_date):
-        _transcriber, _diarizer, summarizer = load_models()
+        _transcriber, _diarizer, summarizer = load_models(backend_name, settings)
         docx_filename = build_docx_filename(meeting_date, meeting_title)
         docx_path = settings.recordings_dir / str(meeting_id) / docx_filename
         await summarize_and_export(session_factory, meeting_id, meeting_title, meeting_date, docx_path, summarizer)

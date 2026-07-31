@@ -307,3 +307,28 @@ def test_nav_buttons_switch_between_recording_and_history_frames():
     assert window._recording_frame.winfo_viewable()
 
     root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_history_polling_follows_the_visible_tab():
+    """The Riwayat poll hits Postgres on the Tk main thread every 2s, so it must
+    only run while that tab is on top. winfo_ismapped()/winfo_viewable() can't
+    tell which tkraise()-stacked frame is on top, hence the explicit flag."""
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    controller = FakeController()
+    window = MainWindow(root, controller)
+
+    # MainWindow opens on the recording tab.
+    assert window._history_view._active is False
+
+    window._show_history()
+    assert window._history_view._active is True
+
+    window._show_recording()
+    assert window._history_view._active is False
+
+    root.destroy()

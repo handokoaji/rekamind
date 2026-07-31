@@ -150,6 +150,13 @@ class RecorderController:
                 meeting = await session.get(Meeting, meeting_id)
                 if meeting is None:
                     raise ValueError(f"Meeting {meeting_id} not found")
+                if meeting.recording_dir is None:
+                    # Legacy rows predate Meeting.recording_dir. Without this the
+                    # bare TypeError from Path(None) surfaces as a silent no-op.
+                    raise ValueError(
+                        "Meeting ini tidak punya lokasi rekaman yang tersimpan, "
+                        "tidak bisa ditranskrip"
+                    )
                 mic_wav = Path(meeting.recording_dir) / "mic.wav"
                 speaker_wav = Path(meeting.recording_dir) / "speaker.wav"
             await self._transcribe_fn(meeting_id=meeting_id, mic_wav=mic_wav, speaker_wav=speaker_wav)

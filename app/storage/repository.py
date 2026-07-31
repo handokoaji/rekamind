@@ -85,15 +85,32 @@ async def clear_draft_segments(session: AsyncSession, meeting_id: int) -> None:
     await session.flush()
 
 
+async def clear_all_segments(session: AsyncSession, meeting_id: int) -> None:
+    """Drafts AND finals. Used before a (re-)transcribe so running
+    transcribe_and_diarize twice leaves one transcript, not two appended
+    copies -- which would also double the text sent to Groq afterwards."""
+    await session.execute(
+        delete(TranscriptSegment).where(TranscriptSegment.meeting_id == meeting_id)
+    )
+    await session.flush()
+
+
 async def save_summary(
     session: AsyncSession, meeting_id: int, mom_json: str, docx_path: str | None,
     groq_model: str, status: str,
 ) -> Summary:
-    summary = Summary(
-        meeting_id=meeting_id, mom_json=mom_json, docx_path=docx_path,
-        groq_model=groq_model, status=status,
-    )
-    session.add(summary)
+    """Upsert, not insert: Summary.meeting_id is unique, so a second summarize
+    (retry after a Groq failure, or a double-click) would otherwise raise
+    IntegrityError -- and every later retry would raise it again, leaving the
+    meeting permanently stuck in "failed" with no in-app way out."""
+    summary = await get_summary(session, meeting_id)
+    if summary is None:
+        summary = Summary(meeting_id=meeting_id)
+        session.add(summary)
+    summary.mom_json = mom_json
+    summary.docx_path = docx_path
+    summary.groq_model = groq_model
+    summary.status = status
     await session.flush()
     return summary
 

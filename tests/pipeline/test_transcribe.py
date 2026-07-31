@@ -106,6 +106,49 @@ def test_transcribe_and_diarize_marks_failed_on_transcriber_error(tmp_path):
     assert "CUDA out of memory" in meetings[0].error_message
 
 
+def test_running_transcribe_twice_leaves_exactly_one_set_of_segments(tmp_path):
+    """clear_draft_segments only removed is_final=False rows, so a retry (or a
+    double-click) appended a second copy of the transcript next to the first --
+    which then doubled the text sent to Groq in the next stage."""
+    async def scenario():
+        engine = make_engine("sqlite+aiosqlite:///:memory:")
+        await init_db(engine)
+        session_factory = make_session_factory(engine)
+
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(session, "Rapat Uji", None)
+            await repo.mark_meeting_status(session, meeting.id, "recorded")
+            await session.commit()
+            meeting_id = meeting.id
+
+        mic_wav = tmp_path / "mic.wav"
+        speaker_wav = tmp_path / "speaker.wav"
+        mic_wav.touch()
+        speaker_wav.touch()
+
+        transcriber = RoutingFakeTranscriber({
+            "mic.wav": [TranscriptSegmentResult(start_ms=0, end_ms=500, text="Selamat pagi")],
+            "speaker.wav": [TranscriptSegmentResult(start_ms=600, end_ms=1500, text="Mari kita mulai")],
+        })
+        diarizer = FakeDiarizer([SpeakerSegment(start_ms=600, end_ms=1500, label="Speaker 1")])
+
+        await transcribe_and_diarize(session_factory, meeting_id, mic_wav, speaker_wav, transcriber, diarizer)
+        await transcribe_and_diarize(session_factory, meeting_id, mic_wav, speaker_wav, transcriber, diarizer)
+
+        async with session_factory() as session:
+            from sqlalchemy import select
+            segments = (await session.execute(
+                select(TranscriptSegment).where(TranscriptSegment.meeting_id == meeting_id)
+            )).scalars().all()
+            meetings = await repo.list_meetings(session)
+        return segments, meetings
+
+    segments, meetings = asyncio.run(scenario())
+    assert len(segments) == 2, f"expected one set of 2 segments, got {[s.text for s in segments]}"
+    assert sorted(s.text for s in segments) == ["Mari kita mulai", "Selamat pagi"]
+    assert meetings[0].status == "transcribed"
+
+
 def test_transcribe_and_diarize_clears_existing_drafts_first(tmp_path):
     async def scenario():
         engine = make_engine("sqlite+aiosqlite:///:memory:")

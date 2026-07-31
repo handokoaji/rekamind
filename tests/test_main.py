@@ -1,3 +1,5 @@
+import threading
+import time
 from types import SimpleNamespace
 
 import sys
@@ -105,6 +107,40 @@ def test_live_models_are_built_lazily_inside_the_live_session_factory():
         "build_live_transcriber must be called inside live_session_factory, not eagerly"
     assert "nonlocal live_transcriber, live_diarizer" in source, \
         "both the live model and the live diarizer must be cached across meetings"
+
+
+def test_load_models_builds_only_once_under_concurrent_callers(monkeypatch):
+    """spec §6: Transkrip/Ringkasan on two meetings may run at the same time.
+    Without a lock both threads see the cache empty and each builds its own
+    large-v3 + pyannote pair -- a straight path to CUDA OOM."""
+    build_calls = []
+    monkeypatch.setattr(main, "_models", None)
+
+    def slow_build(backend_name, settings):
+        build_calls.append(backend_name)
+        time.sleep(0.2)  # wide enough for the second thread to land inside the race
+        return ("transcriber", "diarizer", "summarizer")
+
+    monkeypatch.setattr(main, "build_models", slow_build)
+
+    results = []
+    barrier = threading.Barrier(2)
+
+    def worker():
+        barrier.wait()
+        results.append(main.load_models("cuda", SimpleNamespace()))
+
+    threads = [threading.Thread(target=worker) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(10)
+
+    assert len(build_calls) == 1, f"models built {len(build_calls)} times, expected 1"
+    assert len(results) == 2
+    assert results[0] is results[1], "both threads must share the one cached tuple"
+
+    main._models = None
 
 
 def test_build_models_openvino_uses_cpu_diarizer(monkeypatch):

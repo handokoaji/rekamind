@@ -48,10 +48,12 @@ class MainWindow:
 
     def _show_recording(self) -> None:
         self._recording_frame.tkraise()
+        # Stops the 2s DB poll while Riwayat is hidden behind this frame.
+        self._history_view.set_active(False)
 
     def _show_history(self) -> None:
         self._history_view.tkraise()
-        self._history_view.refresh()
+        self._history_view.set_active(True)
 
     def _build_recording_frame(self, parent: tk.Widget) -> None:
         self.title_var = tk.StringVar()

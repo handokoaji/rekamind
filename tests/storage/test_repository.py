@@ -143,6 +143,76 @@ def test_save_transcript_segments_defaults_is_final_true():
     assert segments[0].is_final is True
 
 
+def test_save_summary_twice_updates_in_place_instead_of_raising_integrity_error():
+    """Summary.meeting_id is unique: a second summarize (retry after a Groq
+    failure, or a double-click) used to raise IntegrityError forever, leaving
+    the meeting permanently stuck in "failed" with no in-app way out."""
+    async def scenario():
+        engine = make_engine("sqlite+aiosqlite:///:memory:")
+        await init_db(engine)
+        session_factory = make_session_factory(engine)
+
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(session, "Rapat Uji", None)
+            await session.commit()
+            meeting_id = meeting.id
+
+            await repo.save_summary(
+                session, meeting_id, mom_json='{"v": 1}', docx_path="C:/x/lama.docx",
+                groq_model="llama-3.3-70b-versatile", status="ready",
+            )
+            await session.commit()
+
+            summary = await repo.save_summary(
+                session, meeting_id, mom_json='{"v": 2}', docx_path="C:/x/baru.docx",
+                groq_model="llama-3.3-70b-versatile", status="ready",
+            )
+            await session.commit()
+
+            from sqlalchemy import select
+            from app.storage.models import Summary
+            all_summaries = (await session.execute(
+                select(Summary).where(Summary.meeting_id == meeting_id)
+            )).scalars().all()
+        return summary, all_summaries
+
+    summary, all_summaries = asyncio.run(scenario())
+    assert len(all_summaries) == 1, "must upsert, not insert a second row"
+    assert summary.mom_json == '{"v": 2}'
+    assert summary.docx_path == "C:/x/baru.docx"
+
+
+def test_clear_all_segments_removes_finals_too():
+    async def scenario():
+        engine = make_engine("sqlite+aiosqlite:///:memory:")
+        await init_db(engine)
+        session_factory = make_session_factory(engine)
+
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(session, "Rapat Uji", None)
+            await session.commit()
+            meeting_id = meeting.id
+            await repo.save_transcript_segments(session, [
+                {"meeting_id": meeting_id, "speaker_id": None, "source": "mic",
+                 "start_ms": 0, "end_ms": 400, "text": "draft", "is_final": False},
+                {"meeting_id": meeting_id, "speaker_id": None, "source": "mic",
+                 "start_ms": 400, "end_ms": 800, "text": "final", "is_final": True},
+            ])
+            await session.commit()
+
+            await repo.clear_all_segments(session, meeting_id)
+            await session.commit()
+
+            from sqlalchemy import select
+            from app.storage.models import TranscriptSegment
+            remaining = (await session.execute(
+                select(TranscriptSegment).where(TranscriptSegment.meeting_id == meeting_id)
+            )).scalars().all()
+        return remaining
+
+    assert asyncio.run(scenario()) == []
+
+
 def test_save_transcript_segments_honors_is_final_false_and_clear_draft_segments_removes_only_drafts():
     async def scenario():
         engine = make_engine("sqlite+aiosqlite:///:memory:")

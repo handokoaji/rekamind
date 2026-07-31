@@ -5,13 +5,16 @@ from pathlib import Path
 from docx import Document
 
 from app.summarization.groq_client import MomResult
+from app.timeutil import to_wib
 
 
 def build_docx_filename(meeting_date: datetime, meeting_title: str) -> str:
-    """e.g. 2026-07-31-Test-Meeting-3.docx -- no spaces, safe on Windows."""
+    """e.g. 2026-07-31-Test-Meeting-3.docx -- no spaces, safe on Windows.
+    The date is converted to WIB here (not by the caller) so it can never
+    disagree with the "Tanggal:" line export_mom_docx writes inside the file."""
     slug = re.sub(r"\s+", "-", meeting_title.strip())
     slug = re.sub(r"[^A-Za-z0-9\-_]", "", slug) or "meeting"
-    return f"{meeting_date.strftime('%Y-%m-%d')}-{slug}.docx"
+    return f"{to_wib(meeting_date).strftime('%Y-%m-%d')}-{slug}.docx"
 
 
 def export_mom_docx(meeting_title: str, meeting_date: datetime, mom: MomResult, output_path: Path) -> Path:
@@ -19,7 +22,7 @@ def export_mom_docx(meeting_title: str, meeting_date: datetime, mom: MomResult, 
     doc = Document()
 
     doc.add_heading(meeting_title, level=0)
-    doc.add_paragraph(f"Tanggal: {meeting_date.strftime('%d %B %Y %H:%M')}")
+    doc.add_paragraph(f"Tanggal: {to_wib(meeting_date).strftime('%d %B %Y %H:%M')} WIB")
 
     doc.add_heading("Ringkasan Menit ke Menit", level=1)
     for entry in mom.minute_by_minute:

@@ -41,7 +41,9 @@ async def transcribe_and_diarize(
                     "end_ms": seg.end_ms,
                     "text": seg.text,
                 })
-            await repo.clear_draft_segments(session, meeting_id)
+            # All segments, not just drafts: a second run (retry, double-click)
+            # must replace the previous transcript instead of appending to it.
+            await repo.clear_all_segments(session, meeting_id)
             await repo.save_transcript_segments(session, segment_rows)
             await repo.mark_meeting_status(session, meeting_id, "transcribed")
             await session.commit()

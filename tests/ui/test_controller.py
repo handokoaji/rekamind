@@ -142,6 +142,38 @@ def test_run_transcribe_calls_transcribe_fn_with_recording_paths(tmp_path):
     assert speaker_wav == recording_dir / "speaker.wav"
 
 
+def test_run_transcribe_raises_clear_message_when_recording_dir_is_null(tmp_path):
+    """Legacy rows can have recording_dir NULL. Path(None) raised a bare
+    TypeError from inside pathlib, which the history view only logged -- the
+    button looked like it did nothing at all."""
+    engine = make_engine("sqlite+aiosqlite:///:memory:")
+    asyncio.run(init_db(engine))
+    session_factory = make_session_factory(engine)
+
+    calls = []
+
+    async def spy_transcribe_fn(meeting_id, mic_wav, speaker_wav):
+        calls.append(meeting_id)
+
+    controller = _make_controller(tmp_path, session_factory, transcribe_fn=spy_transcribe_fn)
+
+    async def _seed():
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(session, "Rapat Lama", None, recording_dir=None)
+            await session.commit()
+            return meeting.id
+
+    meeting_id = asyncio.run(_seed())
+
+    try:
+        controller.run_transcribe(meeting_id)
+        assert False, "expected ValueError, not a TypeError from pathlib"
+    except ValueError as exc:
+        assert "tidak punya lokasi rekaman" in str(exc)
+
+    assert calls == [], "transcription must not be attempted without a recording dir"
+
+
 def test_run_summarize_calls_summarize_fn_with_title_and_date(tmp_path):
     engine = make_engine("sqlite+aiosqlite:///:memory:")
     asyncio.run(init_db(engine))

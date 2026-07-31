@@ -4,6 +4,8 @@ import threading
 import tkinter as tk
 from tkinter import scrolledtext, ttk
 
+from app.timeutil import to_wib
+
 logger = logging.getLogger(__name__)
 
 _STATUS_LABELS = {
@@ -25,6 +27,18 @@ class HistoryView(tk.Frame):
         super().__init__(parent)
         self._controller = controller
         self._meetings_by_iid: dict[str, object] = {}
+        # Only poll while the Riwayat tab is the one on top: every tick is a
+        # real round-trip to Postgres on the Tk main thread. tkraise()-stacked
+        # frames both report winfo_ismapped()/winfo_viewable() true regardless
+        # of which is on top, so MainWindow tells us explicitly instead.
+        self._active = False
+        # Which meeting "Lihat Transkrip" is currently showing, so a poll-driven
+        # refresh of the SAME selection doesn't hide the transcript again.
+        self._transcript_visible_for: int | None = None
+        # Meetings with an action in flight: their button stays disabled across
+        # refreshes until the status actually changes.
+        self._busy_meeting_ids: set[int] = set()
+        self._action_error: tuple[int, str] | None = None
 
         self._tree = ttk.Treeview(self, columns=("title", "date", "status"), show="headings", height=10)
         self._tree.heading("title", text="Judul")
@@ -49,8 +63,16 @@ class HistoryView(tk.Frame):
         self.refresh()
         self.after(_REFRESH_INTERVAL_MS, self._poll)
 
+    def set_active(self, is_active: bool) -> None:
+        """Called by MainWindow when this tab is raised/left. Refreshing once on
+        the way in keeps the list from being up to 2s stale when it appears."""
+        self._active = is_active
+        if is_active:
+            self.refresh()
+
     def _poll(self) -> None:
-        self.refresh()
+        if self._active:
+            self.refresh()
         self.after(_REFRESH_INTERVAL_MS, self._poll)
 
     def refresh(self) -> None:
@@ -59,7 +81,8 @@ class HistoryView(tk.Frame):
         self._tree.delete(*self._tree.get_children())
         self._meetings_by_iid.clear()
         for meeting in meetings:
-            date_str = meeting.start_time.strftime("%Y-%m-%d %H:%M") if meeting.start_time else "-"
+            # Stored UTC, displayed WIB.
+            date_str = to_wib(meeting.start_time).strftime("%Y-%m-%d %H:%M") if meeting.start_time else "-"
             iid = str(meeting.id)
             self._tree.insert("", "end", iid=iid, values=(
                 meeting.title, date_str, _STATUS_LABELS.get(meeting.status, meeting.status),
@@ -84,9 +107,15 @@ class HistoryView(tk.Frame):
             self._download_button, self._view_transcript_button,
         ):
             button.pack_forget()
-        self._transcript_view.pack_forget()
 
         meeting = self._selected_meeting()
+        # The transcript panel is hidden only when the selection moved away from
+        # the meeting it belongs to -- NOT on every refresh, or the 2s poll would
+        # yank it off screen right after the user opened it.
+        if meeting is None or meeting.id != self._transcript_visible_for:
+            self._transcript_visible_for = None
+            self._transcript_view.pack_forget()
+
         if meeting is None:
             self._status_label.config(text="")
             return
@@ -95,17 +124,26 @@ class HistoryView(tk.Frame):
         label = _STATUS_LABELS.get(status, status)
         if status == "failed" and meeting.error_message:
             label = f"{label} -- {meeting.error_message}"
+        elif self._action_error is not None and self._action_error[0] == meeting.id:
+            # Only when the pipeline itself didn't record one: an action can fail
+            # before it ever reaches the DB (e.g. a meeting with no recording_dir),
+            # which would otherwise leave the button looking like a no-op.
+            label = f"{label} -- {self._action_error[1]}"
         self._status_label.config(text=label)
 
+        state = "disabled" if meeting.id in self._busy_meeting_ids else "normal"
         if status == "recorded":
+            self._transcribe_button.config(state=state)
             self._transcribe_button.pack(side="left")
         elif status == "transcribed":
+            self._summarize_button.config(state=state)
             self._summarize_button.pack(side="left")
             self._view_transcript_button.pack(side="left")
         elif status == "completed":
             self._download_button.pack(side="left")
             self._view_transcript_button.pack(side="left")
         elif status == "failed":
+            self._retry_button.config(state=state)
             self._retry_button.pack(side="left")
 
     def _run_in_background(self, fn, meeting_id: int) -> None:
@@ -114,25 +152,38 @@ class HistoryView(tk.Frame):
                 fn(meeting_id)
             except Exception as exc:
                 logger.warning("history action failed for meeting %s: %s", meeting_id, exc)
+                message = f"Gagal menjalankan aksi: {exc}"
+                # Kept in a field, not just written to the label: the refresh
+                # scheduled below rebuilds the panel and would wipe a bare label.
+                self._action_error = (meeting_id, message)
+                self.after(0, lambda: self._status_label.config(text=message))
             finally:
+                self._busy_meeting_ids.discard(meeting_id)
                 self.after(0, self.refresh)
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    def _handle_transcribe(self) -> None:
+    def _start_action(self, button: tk.Button, fn) -> None:
+        """Disable the button synchronously BEFORE the thread starts (same
+        pattern as window.py's on_start_clicked) so a double-click can't run the
+        stage twice while the status in the DB hasn't caught up yet."""
         meeting = self._selected_meeting()
-        if meeting is not None:
-            self._run_in_background(self._controller.run_transcribe, meeting.id)
+        if meeting is None or meeting.id in self._busy_meeting_ids:
+            return
+        if self._action_error is not None and self._action_error[0] == meeting.id:
+            self._action_error = None
+        self._busy_meeting_ids.add(meeting.id)
+        button.config(state="disabled")
+        self._run_in_background(fn, meeting.id)
+
+    def _handle_transcribe(self) -> None:
+        self._start_action(self._transcribe_button, self._controller.run_transcribe)
 
     def _handle_summarize(self) -> None:
-        meeting = self._selected_meeting()
-        if meeting is not None:
-            self._run_in_background(self._controller.run_summarize, meeting.id)
+        self._start_action(self._summarize_button, self._controller.run_summarize)
 
     def _handle_retry(self) -> None:
-        meeting = self._selected_meeting()
-        if meeting is not None:
-            self._run_in_background(self._controller.retry, meeting.id)
+        self._start_action(self._retry_button, self._controller.retry)
 
     def _handle_download(self) -> None:
         meeting = self._selected_meeting()
@@ -147,6 +198,7 @@ class HistoryView(tk.Frame):
         if meeting is None:
             return
         rows = self._controller.get_transcript(meeting.id)
+        self._transcript_visible_for = meeting.id
         self._transcript_view.pack(fill="both", expand=True)
         self._transcript_view.delete("1.0", "end")
         for label, text in rows:
