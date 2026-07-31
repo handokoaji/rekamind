@@ -175,7 +175,7 @@ def _handle_startup_db_error(exc: Exception) -> bool:
     if not reopen:
         root.destroy()
         return False
-    result = SetupWizard(parent=None).run()
+    result = SetupWizard(parent=root).run()
     root.destroy()
     if result is None:
         return False

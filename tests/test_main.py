@@ -1,5 +1,6 @@
 import threading
 import time
+import tkinter as tk
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -233,6 +234,35 @@ def test_handle_startup_db_error_reopens_wizard_on_yes(monkeypatch):
 
     assert retried is True
     assert saved == [{"storage_backend": "sqlite"}]
+
+
+def test_handle_startup_db_error_reopens_wizard_as_toplevel_on_existing_root(monkeypatch):
+    """Regression test: SetupWizard(parent=None) makes SetupWizard create its
+    OWN new tk.Tk() root (per its docstring), while _handle_startup_db_error's
+    own `root` (used for the messagebox) is still alive at that point -- two
+    live Tk() interpreters at once breaks implicit-master widget bindings
+    (a StringVar()/etc. created without an explicit master binds to whichever
+    interpreter is _default_root, not necessarily the new window's own
+    interpreter). SetupWizard must be reopened as a Toplevel on the existing
+    root instead, same as every other reopen call site in this codebase."""
+    monkeypatch.setattr(main.messagebox, "askyesno", lambda *a, **k: True)
+    monkeypatch.setattr(main, "save_packaged_config", lambda result: None)
+
+    captured_parent = []
+
+    class FakeWizard:
+        def __init__(self, parent=None):
+            captured_parent.append(parent)
+
+        def run(self):
+            return {"storage_backend": "sqlite"}
+
+    monkeypatch.setattr(main, "SetupWizard", FakeWizard)
+
+    main._handle_startup_db_error(RuntimeError("connection refused"))
+
+    assert len(captured_parent) == 1
+    assert isinstance(captured_parent[0], tk.Tk)
 
 
 def test_handle_startup_db_error_returns_false_on_no(monkeypatch):
