@@ -51,7 +51,7 @@ async def _noop_summarize_fn(meeting_id, meeting_title, meeting_date):
 
 def _make_controller(tmp_path, session_factory, transcribe_fn=_noop_transcribe_fn,
                       summarize_fn=_noop_summarize_fn, recorder_cls=FakeRecorder,
-                      live_session_factory=None):
+                      live_session_factory=None, device_id=None, device_label=None):
     return RecorderController(
         session_factory=session_factory,
         recorder_factory=lambda mic, speaker: recorder_cls(mic, speaker),
@@ -59,6 +59,8 @@ def _make_controller(tmp_path, session_factory, transcribe_fn=_noop_transcribe_f
         summarize_fn=summarize_fn,
         recordings_dir=tmp_path,
         live_session_factory=live_session_factory,
+        device_id=device_id,
+        device_label=device_label,
     )
 
 
@@ -616,3 +618,23 @@ def test_delete_meeting_refuses_while_it_is_the_active_recording(tmp_path):
         assert "sedang direkam" in str(e)
 
     controller.stop_meeting()
+
+
+def test_start_meeting_stamps_device_identity(tmp_path):
+    engine = make_engine("sqlite+aiosqlite:///:memory:")
+    asyncio.run(init_db(engine))
+    session_factory = make_session_factory(engine)
+    controller = _make_controller(
+        tmp_path, session_factory, device_id="abc123", device_label="Laptop Budi",
+    )
+
+    meeting_id = controller.start_meeting("Rapat Device")
+
+    async def _get():
+        async with session_factory() as session:
+            from app.storage.models import Meeting
+            return await session.get(Meeting, meeting_id)
+
+    meeting = asyncio.run(_get())
+    assert meeting.device_id == "abc123"
+    assert meeting.device_label == "Laptop Budi"

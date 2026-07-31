@@ -27,6 +27,8 @@ class RecorderController:
         summarize_fn: Callable[..., Awaitable],
         recordings_dir: Path,
         live_session_factory: Callable[[Path, Path, Path], object] | None = None,
+        device_id: str | None = None,
+        device_label: str | None = None,
     ):
         self._session_factory = session_factory
         self._recorder_factory = recorder_factory
@@ -34,6 +36,8 @@ class RecorderController:
         self._summarize_fn = summarize_fn
         self._recordings_dir = recordings_dir
         self._live_session_factory = live_session_factory
+        self._device_id = device_id
+        self._device_label = device_label
         self.state = "idle"
         self.error_message: str | None = None
         self._meeting_id: int | None = None
@@ -86,6 +90,7 @@ class RecorderController:
             async with self._session_factory() as session:
                 meeting = await repo.create_meeting(
                     session, title, datetime.now(timezone.utc), recording_dir=str(meeting_dir),
+                    device_id=self._device_id, device_label=self._device_label,
                 )
                 await repo.start_recording(session, meeting.id)
                 await session.commit()

@@ -253,6 +253,8 @@ def main() -> None:
         summarize_fn=summarize_fn,
         recordings_dir=settings.recordings_dir,
         live_session_factory=live_session_factory,
+        device_id=settings.device_id,
+        device_label=settings.device_label,
     )
 
     root = tk.Tk()
