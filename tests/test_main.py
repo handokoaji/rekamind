@@ -149,3 +149,48 @@ def test_build_models_openvino_uses_cpu_diarizer(monkeypatch):
     settings = SimpleNamespace(hf_token="t", groq_api_key="k")
     _, diarizer, _ = main.build_models("openvino", settings)
     assert diarizer.device == "cpu"
+
+
+def test_main_shows_wizard_on_first_run_and_reports_cancellation(monkeypatch):
+    """Packaged mode, no config.json yet: the wizard must run, and if the
+    user closes it without submitting, the gate reports False so main()
+    knows not to proceed to creating MainWindow."""
+    monkeypatch.setattr(main, "is_dev_mode", lambda: False)
+    monkeypatch.setattr(main, "load_packaged_config", lambda: None)
+
+    wizard_calls = []
+
+    class FakeWizard:
+        def __init__(self, parent=None, initial=None):
+            wizard_calls.append((parent, initial))
+
+        def run(self):
+            return None  # user closed without submitting
+
+    monkeypatch.setattr(main, "SetupWizard", FakeWizard)
+
+    proceed = main.run_first_run_wizard_if_needed()
+
+    assert wizard_calls == [(None, None)]
+    assert proceed is False
+
+
+def test_main_skips_wizard_when_config_already_exists(monkeypatch):
+    monkeypatch.setattr(main, "is_dev_mode", lambda: False)
+    monkeypatch.setattr(main, "load_packaged_config", lambda: {"storage_backend": "sqlite"})
+    wizard_calls = []
+    monkeypatch.setattr(main, "SetupWizard", lambda **kw: wizard_calls.append(kw))
+
+    main.run_first_run_wizard_if_needed()
+
+    assert wizard_calls == []
+
+
+def test_main_skips_wizard_in_dev_mode(monkeypatch):
+    monkeypatch.setattr(main, "is_dev_mode", lambda: True)
+    wizard_calls = []
+    monkeypatch.setattr(main, "SetupWizard", lambda **kw: wizard_calls.append(kw))
+
+    main.run_first_run_wizard_if_needed()
+
+    assert wizard_calls == []

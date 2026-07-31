@@ -19,11 +19,13 @@ from app.logging_setup import configure_logging
 from app.pipeline.recovery import recover_abandoned_meetings
 from app.pipeline.summarize import summarize_and_export
 from app.pipeline.transcribe import transcribe_and_diarize
+from app.settings_store import is_dev_mode, load_packaged_config
 from app.storage.db import init_db, make_engine, make_session_factory
 from app.summarization.docx_export import build_docx_filename
 from app.summarization.groq_client import GroqSummarizer
 from app.tray.icon import build_tray_icon
 from app.ui.controller import RecorderController
+from app.ui.setup_wizard import SetupWizard
 from app.ui.window import MainWindow
 
 logger = logging.getLogger(__name__)
@@ -129,8 +131,20 @@ def _real_recorder(mic_path: Path, speaker_path: Path):
     )
 
 
+def run_first_run_wizard_if_needed() -> bool:
+    """Returns False if the app must not proceed (packaged mode, no config
+    yet, and the user closed the wizard without submitting)."""
+    if is_dev_mode() or load_packaged_config() is not None:
+        return True
+    result = SetupWizard(parent=None).run()
+    return result is not None
+
+
 def main() -> None:
     configure_logging()
+    if not run_first_run_wizard_if_needed():
+        return
+    get_settings.cache_clear()
     settings = get_settings()
     check_ffmpeg_available()
     engine = make_engine(settings.database_url)
