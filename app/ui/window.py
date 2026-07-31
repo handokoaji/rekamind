@@ -145,7 +145,7 @@ class MainWindow:
             except Exception as exc:
                 print(f"Error starting meeting: {exc}", file=sys.stderr)
             finally:
-                self._root.after(0, self.refresh_status)
+                self.push_live_event({"type": "refresh_status"})
 
         threading.Thread(target=_start_in_background, daemon=True).start()
 
@@ -164,8 +164,8 @@ class MainWindow:
             except Exception as exc:
                 print(f"Error stopping meeting: {exc}", file=sys.stderr)
             finally:
-                self._root.after(0, self.refresh_status)
-                self._root.after(0, self._history_view.refresh)
+                self.push_live_event({"type": "refresh_status"})
+                self.push_live_event({"type": "refresh_history"})
 
         threading.Thread(target=_stop_in_background, daemon=True).start()
 
@@ -217,6 +217,10 @@ class MainWindow:
                     self.recording_pulse_var.set(f"{symbol} merekam (data masuk)")
                 elif event["type"] == "update_available":
                     self.update_notice_var.set(f"Update tersedia: v{event['version']} -- klik untuk buka halaman unduh")
+                elif event["type"] == "refresh_status":
+                    self.refresh_status()
+                elif event["type"] == "refresh_history":
+                    self._history_view.refresh()
                 elif event["type"] == "relabel":
                     # A full clear+reinsert always resets the view to the top;
                     # follow the bottom if the user was there, otherwise keep

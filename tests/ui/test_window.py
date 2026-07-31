@@ -1,4 +1,5 @@
 # tests/ui/test_window.py
+import threading
 import time
 import tkinter as tk
 
@@ -509,4 +510,67 @@ def test_update_notice_click_no_op_when_url_blank(monkeypatch):
     window._handle_update_notice_click()
 
     assert opened == []
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_on_start_clicked_worker_never_calls_after_from_its_own_thread():
+    """Same regression class as history_view.py's fix: Tkinter only honors
+    self.after(...) while the main thread is inside mainloop() -- a background
+    thread calling it directly races Tk teardown and can hard-crash the
+    process. The worker must hand off through push_live_event's thread-safe
+    queue instead, same as live session events already do."""
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    controller = FakeController()
+    window = MainWindow(root, controller)
+
+    main_thread = threading.current_thread()
+    calls_from_wrong_thread = []
+    original_after = root.after
+
+    def _tracking_after(*args, **kwargs):
+        if threading.current_thread() is not main_thread:
+            calls_from_wrong_thread.append(threading.current_thread())
+        return original_after(*args, **kwargs)
+
+    root.after = _tracking_after
+
+    window.on_start_clicked("Rapat Sore")
+    _pump_until(root, lambda: controller.state == "recording")
+
+    assert calls_from_wrong_thread == []
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_on_stop_clicked_worker_never_calls_after_from_its_own_thread():
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    controller = FakeController()
+    window = MainWindow(root, controller)
+    window.on_start_clicked("Rapat Sore")
+    _pump_until(root, lambda: controller.state == "recording")
+
+    main_thread = threading.current_thread()
+    calls_from_wrong_thread = []
+    original_after = root.after
+
+    def _tracking_after(*args, **kwargs):
+        if threading.current_thread() is not main_thread:
+            calls_from_wrong_thread.append(threading.current_thread())
+        return original_after(*args, **kwargs)
+
+    root.after = _tracking_after
+
+    window.on_stop_clicked()
+    _pump_until(root, lambda: controller.stopped)
+
+    assert calls_from_wrong_thread == []
     root.destroy()
