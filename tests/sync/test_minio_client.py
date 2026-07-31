@@ -72,3 +72,95 @@ def test_build_manifest_summary_has_docx_false_when_docx_path_is_none():
 
 def test_manifest_object_prefix_shape():
     assert minio_client.manifest_object_prefix("dev1", "uuid123") == "dev1/uuid123"
+
+
+import asyncio
+import sys
+from types import ModuleType
+from unittest.mock import MagicMock
+
+from app.storage.db import init_db, make_engine, make_session_factory
+from app.storage import repository as repo
+
+
+class FakeSettings:
+    def __init__(self, device_id="dev1"):
+        self.device_id = device_id
+        self.minio_endpoint = "play.min.io"
+        self.minio_access_key = "ak"
+        self.minio_secret_key = "sk"
+        self.minio_bucket = "meetings"
+        self.minio_is_configured = True
+
+
+def _fake_minio_module():
+    module = ModuleType("minio")
+    module.Minio = MagicMock()
+    return module
+
+
+def _make_db():
+    engine = make_engine("sqlite+aiosqlite:///:memory:")
+    asyncio.run(init_db(engine))
+    return make_session_factory(engine)
+
+
+def test_push_uploads_manifest_and_files_for_own_meetings_only(monkeypatch, tmp_path):
+    fake_module = _fake_minio_module()
+    fake_client = fake_module.Minio.return_value
+    monkeypatch.setitem(sys.modules, "minio", fake_module)
+
+    session_factory = _make_db()
+
+    async def _seed():
+        async with session_factory() as session:
+            own = await repo.create_meeting(
+                session, "Rapat Saya", None, recording_dir=str(tmp_path / "own"),
+                device_id="dev1", device_label="Laptop Budi",
+            )
+            other = await repo.create_meeting(
+                session, "Rapat Lain", None, recording_dir=str(tmp_path / "other"),
+                device_id="dev2", device_label="Laptop Lain",
+            )
+            await session.commit()
+            return own.id, other.id
+
+    own_id, other_id = asyncio.run(_seed())
+    (tmp_path / "own").mkdir()
+    (tmp_path / "own" / "mic.wav").write_bytes(b"fake")
+
+    result = minio_client.push(session_factory, FakeSettings())
+
+    assert result["manifests"] == 1  # only the meeting owned by dev1
+    fake_client.put_object.assert_called()  # manifest.json uploaded
+    fake_client.fput_object.assert_called()  # mic.wav uploaded
+    uploaded_keys = [c.args[1] for c in fake_client.put_object.call_args_list]
+    assert any(k.startswith("dev1/") for k in uploaded_keys)
+    assert not any(k.startswith("dev2/") for k in uploaded_keys)
+
+
+def test_push_skips_re_uploading_files_when_already_synced(monkeypatch, tmp_path):
+    fake_module = _fake_minio_module()
+    fake_client = fake_module.Minio.return_value
+    monkeypatch.setitem(sys.modules, "minio", fake_module)
+
+    session_factory = _make_db()
+
+    async def _seed_and_mark_synced():
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(
+                session, "Rapat", None, recording_dir=str(tmp_path / "own"),
+                device_id="dev1", device_label="Laptop Budi",
+            )
+            await session.commit()
+            meeting.synced_at = datetime.now(timezone.utc)
+            await session.commit()
+
+    asyncio.run(_seed_and_mark_synced())
+    (tmp_path / "own").mkdir()
+    (tmp_path / "own" / "mic.wav").write_bytes(b"fake")
+
+    minio_client.push(session_factory, FakeSettings())
+
+    fake_client.put_object.assert_called()  # manifest still re-uploaded
+    fake_client.fput_object.assert_not_called()  # but not the WAV, already synced
