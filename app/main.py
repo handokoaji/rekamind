@@ -183,6 +183,14 @@ def _handle_startup_db_error(exc: Exception) -> bool:
     return True
 
 
+def _handle_tray_show(window) -> None:
+    window.push_live_event({"type": "show_window"})
+
+
+def _handle_tray_quit(window) -> None:
+    window.push_live_event({"type": "quit_app"})
+
+
 def _start_update_check(on_update_available) -> threading.Thread:
     def _worker():
         new_version = update_check.check_for_update(__version__, update_check.RELEASES_API_URL)
@@ -302,16 +310,13 @@ def main() -> None:
         on_update_available=lambda v: window.push_live_event({"type": "update_available", "version": v})
     )
 
-    def show_window():
-        root.after(0, root.deiconify)
-
-    def quit_app():
-        root.after(0, root.quit)
-
     # X button hides to tray instead of killing the app; "Buka Dashboard" reopens.
     root.protocol("WM_DELETE_WINDOW", root.withdraw)
 
-    icon = build_tray_icon(on_show=show_window, on_quit=quit_app)
+    icon = build_tray_icon(
+        on_show=lambda: _handle_tray_show(window),
+        on_quit=lambda: _handle_tray_quit(window),
+    )
 
     threading.Thread(target=icon.run, daemon=True).start()
     root.mainloop()

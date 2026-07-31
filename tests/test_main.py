@@ -307,3 +307,27 @@ def test_start_update_check_calls_nothing_when_no_update(monkeypatch):
     thread.join(timeout=2)
 
     assert reported == []
+
+
+def test_handle_tray_show_pushes_a_live_event_instead_of_calling_after_directly():
+    """Regression test for the same crash-risk bug class already fixed twice in
+    app/ui/window.py and app/ui/history_view.py: pystray's Icon.run() drives its
+    tray callbacks from its OWN background thread (not the Tk main thread), so
+    calling root.after(...) directly from show_window()/quit_app() races Tk
+    teardown. They must instead hand off through the existing thread-safe
+    push_live_event queue, same as every other cross-thread UI update."""
+    pushed = []
+    window = SimpleNamespace(push_live_event=pushed.append)
+
+    main._handle_tray_show(window)
+
+    assert pushed == [{"type": "show_window"}]
+
+
+def test_handle_tray_quit_pushes_a_live_event_instead_of_calling_after_directly():
+    pushed = []
+    window = SimpleNamespace(push_live_event=pushed.append)
+
+    main._handle_tray_quit(window)
+
+    assert pushed == [{"type": "quit_app"}]

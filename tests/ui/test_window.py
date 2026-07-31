@@ -574,3 +574,50 @@ def test_on_stop_clicked_worker_never_calls_after_from_its_own_thread():
 
     assert calls_from_wrong_thread == []
     root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_show_window_event_deiconifies_root(monkeypatch):
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    controller = FakeController()
+    window = MainWindow(root, controller)
+    calls = []
+    monkeypatch.setattr(root, "deiconify", lambda: calls.append(True))
+
+    window.push_live_event({"type": "show_window"})
+    _pump_until(root, lambda: len(calls) > 0)
+
+    assert calls == [True]
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_quit_app_event_quits_root(monkeypatch):
+    """root.quit() is also what _pump_until itself relies on to stop the pumped
+    mainloop, so the tracking wrapper must call through to the original --
+    replacing it with a no-op would hang this very test."""
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    controller = FakeController()
+    window = MainWindow(root, controller)
+    calls = []
+    original_quit = root.quit
+
+    def _tracking_quit():
+        calls.append(True)
+        original_quit()
+
+    monkeypatch.setattr(root, "quit", _tracking_quit)
+
+    window.push_live_event({"type": "quit_app"})
+    _pump_until(root, lambda: len(calls) > 0)
+
+    assert calls == [True]
+    root.destroy()

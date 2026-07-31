@@ -221,6 +221,10 @@ class MainWindow:
                     self.refresh_status()
                 elif event["type"] == "refresh_history":
                     self._history_view.refresh()
+                elif event["type"] == "show_window":
+                    self._root.deiconify()
+                elif event["type"] == "quit_app":
+                    self._root.quit()
                 elif event["type"] == "relabel":
                     # A full clear+reinsert always resets the view to the top;
                     # follow the bottom if the user was there, otherwise keep
