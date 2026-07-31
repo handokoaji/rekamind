@@ -42,12 +42,12 @@ def _tk_available() -> bool:
         return False
 
 
-def _meeting(id, title, status, error_message=None, failed_stage=None):
+def _meeting(id, title, status, error_message=None, failed_stage=None, device_label=None):
     return SimpleNamespace(
         id=id, title=title, status=status,
         start_time=datetime(2026, 7, 31, 9, 0, tzinfo=timezone.utc),
         created_at=datetime(2026, 7, 31, 9, 0, tzinfo=timezone.utc),
-        error_message=error_message, failed_stage=failed_stage,
+        error_message=error_message, failed_stage=failed_stage, device_label=device_label,
     )
 
 
@@ -399,4 +399,28 @@ def test_download_button_calls_controller_get_docx_path(monkeypatch):
     view._handle_download()
 
     assert opened == ["C:/recordings/1/mom.docx"]
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_riwayat_shows_device_label_column():
+    root = tk.Tk()
+    controller = FakeController([_meeting(1, "Rapat A", "recorded", device_label="Laptop Budi")])
+    view = HistoryView(root, controller)
+
+    values = view._tree.item("1", "values")
+
+    assert values[3] == "Laptop Budi"
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_riwayat_shows_fallback_for_unknown_device():
+    root = tk.Tk()
+    controller = FakeController([_meeting(1, "Rapat A", "recorded", device_label=None)])
+    view = HistoryView(root, controller)
+
+    values = view._tree.item("1", "values")
+
+    assert values[3] == "Tidak diketahui"
     root.destroy()

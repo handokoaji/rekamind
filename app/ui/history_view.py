@@ -40,10 +40,11 @@ class HistoryView(tk.Frame):
         self._busy_meeting_ids: set[int] = set()
         self._action_error: tuple[int, str] | None = None
 
-        self._tree = ttk.Treeview(self, columns=("title", "date", "status"), show="headings", height=10)
+        self._tree = ttk.Treeview(self, columns=("title", "date", "status", "device"), show="headings", height=10)
         self._tree.heading("title", text="Judul")
         self._tree.heading("date", text="Tanggal")
         self._tree.heading("status", text="Status")
+        self._tree.heading("device", text="Perangkat")
         self._tree.pack(fill="both", expand=True)
         self._tree.bind("<<TreeviewSelect>>", self._on_select)
 
@@ -87,6 +88,7 @@ class HistoryView(tk.Frame):
             iid = str(meeting.id)
             self._tree.insert("", "end", iid=iid, values=(
                 meeting.title, date_str, _STATUS_LABELS.get(meeting.status, meeting.status),
+                meeting.device_label or "Tidak diketahui",
             ))
             self._meetings_by_iid[iid] = meeting
         if previously_selected and previously_selected[0] in self._meetings_by_iid:
