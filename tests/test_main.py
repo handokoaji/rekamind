@@ -247,3 +247,24 @@ def test_main_shows_fatal_error_and_exits_on_unsupported_hardware(monkeypatch):
     assert error_shown == [("Rekamind", "Perangkat ini tidak mendukung transkripsi audio.")]
     assert window_created == []
     assert exc_info.value.code != 0
+
+
+def test_prepend_bundled_ffmpeg_adds_to_path_when_dir_exists(monkeypatch, tmp_path):
+    ffmpeg_dir = tmp_path / "ffmpeg"
+    ffmpeg_dir.mkdir()
+    monkeypatch.setattr(main.sys, "executable", str(tmp_path / "MeetingRecorder.exe"))
+    monkeypatch.setenv("PATH", "C:\\existing")
+
+    main.prepend_bundled_ffmpeg_to_path()
+
+    assert str(ffmpeg_dir) in main.os.environ["PATH"]
+    assert main.os.environ["PATH"].startswith(str(ffmpeg_dir))
+
+
+def test_prepend_bundled_ffmpeg_no_op_when_dir_missing(monkeypatch, tmp_path):
+    monkeypatch.setattr(main.sys, "executable", str(tmp_path / "python.exe"))
+    monkeypatch.setenv("PATH", "C:\\existing")
+
+    main.prepend_bundled_ffmpeg_to_path()
+
+    assert main.os.environ["PATH"] == "C:\\existing"

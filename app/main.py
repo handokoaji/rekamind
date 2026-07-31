@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import queue
 import shutil
 import sys
@@ -30,6 +31,12 @@ from app.ui.setup_wizard import SetupWizard
 from app.ui.window import MainWindow
 
 logger = logging.getLogger(__name__)
+
+
+def prepend_bundled_ffmpeg_to_path() -> None:
+    bundled_ffmpeg_dir = Path(sys.executable).parent / "ffmpeg"
+    if bundled_ffmpeg_dir.exists():
+        os.environ["PATH"] = f"{bundled_ffmpeg_dir}{os.pathsep}{os.environ['PATH']}"
 
 
 def check_ffmpeg_available() -> bool:
@@ -162,6 +169,7 @@ def _handle_startup_db_error(exc: Exception) -> bool:
 
 
 def main() -> None:
+    prepend_bundled_ffmpeg_to_path()
     configure_logging()
     if not run_first_run_wizard_if_needed():
         return
