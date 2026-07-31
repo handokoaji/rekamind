@@ -33,5 +33,5 @@ def test_summarize_parses_json_response(monkeypatch):
     )
     fake_client.chat.completions.create.assert_called_once()
     call_kwargs = fake_client.chat.completions.create.call_args.kwargs
-    assert call_kwargs["model"] == "llama-3.3-70b-versatile"
+    assert call_kwargs["model"] == "openai/gpt-oss-120b"
     assert call_kwargs["response_format"] == {"type": "json_object"}

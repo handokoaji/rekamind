@@ -29,7 +29,7 @@ class MomResult:
 
 
 class GroqSummarizer:
-    def __init__(self, api_key: str, model: str = "llama-3.3-70b-versatile"):
+    def __init__(self, api_key: str, model: str = "openai/gpt-oss-120b"):
         self._client = Groq(api_key=api_key)
         self._model = model
 
