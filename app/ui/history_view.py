@@ -179,6 +179,7 @@ class HistoryView(tk.Frame):
                 self._summarize_button.pack(side="left")
             self._view_transcript_button.pack(side="left")
         elif status == "completed":
+            self._download_button.config(state=state)
             self._download_button.pack(side="left")
             self._view_transcript_button.pack(side="left")
         elif status == "failed" and is_own:
@@ -242,19 +243,13 @@ class HistoryView(tk.Frame):
     def _handle_retry(self) -> None:
         self._start_action(self._retry_button, self._controller.retry)
 
-    def _handle_download(self) -> None:
-        # Deliberately synchronous, not routed through _start_action's
-        # background-thread pattern. For a meeting recorded on this device
-        # (the common case) ensure_docx_available returns immediately,
-        # identical to the old get_docx_path -- only a meeting pulled from
-        # another device and not yet cached locally pays a brief synchronous
-        # MinIO download.
-        meeting = self._selected_meeting()
-        if meeting is None:
-            return
-        docx_path = self._controller.ensure_docx_available(meeting.id)
+    def _download_and_open(self, meeting_id: int) -> None:
+        docx_path = self._controller.ensure_docx_available(meeting_id)
         if docx_path:
             os.startfile(docx_path)
+
+    def _handle_download(self) -> None:
+        self._start_action(self._download_button, self._download_and_open)
 
     def _handle_delete(self) -> None:
         meeting = self._selected_meeting()

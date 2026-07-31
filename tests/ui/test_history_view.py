@@ -114,6 +114,20 @@ class GatedController(FakeController):
         self.transcribe_calls.append(meeting_id)
 
 
+class GatedDownloadController(FakeController):
+    """ensure_docx_available blocks until the test releases it, so a
+    download "in flight" is a state the test can actually observe."""
+
+    def __init__(self, meetings):
+        super().__init__(meetings)
+        self.gate = threading.Event()
+
+    def ensure_docx_available(self, meeting_id):
+        self.gate.wait(5)
+        self.download_calls.append(meeting_id)
+        return "C:/recordings/1/mom.docx"
+
+
 class ExplodingController(FakeController):
     def run_transcribe(self, meeting_id):
         raise ValueError(
@@ -401,7 +415,7 @@ def test_delete_does_nothing_when_confirmation_declined(monkeypatch):
 
 
 @pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
-def test_download_button_calls_controller_get_docx_path(monkeypatch):
+def test_download_button_calls_controller_ensure_docx_available(monkeypatch):
     root = tk.Tk()
     opened = []
     monkeypatch.setattr("app.ui.history_view.os.startfile", lambda path: opened.append(path))
@@ -412,6 +426,42 @@ def test_download_button_calls_controller_get_docx_path(monkeypatch):
     view._on_select()
 
     view._handle_download()
+
+    timeout = 2.0
+    start = time.time()
+    while not opened and time.time() - start < timeout:
+        time.sleep(0.01)
+
+    assert opened == ["C:/recordings/1/mom.docx"]
+    root.destroy()
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_download_button_disables_synchronously_and_runs_in_background(monkeypatch):
+    """Regression test: _handle_download used to call ensure_docx_available
+    directly on the Tk main thread -- a meeting pulled from another device
+    and not yet cached locally pays a real MinIO network round-trip there,
+    freezing the whole app for its duration. Now that the Tk-threading crash
+    risk that originally justified staying synchronous is fixed (queue-based
+    _pending_actions), download must go through the same background-thread
+    pattern as every other history action."""
+    root = tk.Tk()
+    opened = []
+    monkeypatch.setattr("app.ui.history_view.os.startfile", lambda path: opened.append(path))
+    controller = GatedDownloadController([_meeting(1, "Rapat A", "completed")])
+    controller.local_device_id = "dev1"
+    view = HistoryView(root, controller)
+    view._tree.selection_set("1")
+    view._on_select()
+
+    view._handle_download()
+
+    assert view._download_button.cget("state") == "disabled", "must disable synchronously, not block the Tk thread"
+    assert opened == [], "must not have completed yet -- the gate hasn't been released"
+
+    refreshes_before = controller.list_meetings_calls
+    root.after(10, controller.gate.set)
+    _pump_until(root, lambda: controller.list_meetings_calls > refreshes_before)
 
     assert opened == ["C:/recordings/1/mom.docx"]
     root.destroy()
