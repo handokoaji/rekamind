@@ -16,7 +16,9 @@ from app.live.diarize_worker import ProcessIsolatedDiarizer
 from app.live.session import LiveSession
 from app.live.vad import SpeechSegmenter, load_silero_vad_iterator
 from app.logging_setup import configure_logging
-from app.pipeline.finalize import finalize_meeting
+from app.pipeline.recovery import recover_abandoned_meetings
+from app.pipeline.summarize import summarize_and_export
+from app.pipeline.transcribe import transcribe_and_diarize
 from app.storage.db import init_db, make_engine, make_session_factory
 from app.summarization.docx_export import build_docx_filename
 from app.summarization.groq_client import GroqSummarizer
@@ -111,10 +113,15 @@ def main() -> None:
     asyncio.run(init_db(engine))
     session_factory = make_session_factory(engine)
 
+    recovered = asyncio.run(recover_abandoned_meetings(session_factory))
+    if recovered:
+        logger.info("recovered %d meeting(s) orphaned by a previous crash: %s", len(recovered), recovered)
+
     backend_name = detect_backend(settings.asr_backend_override)
 
-    # Heavy models are loaded on the first finalize, not at startup: spec §2 wants
-    # them resident only for the batch pass, and the window must appear at once.
+    # Heavy models are loaded on the first Transkrip/Ringkasan click, not at
+    # startup: the window must appear at once, and a meeting sitting in
+    # Riwayat waiting to be processed shouldn't cost anything until clicked.
     models = None
 
     def load_models():
@@ -123,23 +130,15 @@ def main() -> None:
             models = build_models(backend_name, settings)
         return models
 
-    async def finalize_fn(session, meeting_id, meeting_title, meeting_date, mic_wav, speaker_wav, on_progress=None):
-        transcriber, diarizer, summarizer = load_models()
+    async def transcribe_fn(meeting_id, mic_wav, speaker_wav):
+        transcriber, diarizer, _summarizer = load_models()
+        await transcribe_and_diarize(session_factory, meeting_id, mic_wav, speaker_wav, transcriber, diarizer)
+
+    async def summarize_fn(meeting_id, meeting_title, meeting_date):
+        _transcriber, _diarizer, summarizer = load_models()
         docx_filename = build_docx_filename(meeting_date, meeting_title)
         docx_path = settings.recordings_dir / str(meeting_id) / docx_filename
-        return await finalize_meeting(
-            session=session,
-            meeting_id=meeting_id,
-            meeting_title=meeting_title,
-            meeting_date=meeting_date,
-            mic_wav=mic_wav,
-            speaker_wav=speaker_wav,
-            transcriber=transcriber,
-            diarizer=diarizer,
-            summarizer=summarizer,
-            docx_output_path=docx_path,
-            on_progress=on_progress,
-        )
+        await summarize_and_export(session_factory, meeting_id, meeting_title, meeting_date, docx_path, summarizer)
 
     # Same lazy-singleton deal as load_models() above: the small live model and the
     # live diarizer are built on the first "Mulai Rekam", not at startup (the window
@@ -194,7 +193,8 @@ def main() -> None:
     controller = RecorderController(
         session_factory=session_factory,
         recorder_factory=_real_recorder,
-        finalize_fn=finalize_fn,
+        transcribe_fn=transcribe_fn,
+        summarize_fn=summarize_fn,
         recordings_dir=settings.recordings_dir,
         live_session_factory=live_session_factory,
     )
