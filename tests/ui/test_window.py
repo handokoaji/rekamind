@@ -427,6 +427,11 @@ def test_pengaturan_button_reopens_wizard_prefilled_and_saves_on_submit(monkeypa
         postgres_db = None
         groq_api_key = "gk"
         hf_token = "hf"
+        device_label = "my-device"
+        minio_endpoint = "http://minio.local"
+        minio_access_key = "ak"
+        minio_secret_key = "sk"
+        minio_bucket = "bucket"
 
     monkeypatch.setattr(window_module, "get_settings", lambda: FakeSettings())
     wizard_calls = []
@@ -451,7 +456,9 @@ def test_pengaturan_button_reopens_wizard_prefilled_and_saves_on_submit(monkeypa
     assert wizard_calls == [(root, {
         "storage_backend": "sqlite", "postgres_host": None, "postgres_port": None,
         "postgres_user": None, "postgres_password": None, "postgres_db": None,
-        "groq_api_key": "gk", "hf_token": "hf",
+        "groq_api_key": "gk", "hf_token": "hf", "device_label": "my-device",
+        "minio_endpoint": "http://minio.local", "minio_access_key": "ak",
+        "minio_secret_key": "sk", "minio_bucket": "bucket",
     })]
     assert saved == [{"storage_backend": "sqlite", "groq_api_key": "gk2", "hf_token": "hf"}]
 

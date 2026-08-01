@@ -72,6 +72,11 @@ class MainWindow:
             "postgres_db": settings.postgres_db,
             "groq_api_key": settings.groq_api_key,
             "hf_token": settings.hf_token,
+            "device_label": settings.device_label,
+            "minio_endpoint": settings.minio_endpoint,
+            "minio_access_key": settings.minio_access_key,
+            "minio_secret_key": settings.minio_secret_key,
+            "minio_bucket": settings.minio_bucket,
         }
         result = SetupWizard(parent=self._root, initial=initial).run()
         if result is not None:

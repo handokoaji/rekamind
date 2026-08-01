@@ -56,7 +56,8 @@ class SetupWizard:
             tk.Label(row, text=label, width=10, anchor="w").pack(side="left")
             tk.Entry(row, textvariable=var).pack(side="left", fill="x", expand=True)
 
-        tk.Label(self.window, text="GROQ_API_KEY (opsional):").pack(anchor="w")
+        self._groq_label = tk.Label(self.window, text="GROQ_API_KEY (opsional):")
+        self._groq_label.pack(anchor="w")
         groq_row = tk.Frame(self.window)
         groq_row.pack(fill="x")
         self.groq_var = tk.StringVar(value=initial.get("groq_api_key", ""))
@@ -102,7 +103,9 @@ class SetupWizard:
 
     def _update_postgres_visibility(self) -> None:
         if self.storage_var.get() == "postgres":
-            self._postgres_frame.pack(fill="x")
+            # before= anchors it ahead of the GROQ field regardless of pack
+            # call order, so this stays correct across repeated toggles too.
+            self._postgres_frame.pack(fill="x", before=self._groq_label)
         else:
             self._postgres_frame.pack_forget()
 
