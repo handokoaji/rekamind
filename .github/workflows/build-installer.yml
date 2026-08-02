@@ -21,6 +21,16 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
+      # PyPI's default torch wheel has no CUDA compiled in, and pyproject.toml
+      # can't express a per-package index URL -- so without this step the
+      # installer silently ships GPU-less: detect_backend() still says "cuda"
+      # (ctranslate2 has its own CUDA runtime), but pyannote can't follow it.
+      # Installing torch FIRST means `pip install -e .` sees the requirement
+      # already satisfied and leaves this build in place. Version pinned to
+      # the one the working local build was validated against.
+      - name: Install CUDA-enabled torch
+        run: pip install torch==2.13.0+cu126 --index-url https://download.pytorch.org/whl/cu126
+
       - name: Install app
         run: pip install -e .
 

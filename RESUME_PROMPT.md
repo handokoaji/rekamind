@@ -2,6 +2,14 @@
 
 Paste this whole file as your first message in a new session to pick up exactly where this one left off.
 
+> **STATUS: the "immediate next step" below is DONE.** CI now installs
+> `torch==2.13.0+cu126` before `pip install -e .`, `packaging/README.md` documents the same
+> as step 0, and `app.main.diarizer_device()` keeps the diarizer on CPU when torch has no
+> CUDA (previously an uncaught `Torch not compiled with CUDA enabled` that killed the whole
+> Transkrip action). Installer-size decision: **one fat installer** (~1.8GB, CUDA+OpenVINO+CPU
+> all bundled) — `detect_backend()` picks at runtime, no variants. Still open: sync `pull()`
+> never validated end to end (see below).
+
 ## Immediate next step (what to do first)
 
 The GitHub Actions-built installer (and any fresh `pip install -e .` anywhere) silently produces a

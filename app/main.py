@@ -106,13 +106,32 @@ def query_loopback_format() -> tuple[int, int]:
         pa.terminate()
 
 
+def _torch_has_cuda() -> bool:
+    try:
+        import torch
+        return torch.cuda.is_available()
+    except Exception:
+        return False
+
+
+def diarizer_device(backend_name: str) -> str:
+    """pyannote is torch-based, but detect_backend() asks ctranslate2 — the two
+    ship independent CUDA runtimes, so a machine can have a CUDA-capable
+    ctranslate2 next to a CPU-only torch wheel (exactly what `pip install -e .`
+    gives you, since PyPI's default torch has no CUDA). Handing that torch a
+    "cuda" device raises "Torch not compiled with CUDA enabled" and kills the
+    whole Transkrip/live-diarize action, so ASR stays on CUDA and only the
+    diarizer drops to CPU."""
+    return "cuda" if backend_name == "cuda" and _torch_has_cuda() else "cpu"
+
+
 def build_models(backend_name: str, settings):
     """(transcriber, diarizer, summarizer). On a backend load failure BOTH the
     transcriber and the diarizer fall back to CPU: telling the diarizer "cuda"
     after the GPU already failed to load just crashes it later (spec §9)."""
     try:
         transcriber = build_transcriber(backend_name)
-        effective_device = "cuda" if backend_name == "cuda" else "cpu"
+        effective_device = diarizer_device(backend_name)
     except Exception as exc:
         logger.warning("failed to load %s backend (%s), falling back to CPU", backend_name, exc)
         transcriber = build_transcriber("cpu")
@@ -280,7 +299,7 @@ def main() -> None:
             # Diarizer.diarize() has fully prevented it. A worker crash here only
             # loses one relabel tick, not the meeting in progress.
             live_diarizer = ProcessIsolatedDiarizer(
-                hf_token=settings.hf_token, device="cuda" if backend_name == "cuda" else "cpu",
+                hf_token=settings.hf_token, device=diarizer_device(backend_name),
             )
         mic_queue: "queue.Queue" = queue.Queue(maxsize=200)
         speaker_queue: "queue.Queue" = queue.Queue(maxsize=200)

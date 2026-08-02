@@ -43,8 +43,9 @@ class _FakeDiarizer:
         self.device = device
 
 
-def _patch(monkeypatch, cuda_ok: bool):
+def _patch(monkeypatch, cuda_ok: bool, torch_cuda: bool = True):
     calls = []
+    monkeypatch.setattr(main, "_torch_has_cuda", lambda: torch_cuda)
 
     class _FakeWhisper:
         def __init__(self, device=None, compute_type=None):
@@ -72,6 +73,16 @@ def test_build_models_falls_back_to_cpu_for_diarizer_too(monkeypatch):
     # transcriber retried on CPU...
     assert calls == [None, "cpu"]
     # ...and the diarizer must follow it, not the original "cuda" request.
+    assert diarizer.device == "cpu"
+
+
+def test_build_models_keeps_asr_on_cuda_but_diarizes_on_cpu_when_torch_lacks_cuda(monkeypatch):
+    """A CPU-only torch wheel next to a CUDA-capable ctranslate2 (what a plain
+    `pip install -e .` produces): .to("cuda") would raise inside pyannote."""
+    calls = _patch(monkeypatch, cuda_ok=True, torch_cuda=False)
+    settings = SimpleNamespace(hf_token="t", groq_api_key="k")
+    _, diarizer, _ = main.build_models("cuda", settings)
+    assert calls == [None]  # transcriber still on CUDA, no fallback
     assert diarizer.device == "cpu"
 
 
