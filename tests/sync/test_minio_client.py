@@ -7,6 +7,20 @@ from app.storage.models import Speaker, Summary, TranscriptSegment, Meeting
 from app.sync import minio_client
 
 
+def test_client_strips_scheme_from_endpoint_and_infers_secure():
+    class Settings:
+        minio_endpoint = "http://10.55.11.194:7001"
+        minio_access_key = "a"
+        minio_secret_key = "b"
+
+    # Previously raised ValueError("path in endpoint is not allowed") --
+    # minio-py's `endpoint` must be host:port only, scheme goes in `secure`.
+    client = minio_client._client(Settings())
+
+    assert client._base_url.is_https is False
+    assert client._base_url.host == "10.55.11.194:7001"
+
+
 def test_build_manifest_includes_meeting_fields_and_final_segments_only():
     meeting = Meeting(
         id=1, title="Rapat Rilis", device_id="dev1", device_label="Laptop Budi",

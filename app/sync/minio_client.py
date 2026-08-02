@@ -9,13 +9,14 @@ from sqlalchemy import select
 from app.storage.models import Meeting, Speaker, Summary, TranscriptSegment
 from app.storage import repository as repo
 
-# device_id and meeting_dir are always uuid4().hex on the writing side, but
-# pull() derives them from MinIO object names -- data written by other,
-# potentially untrusted or compromised devices sharing the same bucket. A
-# malicious "../../.." component there would otherwise let a remote object
-# name control where pull() writes on this local filesystem (path
-# traversal). Restricting to this charset also happens to be exactly what
-# uuid4().hex ever produces, so it rejects nothing legitimate.
+# meeting_dir is always uuid4().hex on the writing side, and device_id is
+# either that or a sanitized hostname (see Settings._default_device_identity)
+# -- but pull() derives both from MinIO object names -- data written by
+# other, potentially untrusted or compromised devices sharing the same
+# bucket. A malicious "../../.." component there would otherwise let a
+# remote object name control where pull() writes on this local filesystem
+# (path traversal). Restricting to this charset covers everything either
+# source legitimately produces.
 _SAFE_PATH_COMPONENT = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
@@ -63,10 +64,22 @@ def build_manifest(meeting, segments, speakers_by_id: dict, summary) -> dict:
 
 
 def _client(settings):
+    from urllib.parse import urlsplit
+
     from minio import Minio
+
+    endpoint = settings.minio_endpoint
+    secure = True
+    if "://" in endpoint:
+        # minio-py's `endpoint` arg is host:port only -- scheme goes in
+        # `secure` instead. Users naturally paste the full URL MinIO's own
+        # console shows them, so strip it rather than rejecting it.
+        parsed = urlsplit(endpoint)
+        secure = parsed.scheme != "http"
+        endpoint = parsed.netloc
     return Minio(
-        settings.minio_endpoint, access_key=settings.minio_access_key,
-        secret_key=settings.minio_secret_key,
+        endpoint, access_key=settings.minio_access_key,
+        secret_key=settings.minio_secret_key, secure=secure,
     )
 
 
