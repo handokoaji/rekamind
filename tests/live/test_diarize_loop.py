@@ -38,6 +38,43 @@ def test_tick_merges_current_segments_with_fresh_diarization():
     ]
 
 
+def test_stop_shuts_down_the_diarizer_worker_if_it_has_one():
+    """ProcessIsolatedDiarizer holds a full pyannote model copy in a worker
+    process -- it must not stay resident for the rest of the app run once a
+    meeting's recording stops."""
+    shutdown_calls = []
+
+    class FakeProcessIsolatedDiarizer(FakeDiarizer):
+        def shutdown(self):
+            shutdown_calls.append(1)
+
+    loop = LiveDiarizeLoop(
+        diarizer=FakeProcessIsolatedDiarizer([]),
+        speaker_wav_path="speaker.wav",
+        interval_seconds=8.0,
+        get_segments=lambda: ([], []),
+        on_relabeled=lambda merged: None,
+    )
+
+    loop.stop()
+
+    assert shutdown_calls == [1]
+
+
+def test_stop_does_not_crash_when_the_diarizer_has_no_shutdown():
+    """The plain batch Diarizer (and most test doubles) has no shutdown() --
+    stop() must be a no-op for those, not an AttributeError."""
+    loop = LiveDiarizeLoop(
+        diarizer=FakeDiarizer([]),
+        speaker_wav_path="speaker.wav",
+        interval_seconds=8.0,
+        get_segments=lambda: ([], []),
+        on_relabeled=lambda merged: None,
+    )
+
+    loop.stop()  # must not raise
+
+
 def test_tick_with_no_segments_yet_calls_on_relabeled_with_empty_list():
     diarizer = FakeDiarizer([])
     received = []

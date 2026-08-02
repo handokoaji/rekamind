@@ -69,3 +69,15 @@ class LiveDiarizeLoop:
         self._stop_event.set()
         if self._thread is not None:
             self._thread.join(timeout=5)
+        # ProcessIsolatedDiarizer (live path) holds a full pyannote model
+        # copy in its worker process; without this it stays resident for the
+        # rest of the app run even between meetings. shutdown() only tears
+        # down the worker -- the diarizer object itself (cached in main.py's
+        # live_session_factory closure) is untouched, so the next meeting's
+        # first diarize() call just respawns a fresh worker lazily, same as
+        # the existing crash/timeout recovery path already does. Duck-typed:
+        # the plain (non-process-isolated) Diarizer used for the batch pass,
+        # and test doubles, have no shutdown() to call.
+        shutdown = getattr(self._diarizer, "shutdown", None)
+        if shutdown is not None:
+            shutdown()
