@@ -1,6 +1,5 @@
 name: Build Windows installer
 
-# GitLab (git.dev.ugm.ac.id) has no Windows runner, and this app depends on
 # WASAPI/ctranslate2/torch/openvino -- all native, not cross-compilable from
 # Linux. GitHub's windows-latest runner is the pragmatic alternative.
 on:
