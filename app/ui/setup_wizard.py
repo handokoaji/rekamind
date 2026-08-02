@@ -139,7 +139,11 @@ class SetupWizard:
         }
         if self.storage_var.get() == "postgres":
             data["postgres_host"] = self.postgres_host_var.get()
-            data["postgres_port"] = int(self.postgres_port_var.get() or 0)
+            try:
+                data["postgres_port"] = int(self.postgres_port_var.get() or 0)
+            except ValueError:
+                self.error_var.set("Port harus berupa angka.")
+                return
             data["postgres_user"] = self.postgres_user_var.get()
             data["postgres_password"] = self.postgres_password_var.get()
             data["postgres_db"] = self.postgres_db_var.get()
