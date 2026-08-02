@@ -23,7 +23,6 @@ from app.pipeline.summarize import summarize_and_export
 from app.pipeline.transcribe import transcribe_and_diarize
 from app.settings_store import is_dev_mode, load_packaged_config, save_packaged_config
 from app.storage.db import init_db, make_engine, make_session_factory
-from app.summarization.docx_export import build_docx_filename
 from app.summarization.groq_client import GroqSummarizer
 from app.tray.icon import build_tray_icon
 from app.ui.controller import RecorderController
@@ -168,6 +167,18 @@ def _handle_startup_db_error(exc: Exception) -> bool:
     should retry; False if they declined and the app should just exit."""
     root = tk.Tk()
     root.withdraw()
+    if is_dev_mode():
+        # get_settings() always reads .env in dev mode -- reopening the
+        # wizard here would save to config.json (never consulted) and then
+        # retry with the exact same .env-derived settings that just failed.
+        messagebox.showerror(
+            "Rekamind - Error",
+            f"Tidak bisa konek ke database: {exc}\n\n"
+            "Mode dev aktif (ada file .env) -- edit file .env langsung, "
+            "lalu jalankan ulang aplikasi.",
+        )
+        root.destroy()
+        return False
     reopen = messagebox.askyesno(
         "Rekamind - Error",
         f"Tidak bisa konek ke database: {exc}\n\nBuka Pengaturan sekarang?",
@@ -239,10 +250,13 @@ def main() -> None:
         transcriber, diarizer, _summarizer = load_models(backend_name, settings)
         await transcribe_and_diarize(session_factory, meeting_id, mic_wav, speaker_wav, transcriber, diarizer)
 
-    async def summarize_fn(meeting_id, meeting_title, meeting_date):
+    async def summarize_fn(meeting_id, meeting_title, meeting_date, recording_dir):
         _transcriber, _diarizer, summarizer = load_models(backend_name, settings)
-        docx_filename = build_docx_filename(meeting_date, meeting_title)
-        docx_path = settings.recordings_dir / str(meeting_id) / docx_filename
+        # Must match the "mom.docx" name push()/pull()/ensure_docx_available()
+        # hardcode on the sync side -- a "pretty" filename here would silently
+        # break sync (push looks for exactly this name) and orphan every synced
+        # docx on disk (delete only rmtree()s meeting.recording_dir).
+        docx_path = Path(recording_dir) / "mom.docx"
         await summarize_and_export(session_factory, meeting_id, meeting_title, meeting_date, docx_path, summarizer)
 
     # Same lazy-singleton deal as load_models() above: the small live model and the

@@ -179,9 +179,20 @@ class RecorderController:
                 meeting = await session.get(Meeting, meeting_id)
                 if meeting is None:
                     raise ValueError(f"Meeting {meeting_id} not found")
+                if meeting.recording_dir is None:
+                    # Legacy rows predate Meeting.recording_dir. Without this the
+                    # bare TypeError from Path(None) surfaces as a silent no-op.
+                    raise ValueError(
+                        "Meeting ini tidak punya lokasi rekaman yang tersimpan, "
+                        "tidak bisa diringkas"
+                    )
                 title = meeting.title
                 date = meeting.start_time or meeting.created_at
-            await self._summarize_fn(meeting_id=meeting_id, meeting_title=title, meeting_date=date)
+                recording_dir = meeting.recording_dir
+            await self._summarize_fn(
+                meeting_id=meeting_id, meeting_title=title, meeting_date=date,
+                recording_dir=recording_dir,
+            )
 
         asyncio.run(_run())
 
@@ -261,6 +272,11 @@ class RecorderController:
         docx_path = Path(summary.docx_path)
         if docx_path.exists():
             return str(docx_path)
+        # meeting can be None (row deleted between the two queries above) or
+        # have no recording_dir (legacy row predating that column) -- either
+        # way there's no remote object name to build, so nothing to fetch.
+        if meeting is None or meeting.recording_dir is None:
+            return None
         if meeting.device_id and meeting.device_id != self._device_id:
             meeting_dir_name = Path(meeting.recording_dir).name
             minio_client.download_file(

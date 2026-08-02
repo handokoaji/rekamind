@@ -46,7 +46,7 @@ async def _noop_transcribe_fn(meeting_id, mic_wav, speaker_wav):
     pass
 
 
-async def _noop_summarize_fn(meeting_id, meeting_title, meeting_date):
+async def _noop_summarize_fn(meeting_id, meeting_title, meeting_date, recording_dir):
     pass
 
 
@@ -186,14 +186,18 @@ def test_run_summarize_calls_summarize_fn_with_title_and_date(tmp_path):
 
     calls = []
 
-    async def spy_summarize_fn(meeting_id, meeting_title, meeting_date):
-        calls.append((meeting_id, meeting_title, meeting_date))
+    async def spy_summarize_fn(meeting_id, meeting_title, meeting_date, recording_dir):
+        calls.append((meeting_id, meeting_title, meeting_date, recording_dir))
 
     controller = _make_controller(tmp_path, session_factory, summarize_fn=spy_summarize_fn)
 
+    recording_dir = tmp_path / "abc"
+
     async def _seed():
         async with session_factory() as session:
-            meeting = await repo.create_meeting(session, "Rapat Penting", None)
+            meeting = await repo.create_meeting(
+                session, "Rapat Penting", None, recording_dir=str(recording_dir)
+            )
             await session.commit()
             return meeting.id
 
@@ -204,6 +208,7 @@ def test_run_summarize_calls_summarize_fn_with_title_and_date(tmp_path):
     assert len(calls) == 1
     assert calls[0][0] == meeting_id
     assert calls[0][1] == "Rapat Penting"
+    assert calls[0][3] == str(recording_dir)
 
 
 def test_retry_calls_transcribe_fn_when_failed_stage_is_transcribe(tmp_path):
@@ -217,7 +222,7 @@ def test_retry_calls_transcribe_fn_when_failed_stage_is_transcribe(tmp_path):
     async def spy_transcribe_fn(meeting_id, mic_wav, speaker_wav):
         transcribe_calls.append(meeting_id)
 
-    async def spy_summarize_fn(meeting_id, meeting_title, meeting_date):
+    async def spy_summarize_fn(meeting_id, meeting_title, meeting_date, recording_dir):
         summarize_calls.append(meeting_id)
 
     controller = _make_controller(tmp_path, session_factory, transcribe_fn=spy_transcribe_fn, summarize_fn=spy_summarize_fn)
@@ -250,14 +255,15 @@ def test_retry_calls_summarize_fn_when_failed_stage_is_summarize(tmp_path):
     async def spy_transcribe_fn(meeting_id, mic_wav, speaker_wav):
         transcribe_calls.append(meeting_id)
 
-    async def spy_summarize_fn(meeting_id, meeting_title, meeting_date):
+    async def spy_summarize_fn(meeting_id, meeting_title, meeting_date, recording_dir):
         summarize_calls.append(meeting_id)
 
     controller = _make_controller(tmp_path, session_factory, transcribe_fn=spy_transcribe_fn, summarize_fn=spy_summarize_fn)
 
     async def _seed():
+        recording_dir = tmp_path / "abc"
         async with session_factory() as session:
-            meeting = await repo.create_meeting(session, "Rapat", None)
+            meeting = await repo.create_meeting(session, "Rapat", None, recording_dir=str(recording_dir))
             await session.commit()
             await repo.mark_meeting_failed(session, meeting.id, "summarize", "boom")
             await session.commit()
@@ -602,7 +608,12 @@ def test_delete_meeting_removes_db_row_and_recording_dir(tmp_path):
             from app.storage.models import Meeting
             return await session.get(Meeting, meeting_id)
 
-    assert asyncio.run(_get()) is None
+    # Soft-deleted (deleted_at set), not gone -- a hard delete let the next
+    # sync re-materialize the meeting right back from MinIO (pull() only
+    # skips a manifest whose recording_dir already has a Meeting row).
+    meeting = asyncio.run(_get())
+    assert meeting is not None
+    assert meeting.deleted_at is not None
     assert not recording_dir.exists()
 
 
