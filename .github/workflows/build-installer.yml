@@ -25,7 +25,7 @@ jobs:
       - name: Install app + build deps
         run: |
           pip install -e .
-          pip install pyinstaller
+          pip install pyinstaller pytest
 
       - name: Run tests
         run: pytest
