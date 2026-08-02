@@ -86,15 +86,30 @@ def test_packaged_mode_reads_device_identity_from_config_json(monkeypatch, tmp_p
     assert settings.device_label == "Laptop Budi"
 
 
-def test_dev_mode_device_identity_defaults_to_empty(monkeypatch, tmp_path):
+def test_dev_mode_device_identity_defaults_to_hostname(monkeypatch, tmp_path):
     (tmp_path / ".env").write_text("STORAGE_BACKEND=postgres\n")
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("socket.gethostname", lambda: "My Dev PC")
     get_settings.cache_clear()
 
     settings = get_settings()
 
-    assert settings.device_id == ""
-    assert settings.device_label == ""
+    assert settings.device_label == "My Dev PC"
+    assert settings.device_id == "My-Dev-PC"  # sanitized for use in MinIO object paths
+
+
+def test_explicit_device_identity_in_env_overrides_hostname(monkeypatch, tmp_path):
+    (tmp_path / ".env").write_text(
+        "STORAGE_BACKEND=postgres\nDEVICE_ID=custom-id\nDEVICE_LABEL=Custom Label\n"
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("socket.gethostname", lambda: "should-not-be-used")
+    get_settings.cache_clear()
+
+    settings = get_settings()
+
+    assert settings.device_id == "custom-id"
+    assert settings.device_label == "Custom Label"
 
 
 def test_minio_is_configured_false_when_any_field_blank(monkeypatch, tmp_path):

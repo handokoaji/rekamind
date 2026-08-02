@@ -1,12 +1,20 @@
+import re
+import socket
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.settings_store import (
     is_dev_mode, load_packaged_config, recordings_dir_path, sqlite_db_path,
 )
+
+# Mirrors app/sync/minio_client.py's _SAFE_PATH_COMPONENT charset -- device_id
+# ends up in MinIO object paths, so a raw hostname (which can contain spaces,
+# dots, etc.) needs sanitizing before use.
+_UNSAFE_ID_CHARS = re.compile(r"[^A-Za-z0-9_-]+")
 
 
 class Settings(BaseSettings):
@@ -33,6 +41,19 @@ class Settings(BaseSettings):
     minio_bucket: str = ""
     recordings_dir: Path = Path("./recordings")
     asr_backend_override: str = ""
+
+    @model_validator(mode="after")
+    def _default_device_identity(self) -> "Settings":
+        # No config UI has to be filled in for this to work: an unset
+        # device_id/device_label falls back to this machine's hostname
+        # instead of staying blank (which used to show up as "Tidak
+        # diketahui" everywhere and made every blank-config install collide
+        # under the same identity during sync).
+        if not self.device_label:
+            self.device_label = socket.gethostname()
+        if not self.device_id:
+            self.device_id = _UNSAFE_ID_CHARS.sub("-", socket.gethostname())
+        return self
 
     @property
     def database_url(self) -> str:
