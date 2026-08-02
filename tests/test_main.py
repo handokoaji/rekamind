@@ -301,6 +301,12 @@ def test_handle_startup_db_error_shows_env_message_without_wizard_in_dev_mode(mo
 
 
 def test_handle_startup_db_error_returns_false_on_no(monkeypatch):
+    """Regression: without pinning is_dev_mode() to False, this test relies on
+    whatever .env happens to exist on the machine running it. On a dev
+    checkout (both target machines run from source with a real .env) that
+    silently takes the OTHER branch and pops a REAL, unmocked messagebox --
+    hanging the whole suite until a human clicks it."""
+    monkeypatch.setattr(main, "is_dev_mode", lambda: False)
     monkeypatch.setattr(main.messagebox, "askyesno", lambda *a, **k: False)
     wizard_calls = []
     monkeypatch.setattr(main, "SetupWizard", lambda **kw: wizard_calls.append(kw))
