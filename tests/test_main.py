@@ -53,8 +53,11 @@ def _patch(monkeypatch, cuda_ok: bool, torch_cuda: bool = True):
             if device is None and not cuda_ok:
                 raise RuntimeError("CUDA out of memory")
 
-    monkeypatch.setattr(main, "FasterWhisperBackend", _FakeWhisper)
-    monkeypatch.setattr(main, "Diarizer", _FakeDiarizer)
+    # FasterWhisperBackend/Diarizer are imported lazily inside build_transcriber()/
+    # build_models() now (see app.main), so they're no longer module attributes
+    # of `main` to patch there -- patch them where they're actually looked up.
+    monkeypatch.setattr("app.asr.cuda_backend.FasterWhisperBackend", _FakeWhisper)
+    monkeypatch.setattr("app.diarization.diarizer.Diarizer", _FakeDiarizer)
     monkeypatch.setattr(main, "GroqSummarizer", lambda api_key=None: object())
     return calls
 
@@ -174,9 +177,48 @@ def test_load_models_builds_only_once_under_concurrent_callers(monkeypatch):
     main._models = None
 
 
+def test_unload_models_if_idle_frees_them_past_the_timeout(monkeypatch):
+    monkeypatch.setattr(main, "_models", ("t", "d", "s"))
+    monkeypatch.setattr(main, "_models_last_used", 1000.0)
+
+    unloaded = main._unload_models_if_idle(now=1000.0 + main._MODELS_IDLE_TIMEOUT_SECONDS + 1)
+
+    assert unloaded is True
+    assert main._models is None
+
+
+def test_unload_models_if_idle_is_a_noop_within_the_timeout(monkeypatch):
+    monkeypatch.setattr(main, "_models", ("t", "d", "s"))
+    monkeypatch.setattr(main, "_models_last_used", 1000.0)
+
+    unloaded = main._unload_models_if_idle(now=1000.0 + main._MODELS_IDLE_TIMEOUT_SECONDS - 1)
+
+    assert unloaded is False
+    assert main._models == ("t", "d", "s")
+
+
+def test_load_models_rebuilds_after_being_unloaded(monkeypatch):
+    monkeypatch.setattr(main, "_models", None)
+    monkeypatch.setattr(main, "_idle_unload_thread_started", True)  # don't spawn a real thread here
+    build_calls = []
+    monkeypatch.setattr(main, "build_models", lambda b, s: build_calls.append(1) or ("t", "d", "s"))
+
+    main.load_models("cuda", SimpleNamespace())
+    assert len(build_calls) == 1
+
+    main._unload_models_if_idle(now=main._models_last_used + main._MODELS_IDLE_TIMEOUT_SECONDS + 1)
+    assert main._models is None
+
+    main.load_models("cuda", SimpleNamespace())
+    assert len(build_calls) == 2
+
+    main._models = None
+
+
 def test_build_models_openvino_uses_cpu_diarizer(monkeypatch):
     _patch(monkeypatch, cuda_ok=True)
-    monkeypatch.setattr(main, "OpenVinoWhisperBackend", lambda: object())
+    # Also imported lazily now (see build_transcriber's openvino branch).
+    monkeypatch.setattr("app.asr.openvino_backend.OpenVinoWhisperBackend", lambda: object())
     settings = SimpleNamespace(hf_token="t", groq_api_key="k")
     _, diarizer, _ = main.build_models("openvino", settings)
     assert diarizer.device == "cpu"

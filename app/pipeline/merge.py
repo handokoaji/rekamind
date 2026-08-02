@@ -1,7 +1,10 @@
 from dataclasses import dataclass
 
 from app.asr.base import TranscriptSegmentResult
-from app.diarization.diarizer import SpeakerSegment
+# From the lightweight base module, not app.diarization.diarizer: that module
+# eagerly imports torch + pyannote.audio (~800MB RSS), which merge_segments
+# doesn't need -- it only ever reads the dataclass's fields.
+from app.diarization.base import SpeakerSegment
 
 
 @dataclass

@@ -6,15 +6,12 @@ import shutil
 import sys
 import tkinter as tk
 import threading
+import time
 from pathlib import Path
 from tkinter import messagebox
 
-from app.asr.cuda_backend import FasterWhisperBackend
 from app.asr.detect import detect_backend, UnsupportedHardwareError
-from app.asr.openvino_backend import OpenVinoWhisperBackend
 from app.config import get_settings
-from app.diarization.diarizer import Diarizer
-from app.live.diarize_worker import ProcessIsolatedDiarizer
 from app.live.session import LiveSession
 from app.live.vad import SpeechSegmenter, load_silero_vad_iterator
 from app.logging_setup import configure_logging
@@ -69,6 +66,12 @@ def check_ffmpeg_available() -> bool:
 
 
 def build_transcriber(backend_name: str):
+    # Imported here, not at module level: faster_whisper pulls in torch
+    # transitively (measured: ~850MB RSS just from this import), and every
+    # machine -- CUDA or CPU -- otherwise pays that cost at startup, before
+    # the window even appears, even though a meeting sitting in Riwayat
+    # shouldn't cost anything until Transkrip/Ringkasan is actually clicked.
+    from app.asr.cuda_backend import FasterWhisperBackend
     if backend_name == "cuda":
         # int8 (not the class default float32): large-v3 in float32 is the
         # single biggest RAM/VRAM cost in the app once loaded (~6-10GB), and it
@@ -78,6 +81,10 @@ def build_transcriber(backend_name: str):
         # because it silently misbehaves on Pascal-generation GPUs.
         return FasterWhisperBackend(compute_type="int8")
     if backend_name == "openvino":
+        # openvino/optimum/transformers are only ever needed on this
+        # (quarantined, see app.asr.detect) path, so a CUDA or CPU machine
+        # should never pay their import cost at startup either.
+        from app.asr.openvino_backend import OpenVinoWhisperBackend
         return OpenVinoWhisperBackend()
     return FasterWhisperBackend(device="cpu", compute_type="int8")
 
@@ -85,9 +92,11 @@ def build_transcriber(backend_name: str):
 def build_live_transcriber(backend_name: str):
     """Small model for live preview - same backend family as the batch
     transcriber, just a lighter size so it keeps up in near-real-time."""
+    from app.asr.cuda_backend import FasterWhisperBackend
     if backend_name == "cuda":
-        return FasterWhisperBackend(model_size="small", device="cuda", compute_type="float32")
+        return FasterWhisperBackend(model_size="small", device="cuda", compute_type="int8")
     if backend_name == "openvino":
+        from app.asr.openvino_backend import OpenVinoWhisperBackend
         return OpenVinoWhisperBackend(model_size="small")
     return FasterWhisperBackend(model_size="small", device="cpu", compute_type="int8")
 
@@ -129,6 +138,10 @@ def build_models(backend_name: str, settings):
     """(transcriber, diarizer, summarizer). On a backend load failure BOTH the
     transcriber and the diarizer fall back to CPU: telling the diarizer "cuda"
     after the GPU already failed to load just crashes it later (spec §9)."""
+    # Imported here, not at module level: torch + pyannote.audio only need to
+    # load once Transkrip/Ringkasan is actually clicked (this function is only
+    # ever called from that lazy path, see load_models below), not at startup.
+    from app.diarization.diarizer import Diarizer
     try:
         transcriber = build_transcriber(backend_name)
         effective_device = diarizer_device(backend_name)
@@ -150,6 +163,39 @@ recorder_queues: dict = {"mic": None, "speaker": None}
 # waiting to be processed shouldn't cost anything until clicked.
 _models = None
 _models_lock = threading.Lock()
+_models_last_used = 0.0
+_idle_unload_thread_started = False
+# ponytail: fixed value, no config surface -- large-v3 int8 + pyannote is
+# ~1-4GB resident (measured on this machine) and is worth freeing once nobody
+# has clicked Transkrip/Ringkasan for a while, but back-to-back actions on the
+# same meeting (transcribe then immediately summarize) shouldn't thrash it.
+# Raise this if that turns out too aggressive on real usage.
+_MODELS_IDLE_TIMEOUT_SECONDS = 15 * 60
+_MODELS_IDLE_CHECK_INTERVAL_SECONDS = 60
+
+
+def _unload_models_if_idle(now: float) -> bool:
+    """Split out from the background loop so it's testable without sleeping
+    for real. Safe to call even while another thread is mid-transcription:
+    clearing the cached tuple only affects the NEXT load_models() call --
+    a caller that already holds (transcriber, diarizer, summarizer) keeps
+    using those same objects until it's done with them regardless."""
+    global _models
+    with _models_lock:
+        if _models is not None and now - _models_last_used > _MODELS_IDLE_TIMEOUT_SECONDS:
+            logger.info(
+                "unloading batch models after %.0f min idle",
+                _MODELS_IDLE_TIMEOUT_SECONDS / 60,
+            )
+            _models = None
+            return True
+        return False
+
+
+def _idle_unload_loop() -> None:
+    while True:
+        time.sleep(_MODELS_IDLE_CHECK_INTERVAL_SECONDS)
+        _unload_models_if_idle(time.monotonic())
 
 
 def load_models(backend_name: str, settings):
@@ -157,11 +203,16 @@ def load_models(backend_name: str, settings):
     may run at the same time (spec §6, "boleh bersamaan"); without the lock both
     threads see `_models is None` and each builds its own large-v3 + pyannote
     pair, which is a straight path to CUDA OOM."""
-    global _models
+    global _models, _models_last_used, _idle_unload_thread_started
     with _models_lock:
         if _models is None:
             _models = build_models(backend_name, settings)
-        return _models
+        _models_last_used = time.monotonic()
+        result = _models
+    if not _idle_unload_thread_started:
+        _idle_unload_thread_started = True
+        threading.Thread(target=_idle_unload_loop, daemon=True).start()
+    return result
 
 
 def _real_recorder(mic_path: Path, speaker_path: Path):
@@ -298,6 +349,11 @@ def main() -> None:
             # natively on degenerate live audio, and no input validation in
             # Diarizer.diarize() has fully prevented it. A worker crash here only
             # loses one relabel tick, not the meeting in progress.
+            # Imported here, not at module level: this module's own top-level
+            # import chain (Diarizer/torch/pyannote) would otherwise load in the
+            # main process at startup even though it only actually runs inside
+            # the child worker process, on the first "Mulai Rekam".
+            from app.live.diarize_worker import ProcessIsolatedDiarizer
             live_diarizer = ProcessIsolatedDiarizer(
                 hf_token=settings.hf_token, device=diarizer_device(backend_name),
             )

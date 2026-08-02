@@ -1,6 +1,5 @@
 import warnings
 import wave
-from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -14,12 +13,13 @@ import torch
 warnings.filterwarnings("ignore", message=r"\ntorchcodec is not installed correctly.*", category=UserWarning)
 from pyannote.audio import Pipeline
 
-
-@dataclass
-class SpeakerSegment:
-    start_ms: int
-    end_ms: int
-    label: str
+# Re-exported so `from app.diarization.diarizer import SpeakerSegment` (existing
+# call sites) keeps working -- but anything that only needs the dataclass, not
+# the Diarizer class itself, should import it from app.diarization.base
+# directly instead: this module's own torch+pyannote import chain is heavy
+# (~800MB RSS, measured) and importing SpeakerSegment from HERE pulls that in
+# transitively even though the dataclass itself has zero such dependency.
+from app.diarization.base import SpeakerSegment  # noqa: F401
 
 
 # Below this, pyannote's embedding pooling layer gets a near-empty window
