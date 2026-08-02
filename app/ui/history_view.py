@@ -274,6 +274,7 @@ class HistoryView(tk.Frame):
         self._sync_button.config(state="disabled")
 
         def _worker():
+            message = "Sync gagal: error tidak diketahui"
             try:
                 result = self._controller.sync_now()
                 message = (
