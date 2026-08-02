@@ -1,4 +1,4 @@
-# packaging/MeetingRecorder.spec
+# packaging/Rekamind.spec
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
@@ -23,10 +23,10 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz, a.scripts, [],
     exclude_binaries=True,
-    name="MeetingRecorder",
+    name="Rekamind",
     console=False,  # --windowed: no console window for a Tk GUI app
 )
 coll = COLLECT(
     exe, a.binaries, a.datas,
-    name="MeetingRecorder",
+    name="Rekamind",
 )
