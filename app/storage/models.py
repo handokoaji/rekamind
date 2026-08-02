@@ -31,6 +31,12 @@ class Meeting(Base):
     device_id: Mapped[str | None] = mapped_column(default=None)
     device_label: Mapped[str | None] = mapped_column(default=None)
     synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    # Soft-delete tombstone: pull() only skips a manifest whose recording_dir
+    # already has a Meeting row, so hard-deleting let the next sync re-pull a
+    # meeting right back from MinIO. Keeping the row (filtered out of
+    # list_meetings/push) blocks that without needing to touch the remote
+    # manifest at all.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
 
     speakers: Mapped[list["Speaker"]] = relationship(back_populates="meeting")
     segments: Mapped[list["TranscriptSegment"]] = relationship(back_populates="meeting")

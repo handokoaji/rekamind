@@ -106,6 +106,34 @@ def test_delete_meeting_removes_meeting_and_all_its_children():
     assert summary is None
 
 
+def test_delete_meeting_soft_deletes_so_the_row_survives_for_sync_tombstoning():
+    """pull() only skips a manifest whose recording_dir already has a Meeting
+    row -- a hard delete let the next sync re-materialize a deleted meeting
+    right back from MinIO. The row must still exist (with deleted_at set)."""
+    async def scenario():
+        engine = make_engine("sqlite+aiosqlite:///:memory:")
+        await init_db(engine)
+        session_factory = make_session_factory(engine)
+
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(
+                session, "Sprint Review", None, recording_dir="./recordings/abc",
+            )
+            await session.commit()
+            meeting_id = meeting.id
+
+        async with session_factory() as session:
+            await repo.delete_meeting(session, meeting_id)
+            await session.commit()
+
+        async with session_factory() as session:
+            return await session.get(Meeting, meeting_id)
+
+    meeting = asyncio.run(scenario())
+    assert meeting is not None
+    assert meeting.deleted_at is not None
+
+
 def test_delete_meeting_raises_for_unknown_id():
     async def scenario():
         engine = make_engine("sqlite+aiosqlite:///:memory:")

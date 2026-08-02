@@ -124,7 +124,9 @@ async def mark_meeting_status(session: AsyncSession, meeting_id: int, status: st
 
 
 async def list_meetings(session: AsyncSession) -> list[Meeting]:
-    result = await session.execute(select(Meeting).order_by(Meeting.created_at.desc()))
+    result = await session.execute(
+        select(Meeting).where(Meeting.deleted_at.is_(None)).order_by(Meeting.created_at.desc())
+    )
     return list(result.scalars().all())
 
 
@@ -183,10 +185,13 @@ async def get_summary(session: AsyncSession, meeting_id: int) -> Summary | None:
 
 
 async def delete_meeting(session: AsyncSession, meeting_id: int) -> str | None:
-    """Deletes the meeting row and everything referencing it (no cascade is
-    configured on the FKs, so children go first). Returns recording_dir so the
-    caller can also remove the audio files on disk -- those aren't tracked by
-    SQLAlchemy at all."""
+    """Deletes everything referencing the meeting (no cascade is configured
+    on the FKs, so children go first), but soft-deletes the Meeting row
+    itself (sets deleted_at) rather than removing it -- pull() only skips a
+    manifest whose recording_dir already has a Meeting row, so a hard delete
+    let the next sync re-materialize it right back from MinIO. Returns
+    recording_dir so the caller can also remove the audio files on disk --
+    those aren't tracked by SQLAlchemy at all."""
     meeting = await session.get(Meeting, meeting_id)
     if meeting is None:
         raise ValueError(f"Meeting {meeting_id} not found")
@@ -195,6 +200,6 @@ async def delete_meeting(session: AsyncSession, meeting_id: int) -> str | None:
     await session.execute(delete(TranscriptSegment).where(TranscriptSegment.meeting_id == meeting_id))
     await session.execute(delete(Speaker).where(Speaker.meeting_id == meeting_id))
     await session.execute(delete(Recording).where(Recording.meeting_id == meeting_id))
-    await session.delete(meeting)
+    meeting.deleted_at = _utcnow()
     await session.flush()
     return recording_dir

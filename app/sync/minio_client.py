@@ -91,7 +91,11 @@ def push(session_factory, settings) -> dict:
         manifests = 0
         uploaded = 0
         async with session_factory() as session:
-            result = await session.execute(select(Meeting).where(Meeting.device_id == settings.device_id))
+            result = await session.execute(
+                select(Meeting).where(
+                    Meeting.device_id == settings.device_id, Meeting.deleted_at.is_(None)
+                )
+            )
             meetings = list(result.scalars().all())
             for meeting in meetings:
                 if not meeting.recording_dir:
