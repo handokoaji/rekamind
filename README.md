@@ -48,8 +48,9 @@ results with a team. Rekamind sits between the two:
 - SQLite (zero-config) or Postgres (multi-seat) storage backend
 - Optional MinIO-based sync so meetings recorded on one device are visible
   and downloadable from another
-- Automatic CUDA / OpenVINO / CPU backend detection with a clear error
-  instead of a silent slow fallback
+- Automatic CUDA / CPU backend detection with a clear error instead of a
+  silent slow fallback (an OpenVINO backend exists for Intel GPU/NPU but is
+  not yet auto-selected — see `ASR_BACKEND_OVERRIDE` below)
 - Meeting lifecycle recovery — an app crash mid-transcription doesn't leave
   a meeting stuck; it's reset and retryable on next launch
 
@@ -57,8 +58,25 @@ results with a team. Rekamind sits between the two:
 
 Windows only — recording depends on WASAPI loopback via `pyaudiowpatch`.
 
+`pip install -e .` alone pulls PyPI's default `torch` wheel, which has **no
+CUDA support compiled in** (`pyproject.toml` can't pin a per-package index
+URL). Install the right `torch` build for your hardware *first*, so
+`pip install -e .` sees the requirement already satisfied and leaves it in
+place:
+
 ```bash
+# NVIDIA GPU (e.g. GTX 1080 Ti and other CUDA-capable cards)
+pip install torch==2.13.0+cu126 --index-url https://download.pytorch.org/whl/cu126
 pip install -e .
+
+# No NVIDIA GPU (Intel, AMD, or CPU-only — e.g. Core Ultra 7 155H)
+pip install torch==2.13.0 --index-url https://download.pytorch.org/whl/cpu
+pip install -e .
+```
+
+Then:
+
+```bash
 cp .env.example .env   # fill in your storage backend + API keys
 python -m app.main
 ```
@@ -68,7 +86,9 @@ diarization) are optional — the app runs without them, just without
 summaries or speaker labels. See `.env.example` for the full list of
 settings, including `STORAGE_BACKEND` (`sqlite` or `postgres`) and the
 `ASR_BACKEND_OVERRIDE` escape hatch if auto-detection picks the wrong
-hardware backend.
+hardware backend. On multi-device setups, `device_id`/`device_label` default
+to the machine's hostname in dev mode, so each machine gets a distinct
+identity with no manual configuration.
 
 A packaged `.exe` installer (no Python required) is in progress — see
 Roadmap below.

@@ -26,32 +26,25 @@ def test_override_takes_priority():
 
 def test_falls_back_to_cuda_when_available(monkeypatch):
     monkeypatch.setattr(detect, "_cuda_available", lambda: True)
-    monkeypatch.setattr(detect, "_openvino_gpu_or_npu_available", lambda: False)
     assert detect.detect_backend() == "cuda"
 
 
-def test_falls_back_to_openvino_when_cuda_missing(monkeypatch):
+def test_never_auto_selects_openvino_even_though_ctranslate2_is_importable(monkeypatch):
+    """OpenVinoWhisperBackend has no chunking loop and hard-fails past 30s of
+    audio -- auto-picking it would break every real meeting on Intel hardware.
+    It stays reachable only via an explicit ASR_BACKEND_OVERRIDE."""
     monkeypatch.setattr(detect, "_cuda_available", lambda: False)
-    monkeypatch.setattr(detect, "_openvino_gpu_or_npu_available", lambda: True)
-    assert detect.detect_backend() == "openvino"
+    monkeypatch.setattr(detect, "_ctranslate2_importable", lambda: True)
+    assert detect.detect_backend() == "cpu"
 
 
 def test_falls_back_to_cpu_when_nothing_available(monkeypatch):
     monkeypatch.setattr(detect, "_cuda_available", lambda: False)
-    monkeypatch.setattr(detect, "_openvino_gpu_or_npu_available", lambda: False)
-    assert detect.detect_backend() == "cpu"
-
-
-def test_falls_back_to_cpu_when_ctranslate2_importable_and_nothing_else_available(monkeypatch):
-    monkeypatch.setattr(detect, "_cuda_available", lambda: False)
-    monkeypatch.setattr(detect, "_openvino_gpu_or_npu_available", lambda: False)
-    monkeypatch.setattr(detect, "_ctranslate2_importable", lambda: True)
     assert detect.detect_backend() == "cpu"
 
 
 def test_raises_unsupported_hardware_when_nothing_works_at_all(monkeypatch):
     monkeypatch.setattr(detect, "_cuda_available", lambda: False)
-    monkeypatch.setattr(detect, "_openvino_gpu_or_npu_available", lambda: False)
     monkeypatch.setattr(detect, "_ctranslate2_importable", lambda: False)
     with pytest.raises(detect.UnsupportedHardwareError):
         detect.detect_backend()

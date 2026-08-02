@@ -82,6 +82,11 @@ def test_recordings_dir_path_is_inside_config_dir(monkeypatch, tmp_path):
     assert settings_store.recordings_dir_path() == tmp_path / "MeetingRecorder" / "recordings"
 
 
+def test_model_cache_dir_path_is_inside_config_dir(monkeypatch, tmp_path):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    assert settings_store.model_cache_dir_path() == tmp_path / "MeetingRecorder" / "model_cache"
+
+
 def test_is_dev_mode_true_when_dot_env_exists_in_cwd(monkeypatch, tmp_path):
     (tmp_path / ".env").write_text("X=1")
     monkeypatch.chdir(tmp_path)

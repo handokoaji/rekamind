@@ -5,6 +5,15 @@ from optimum.intel.openvino import OVModelForSpeechSeq2Seq
 from transformers import WhisperProcessor
 
 from app.asr.base import TranscriptSegmentResult
+from app.settings_store import model_cache_dir_path
+
+# Whisper's feature extractor hard-truncates to a fixed 30-second window
+# (480000 samples @16kHz) -- there is no chunking loop here, unlike
+# faster-whisper's CUDA/CPU backends which chunk internally. Anything longer
+# is silently cut, with no error, and the cut part is just gone. Raising here
+# is deliberate: a wrong transcript that looks complete (the batch pass is the
+# authoritative one, straight into the MoM docx) is worse than a loud failure.
+MAX_TRANSCRIBE_SECONDS = 30.0
 
 
 def _load_audio_array(wav_path: Path) -> tuple[np.ndarray, int]:
@@ -26,7 +35,9 @@ def _load_audio_array(wav_path: Path) -> tuple[np.ndarray, int]:
 
 class OpenVinoWhisperBackend:
     def __init__(self, model_size: str = "large-v3", device: str = "GPU",
-                 cache_dir: Path = Path("./model_cache")):
+                 cache_dir: Path | None = None):
+        if cache_dir is None:
+            cache_dir = model_cache_dir_path()
         model_id = f"openai/whisper-{model_size}"
         # Converting whisper-large-v3 to OpenVINO IR takes many minutes, so do it
         # once and reload the saved IR on later launches. The IR is device-
@@ -41,6 +52,16 @@ class OpenVinoWhisperBackend:
 
     def transcribe(self, wav_path: Path, language: str = "id") -> list[TranscriptSegmentResult]:
         audio, samplerate = _load_audio_array(wav_path)
+        duration_seconds = len(audio) / samplerate
+        if duration_seconds > MAX_TRANSCRIBE_SECONDS:
+            # No chunking loop exists yet (see MAX_TRANSCRIBE_SECONDS docstring)
+            # -- failing loudly beats silently transcribing only the first 30s
+            # of a real meeting and calling it done.
+            raise NotImplementedError(
+                f"OpenVinoWhisperBackend tidak mendukung audio lebih dari "
+                f"{MAX_TRANSCRIBE_SECONDS:.0f} detik (durasi: {duration_seconds:.0f} detik). "
+                "Backend ini belum mendukung transkripsi bertahap (chunking)."
+            )
         inputs = self._processor(audio, sampling_rate=samplerate, return_tensors="pt")
         predicted_ids = self._model.generate(inputs.input_features, language=language)
         text = self._processor.batch_decode(predicted_ids, skip_special_tokens=True)[0]

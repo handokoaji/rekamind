@@ -2,8 +2,21 @@ import wave
 from unittest.mock import MagicMock
 
 import numpy as np
+import pytest
 
-from app.asr.openvino_backend import OpenVinoWhisperBackend, _load_audio_array
+from app.asr.openvino_backend import MAX_TRANSCRIBE_SECONDS, OpenVinoWhisperBackend, _load_audio_array
+
+
+def _build_backend(monkeypatch):
+    monkeypatch.setattr(
+        "app.asr.openvino_backend.OVModelForSpeechSeq2Seq.from_pretrained",
+        lambda *args, **kwargs: MagicMock(),
+    )
+    monkeypatch.setattr(
+        "app.asr.openvino_backend.WhisperProcessor.from_pretrained",
+        lambda *args, **kwargs: MagicMock(),
+    )
+    return OpenVinoWhisperBackend()
 
 
 def test_transcribe_maps_whisper_output_to_segments(monkeypatch, tmp_path):
@@ -39,6 +52,39 @@ def test_transcribe_maps_whisper_output_to_segments(monkeypatch, tmp_path):
     assert len(segments) == 1
     assert segments[0].text == "Selamat pagi mari kita mulai"
     assert segments[0].start_ms == 0
+
+
+def test_transcribe_raises_instead_of_silently_truncating_long_audio(monkeypatch, tmp_path):
+    """No chunking loop exists yet -- the feature extractor would otherwise
+    silently cut anything past 30s and this backend would confidently return a
+    transcript of a fraction of the real meeting."""
+    backend = _build_backend(monkeypatch)
+    over_limit_seconds = MAX_TRANSCRIBE_SECONDS + 1
+    monkeypatch.setattr(
+        "app.asr.openvino_backend._load_audio_array",
+        lambda wav_path: (np.zeros(int(16000 * over_limit_seconds), dtype=np.float32), 16000),
+    )
+
+    wav_path = tmp_path / "audio.wav"
+    wav_path.touch()
+    with pytest.raises(NotImplementedError):
+        backend.transcribe(wav_path)
+
+
+def test_transcribe_allows_audio_at_exactly_the_limit(monkeypatch, tmp_path):
+    backend = _build_backend(monkeypatch)
+    backend._model.generate.return_value = MagicMock()
+    backend._processor.batch_decode.return_value = ["ok"]
+    monkeypatch.setattr(
+        "app.asr.openvino_backend._load_audio_array",
+        lambda wav_path: (np.zeros(int(16000 * MAX_TRANSCRIBE_SECONDS), dtype=np.float32), 16000),
+    )
+
+    wav_path = tmp_path / "audio.wav"
+    wav_path.touch()
+    segments = backend.transcribe(wav_path)
+
+    assert segments[0].text == "ok"
 
 
 def test_load_audio_array_downmixes_and_resamples_native_device_format(tmp_path):

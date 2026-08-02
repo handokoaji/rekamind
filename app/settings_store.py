@@ -24,6 +24,10 @@ def recordings_dir_path() -> Path:
     return config_dir() / "recordings"
 
 
+def model_cache_dir_path() -> Path:
+    return config_dir() / "model_cache"
+
+
 def load_packaged_config() -> dict | None:
     path = config_path()
     if not path.exists():
