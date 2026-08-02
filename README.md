@@ -53,6 +53,9 @@ results with a team. Rekamind sits between the two:
   not yet auto-selected — see `ASR_BACKEND_OVERRIDE` below)
 - Meeting lifecycle recovery — an app crash mid-transcription doesn't leave
   a meeting stuck; it's reset and retryable on next launch
+- Lightweight when idle — ASR/diarization libraries load lazily on the first
+  Transkrip/Ringkasan click, not at startup (idle memory under 100MB,
+  measured), and the loaded models unload again after 15 minutes unused
 
 ## Quickstart
 
@@ -116,8 +119,12 @@ pytest -m postgres      # needs a real Postgres server
 - [x] First-run setup wizard
 - [x] Device identity (`device_id`) for multi-device history
 - [x] MinIO-based file/metadata sync across devices
-- [x] Hardware capability detection hardening (CUDA / OpenVINO / CPU)
+- [x] Hardware capability detection hardening (CUDA / CPU, OpenVINO quarantined
+      until it's validated on real Intel hardware)
+- [ ] Validate the Intel Core Ultra 7 155H (CPU/OpenVINO) path on real hardware
 - [ ] Packaged Windows `.exe` installer (PyInstaller + Inno Setup)
+
+See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 ## License
 
