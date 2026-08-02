@@ -217,6 +217,7 @@ def test_main_skips_wizard_in_dev_mode(monkeypatch):
 
 
 def test_handle_startup_db_error_reopens_wizard_on_yes(monkeypatch):
+    monkeypatch.setattr(main, "is_dev_mode", lambda: False)
     monkeypatch.setattr(main.messagebox, "askyesno", lambda *a, **k: True)
     saved = []
     monkeypatch.setattr(main, "save_packaged_config", saved.append)
@@ -245,6 +246,7 @@ def test_handle_startup_db_error_reopens_wizard_as_toplevel_on_existing_root(mon
     interpreter is _default_root, not necessarily the new window's own
     interpreter). SetupWizard must be reopened as a Toplevel on the existing
     root instead, same as every other reopen call site in this codebase."""
+    monkeypatch.setattr(main, "is_dev_mode", lambda: False)
     monkeypatch.setattr(main.messagebox, "askyesno", lambda *a, **k: True)
     monkeypatch.setattr(main, "save_packaged_config", lambda result: None)
 
@@ -263,6 +265,28 @@ def test_handle_startup_db_error_reopens_wizard_as_toplevel_on_existing_root(mon
 
     assert len(captured_parent) == 1
     assert isinstance(captured_parent[0], tk.Tk)
+
+
+def test_handle_startup_db_error_shows_env_message_without_wizard_in_dev_mode(monkeypatch):
+    """get_settings() always reads .env in dev mode -- reopening the wizard
+    would save to config.json (never consulted) and retry with the exact
+    same .env-derived settings that just failed, so dev mode must short-
+    circuit straight to a message telling the user to edit .env instead."""
+    monkeypatch.setattr(main, "is_dev_mode", lambda: True)
+    errors_shown = []
+    monkeypatch.setattr(main.messagebox, "showerror", lambda title, msg: errors_shown.append((title, msg)))
+    asked = []
+    monkeypatch.setattr(main.messagebox, "askyesno", lambda *a, **k: asked.append((a, k)) or True)
+    wizard_calls = []
+    monkeypatch.setattr(main, "SetupWizard", lambda **kw: wizard_calls.append(kw))
+
+    retried = main._handle_startup_db_error(RuntimeError("connection refused"))
+
+    assert retried is False
+    assert wizard_calls == []
+    assert asked == []
+    assert len(errors_shown) == 1
+    assert ".env" in errors_shown[0][1]
 
 
 def test_handle_startup_db_error_returns_false_on_no(monkeypatch):

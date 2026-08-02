@@ -8,7 +8,7 @@ import webbrowser
 
 from app import update_check
 from app.config import get_settings
-from app.settings_store import save_packaged_config
+from app.settings_store import is_dev_mode, save_packaged_config
 from app.ui.controller import RecorderController
 from app.ui.history_view import HistoryView
 from app.ui.setup_wizard import SetupWizard
@@ -79,9 +79,22 @@ class MainWindow:
             "minio_bucket": settings.minio_bucket,
         }
         result = SetupWizard(parent=self._root, initial=initial).run()
-        if result is not None:
-            save_packaged_config(result)
-            messagebox.showinfo("Pengaturan", "Restart aplikasi untuk menerapkan perubahan.")
+        if result is None:
+            return
+        if is_dev_mode():
+            # get_settings() always reads .env while it exists (see
+            # config.py::is_dev_mode) -- config.json is never consulted, so
+            # saving here would silently do nothing (or worse, leave a stale
+            # config.json that suddenly becomes live if .env is later
+            # removed). Don't pretend this dialog did anything.
+            messagebox.showinfo(
+                "Pengaturan",
+                "Mode dev aktif (ada file .env) -- pengaturan di sini tidak "
+                "dipakai. Edit file .env langsung, lalu restart aplikasi.",
+            )
+            return
+        save_packaged_config(result)
+        messagebox.showinfo("Pengaturan", "Restart aplikasi untuk menerapkan perubahan.")
 
     def _build_recording_frame(self, parent: tk.Widget) -> None:
         self.title_var = tk.StringVar()

@@ -434,6 +434,7 @@ def test_pengaturan_button_reopens_wizard_prefilled_and_saves_on_submit(monkeypa
         minio_bucket = "bucket"
 
     monkeypatch.setattr(window_module, "get_settings", lambda: FakeSettings())
+    monkeypatch.setattr(window_module, "is_dev_mode", lambda: False)
     wizard_calls = []
     saved = []
 
@@ -461,6 +462,53 @@ def test_pengaturan_button_reopens_wizard_prefilled_and_saves_on_submit(monkeypa
         "minio_secret_key": "sk", "minio_bucket": "bucket",
     })]
     assert saved == [{"storage_backend": "sqlite", "groq_api_key": "gk2", "hf_token": "hf"}]
+
+
+@pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
+def test_pengaturan_button_does_not_save_in_dev_mode(monkeypatch):
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("Tcl/Tk not properly initialized in pytest environment")
+
+    import app.ui.window as window_module
+
+    class FakeSettings:
+        storage_backend = "sqlite"
+        postgres_host = None
+        postgres_port = None
+        postgres_user = None
+        postgres_password = None
+        postgres_db = None
+        groq_api_key = "gk"
+        hf_token = "hf"
+        device_label = "my-device"
+        minio_endpoint = ""
+        minio_access_key = ""
+        minio_secret_key = ""
+        minio_bucket = ""
+
+    monkeypatch.setattr(window_module, "get_settings", lambda: FakeSettings())
+    monkeypatch.setattr(window_module, "is_dev_mode", lambda: True)
+    saved = []
+
+    class FakeWizard:
+        def __init__(self, parent=None, initial=None):
+            pass
+
+        def run(self):
+            return {"storage_backend": "sqlite", "groq_api_key": "gk2", "hf_token": "hf"}
+
+    monkeypatch.setattr(window_module, "SetupWizard", FakeWizard)
+    monkeypatch.setattr(window_module, "save_packaged_config", saved.append)
+    monkeypatch.setattr(window_module.messagebox, "showinfo", lambda *a, **k: None)
+
+    controller = FakeController()
+    window = MainWindow(root, controller)
+
+    window._handle_open_settings()
+
+    assert saved == [], "dev mode always reads .env -- saving to config.json must be a no-op"
 
 
 @pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
