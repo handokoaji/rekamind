@@ -1,0 +1,78 @@
+name: Build Windows installer
+
+# GitLab (git.dev.ugm.ac.id) has no Windows runner, and this app depends on
+# WASAPI/ctranslate2/torch/openvino -- all native, not cross-compilable from
+# Linux. GitHub's windows-latest runner is the pragmatic alternative.
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install app + build deps
+        run: |
+          pip install -e .
+          pip install pyinstaller
+
+      - name: Run tests
+        run: pytest
+
+      - name: Download static ffmpeg
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg_extracted
+          New-Item -ItemType Directory -Force -Path packaging\ffmpeg | Out-Null
+          $exe = Get-ChildItem -Path ffmpeg_extracted -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          Copy-Item $exe.FullName packaging\ffmpeg\ffmpeg.exe
+
+      - name: Build with PyInstaller
+        working-directory: packaging
+        run: pyinstaller MeetingRecorder.spec
+
+      - name: Bundle ffmpeg next to the built exe
+        shell: pwsh
+        run: Copy-Item -Recurse -Force packaging\ffmpeg packaging\dist\MeetingRecorder\ffmpeg
+
+      - name: Stamp installer version from the pushed tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          (Get-Content packaging\installer.iss) `
+            -replace 'AppVersion=.*', "AppVersion=$version" `
+            -replace 'OutputBaseFilename=.*', "OutputBaseFilename=MeetingRecorderSetup-$version" |
+            Set-Content packaging\installer.iss
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Compile installer
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" packaging\installer.iss
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MeetingRecorderSetup
+          path: packaging\Output\MeetingRecorderSetup-*.exe
+
+      - name: Attach installer to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2.6.2
+        with:
+          files: packaging\Output\MeetingRecorderSetup-*.exe
