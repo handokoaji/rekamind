@@ -21,10 +21,11 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
-      - name: Install app + build deps
-        run: |
-          pip install -e .
-          pip install pyinstaller pytest
+      - name: Install app
+        run: pip install -e .
+
+      - name: Install build + test deps
+        run: pip install pyinstaller pytest
 
       - name: Run tests
         run: pytest

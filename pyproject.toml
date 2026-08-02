@@ -21,3 +21,11 @@ dependencies = [
     "tzdata",
     "minio",
 ]
+
+[tool.setuptools.packages.find]
+# Without this, setuptools' flat-layout auto-discovery also sees packaging/
+# (the PyInstaller/Inno Setup build assets, not a Python package) as a
+# second top-level package and refuses to guess, failing "pip install -e ."
+# outright -- harmless locally where the editable install already existed,
+# but fatal on a clean checkout (e.g. CI).
+include = ["app*"]
