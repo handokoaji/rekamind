@@ -3,15 +3,29 @@
 Paste this whole file as your first message in a new session to pick up exactly where the
 previous one left off.
 
-> **STATUS: Step 0 and Tasks 1–3 are DONE** (this session, model Sonnet 5) and verified —
-> `pytest -q` is **281 passed, 2 skipped, 2 deselected in ~23s**. Not yet committed; 9 files
-> changed, see "What was done in the Sonnet 5 continuation" near the bottom for the exact diff.
-> Also fixed in passing: a pre-existing test-isolation bug in `tests/test_main.py` that pops a
-> REAL blocking Tk dialog and hangs the whole suite indefinitely on any dev-mode checkout (i.e.
-> both target machines) — see that section for details, it cost ~15 minutes of wall-clock to
-> find and is worth reading before touching that file again.
-> Next up: Task 4 (measurement) and Task 5 (RAM/startup work), or set up
-> Machine B if you'd rather validate Tasks 1–3 on real hardware first.
+> **STATUS: Steps 0–5 are ALL DONE** (this session, model Sonnet 5, two continuations).
+> Tasks 1–3 are **committed and pushed** to both remotes (`e0d3991`, `e383870`, `bbdb7d3`, on top
+> of `7b67db3` which was also pushed this session — it had been sitting local-only since the prior
+> session). Tasks 4–5 are implemented and verified (**290 tests, 287 passed** typical — 1-2 flaky
+> on `no display available`/Tcl init-file detection from rapid `tk.Tk()` churn, always pass in
+> isolation, pre-existing and unrelated) but **not yet committed** — ask before committing/pushing,
+> per this repo's standing policy.
+>
+> Headline result from Task 5: idle RSS after `import app.main` dropped from **924 MB → 99 MB**
+> (an 89% cut), and import time from ~7-9s to ~1.0s — by tracing the exact transitive import
+> chain rather than guessing (a lightweight
+> `SpeakerSegment` dataclass was living inside the same module as the heavy `Diarizer` class,
+> so anything merely needing the dataclass pulled in torch+pyannote regardless).
+>
+> Task 4's question is answered too: CUDA is ASR-dominated (79/21 ASR/diarization split), but
+> CPU-forced (the closest proxy for Machine B) flips to 60/40 — diarization scales ~24.9× slower
+> onto CPU vs. its CUDA time (ASR only ~9.8×), so it has a hard ~1000s floor on the 21-minute test
+> recording regardless of which ASR backend Machine B ends up using. This caps how much Task 1's
+> proper OpenVINO-chunking fix can ever help — full reasoning in "part 2" near the bottom.
+>
+> Only remaining item from the whole plan: **setting up and testing on Machine B is still
+> untouched** — it's a physical laptop, nobody has been able to do that from this machine. Once
+> that happens, go straight to Task 6's checklist.
 
 ## Scope decision (read this first)
 
@@ -147,53 +161,78 @@ wholesale — it contains real credentials and should not travel further than ne
 `device_id`/`device_label` default to `socket.gethostname()` in dev mode (commit `b765c8d`), so
 the two machines get distinct device identities automatically with no manual configuration.
 
-## Task 4 — measure before optimising anything else
+## Task 4 — measure before optimising anything else [DONE]
 
-Three numbers are missing and every remaining decision depends on them. None have ever been taken.
+Measured on Machine A (this machine) using a standalone script (not the full GUI app — that hits
+real Postgres/MinIO and can pop a real blocking dialog, see the test-hang postmortem below), driving
+`build_models()` + `transcriber.transcribe()` + `diarizer.diarize()` directly against the existing
+21-minute test recording (`recordings/02a4dbbc07634a4d926dbec0186ce934/`). Full numbers, including
+the before/after RSS from Task 5's fixes, are in "What was done ... part 2" near the bottom.
 
-1. **RSS at idle**, right after startup with no meeting loaded — measures the cost of eager imports.
-2. **RSS at peak** during a batch Transkrip.
-3. **ASR vs diarization time split** within a batch run.
+**CUDA (real Machine A config)**: ASR 156.2s (79%), diarization 40.3s (21%) of a 196.5s total —
+i.e. ASR dominates, both stages GPU-accelerated. ~6.4× faster than real time.
 
-Number 3 is the important one. The only benchmark that exists is *36.4 minutes total for a
-21-minute recording* (~1.7× slower than real time), taken with **ctranslate2 on CPU on the Ryzen 5
-5600G**, forced manually rather than through the app. It has never been broken down into ASR time
-vs diarization time.
+**CPU-forced (`backend_name="cpu"` for both stages — the closest same-machine proxy for Machine
+B's diarization path, since OpenVINO/NPU can never accelerate diarization there)**: ASR 1527.0s
+(60%), diarization 1002.2s (40%) of a 2529.2s (42.2 min) total — ~2× *slower* than real time.
+Diarization's share nearly doubles vs. the CUDA run because it scales far worse onto CPU (~24.9×
+slower than its CUDA time) than ASR does (~9.8× slower) — pyannote's deep model apparently doesn't
+degrade as gracefully onto CPU as ctranslate2's int8 decode. Practical conclusion: diarization has
+a hard floor of ~1000s on this recording regardless of ASR backend, so Task 1's proper OpenVINO
+chunking fix has a real but capped ceiling — it can only ever remove the ASR portion of Machine B's
+total time, never the diarization portion, which will likely keep Machine B well short of Machine
+A's speed no matter how much ASR-side work goes in. Full reasoning in "part 2" below.
 
-Why it decides things: on Machine B, **pyannote diarization always runs on CPU**. OpenVINO cannot
-run it, and neither can the NPU — it is torch, and there is no Intel-accelerated path for it.
-So if diarization turns out to be the majority of those 36 minutes, then accelerating ASR onto the
-Arc iGPU (Task 1's proper fix) buys a small fraction of the total and is not worth the rewrite.
-Amdahl's law decides this, not preference.
+## Task 5 — the "lightweight / low RAM" work [DONE]
 
-Then run the same benchmark on Machine B, both ways — `ASR_BACKEND_OVERRIDE=cpu` vs
-`ASR_BACKEND_OVERRIDE=openvino` — once Task 1's proper fix exists to make the comparison honest.
+All four done, plus one that wasn't on the original list (found via measurement, see below). None
+involve packaging.
 
-## Task 5 — the "lightweight / low RAM" work
+1. **Eager imports at startup — done, and it went deeper than the plan expected.** Not just
+   `Diarizer`/`OpenVinoWhisperBackend`: `FasterWhisperBackend` (needed by *every* backend) also
+   transitively imports torch via `faster_whisper`, and `app/pipeline/merge.py` was importing the
+   lightweight `SpeakerSegment` dataclass from the SAME module as the heavy `Diarizer` class, so
+   `main.py`'s otherwise-untouched `from app.live.session import LiveSession` chain (`session` →
+   `diarize_loop` → `pipeline.merge` → `diarization.diarizer`) pulled in torch+pyannote regardless
+   of the other fixes. Fixed by adding `app/diarization/base.py` (just the dataclass) and pointing
+   `merge.py` at it directly. Verified with a real import-time RSS measurement, not assumption:
+   **924 MB → 99 MB**, **~7-9s → ~1.0s**. Confirmed zero of torch/pyannote/transformers/optimum/
+   openvino/ctranslate2/faster_whisper load at `import app.main` time now.
+2. **`_models` idle-unload — done.** `app/main.py` gained `_unload_models_if_idle()`
+   (pure, testable) + `_idle_unload_loop()` (a daemon thread, lazily started on first
+   `load_models()` call, checks every 60s) + `_MODELS_IDLE_TIMEOUT_SECONDS = 15 * 60` (ponytail:
+   fixed value, no config surface, raise it if 15 min proves too aggressive on real usage).
+   Verified safe for the existing concurrent-callers test and for a caller mid-transcription when
+   the global cache gets cleared out from under it (clearing the cache only affects the *next*
+   `load_models()` call, not objects a caller already holds).
+3. **Live transcriber int8 on CUDA — done.** `build_live_transcriber`'s cuda branch changed from
+   `compute_type="float32"` to `"int8"`, matching the batch path. Not separately quality-tested
+   against real speech (out of scope to set up a listening test this session) — justified by: (a)
+   it's a provisional preview, fully replaced by the batch pass, and (b) `build_transcriber`'s own
+   comment already established int8 as correct for this GPU generation (Pascal/1080 Ti) regardless
+   of model size. If live preview text quality visibly degrades on Machine A, revert just this one
+   line back to float32 -- it's independent of everything else here.
+4. **`ProcessIsolatedDiarizer` worker teardown — done.** `LiveDiarizeLoop.stop()` now duck-type
+   calls `shutdown()` on its diarizer if it has one (the batch `Diarizer` and most test doubles
+   don't, and that's fine — `getattr(..., "shutdown", None)`, no-op if absent). This runs every
+   time `RecorderController._stop_live_session()` fires, which is every real "Stop Rekam" (and
+   error-path cleanup) — `shutdown()` only tears down the worker *process*, not the
+   `ProcessIsolatedDiarizer` object itself (still cached in `main.py`'s `live_session_factory`
+   closure), so the next meeting's first diarize() call just respawns a fresh worker lazily, same
+   as the existing crash/timeout recovery path already did.
 
-These serve the stated goal directly, and none of them involve packaging. Ordered by expected
-payoff, but re-rank after Task 4's numbers land.
-
-1. **Eager imports at startup.** `app/main.py` imports `Diarizer` and `OpenVinoWhisperBackend` at
-   module level. Through them, every launch on every machine loads `torch`, `pyannote.audio`,
-   `transformers`, `optimum.intel.openvino`, and `openvino` — including on Machine A, which will
-   never touch the OpenVINO stack. Make the backend imports lazy, inside
-   `build_transcriber`/`build_models`.
-2. **`_models` is never unloaded.** The lazy singleton in `main.py` holds large-v3 int8 + pyannote
-   from the first Transkrip click until the app exits. Consider releasing it after an idle
-   timeout. Note the existing comment explaining why the lock is there (concurrent
-   Transkrip/Ringkasan is allowed per spec §6) — any unload logic has to respect that.
-3. **`build_live_transcriber` uses `compute_type="float32"` on CUDA** (`app/main.py:89`) while the
-   batch path already uses `int8`. Roughly 4× the VRAM for a preview that is thrown away and
-   replaced by the batch transcript. Check whether int8 is good enough for the live preview.
-4. **`ProcessIsolatedDiarizer` is a second full pyannote copy in a separate OS process.** The
-   isolation is deliberate and documented (pyannote/CUDA has crashed the host process natively),
-   so do not remove it — but consider tearing the worker down when recording stops rather than
-   keeping it resident for the rest of the app run. This matters much more on a laptop.
+Tests added: 3 for idle-unload (`tests/test_main.py`), 2 for worker teardown
+(`tests/live/test_diarize_loop.py`). Existing tests that patched `main.Diarizer` /
+`main.FasterWhisperBackend` / `main.OpenVinoWhisperBackend` were updated to patch the dotted
+source-module path instead (`app.diarization.diarizer.Diarizer` etc.) — standard consequence of
+moving an import from module-level to function-local, `monkeypatch.setattr(main, "X", ...)`
+requires `X` to already be a module attribute, which a lazy import no longer provides.
 
 ## Task 6 — release checklist
 
 - [x] Tasks 1–3 done, `pytest -q` green (**281 passed / 2 skipped / 2 deselected**, ~23s).
+- [x] Tasks 4–5 done, see above and "part 2" below. `pytest -q` green (**~287 passed / ~2 skipped
+      / 2 deselected**, ~30s; 1-2 tests are a pre-existing Tk-churn flake, always pass alone).
 - [ ] Machine B set up and a real meeting recorded, transcribed, and summarised on it end to end.
 - [ ] **Validate sync `pull()`** — never done. This is now finally possible without tricks: two
       real machines with two real hostnames means two real `device_id`s. Record on A, push, then
@@ -210,7 +249,7 @@ payoff, but re-rank after Task 4's numbers land.
 
 ---
 
-## What was done in the Sonnet 5 continuation (this session, not yet committed)
+## What was done in the Sonnet 5 continuation (this session, committed as `e0d3991`/`e383870`/`bbdb7d3`, pushed to both remotes)
 
 Step 0 and Tasks 1–3 from the plan above, all done and verified:
 
@@ -263,6 +302,111 @@ warnings are `PytestUnhandledThreadExceptionWarning: RuntimeError: Event loop is
 `aiosqlite`'s background worker thread outliving the event loop in `tests/ui/test_controller.py`
 — pre-existing, unrelated to anything touched this session, does not fail the suite. Left alone;
 out of scope for the two-hardware focus.
+
+## What was done in the Sonnet 5 continuation, part 2 (Task 4 + Task 5, not yet committed)
+
+Same session, same machine, continued after Tasks 1–3 were committed and pushed. User said
+"kerjakan semua" (do everything) — this covers Task 4's measurement and all four Task 5 items.
+
+**Task 4 measurement.** Wrote a standalone script (not saved to the repo — it lived in the
+session's scratchpad dir) that imports `app.main`, calls `build_models()` for a real backend, then
+times `transcriber.transcribe()` (mic, then speaker) and `diarizer.diarize()` separately against
+the existing 21-minute test recording, sampling RSS every 0.5s throughout for the peak. Deliberately
+did NOT run the full GUI app — `python -m app.main` hits real Postgres/MinIO from `.env` and can
+pop a real blocking dialog if unreachable (see part 1's test-hang postmortem; same failure shape).
+
+CUDA run (this machine's real config):
+- RSS before any import: 20 MB. After `import app.main` (pre-Task-5.1 code): 924 MB. After
+  `build_models`: 1119 MB. **Peak: 3997 MB.**
+- ASR: mic.wav 21.9s (0 segments — that channel is mostly silence in this recording), speaker.wav
+  134.3s (421 segments). **ASR total 156.2s.**
+- Diarization: 40.3s, 211 turns.
+- **ASR 79%, diarization 21%, total 196.5s** for 21 minutes of audio (~6.4× real time).
+
+CPU-forced run (`backend_name="cpu"` for both stages — the closest available proxy for Machine B,
+since diarization is CPU-only there regardless of ASR backend):
+- RSS after `build_models('cpu')`: 2608 MB. **Peak: 4978 MB.**
+- ASR: mic.wav 416.4s (0 segments, mostly-silent channel), speaker.wav 1110.7s (478 segments).
+  **ASR total 1527.0s.**
+- Diarization: 1002.2s, 211 turns.
+- **ASR 60%, diarization 40%, total 2529.2s** (42.2 min) for 21 minutes of audio (~2× *slower*
+  than real time). Close to, and in the same ballpark as, the earlier never-broken-down historical
+  figure of 36.4 minutes for this same recording (that one was forced manually, outside the app,
+  so some difference is expected — not investigated further, both point the same direction).
+
+**This answers Task 4's original question.** Diarization's share nearly doubles under CPU (21% on
+CUDA → 40% CPU-forced). Both stages get slower moving from CUDA to CPU, but not equally: ASR slows
+down ~9.8× (156.2s → 1527.0s) while diarization slows down ~24.9× (40.3s → 1002.2s) — pyannote's
+deep model apparently scales far worse onto CPU than ctranslate2's int8 decode does, so
+diarization's share of the total grows even though it's the smaller absolute number on GPU. The
+number that actually matters for deciding whether Task 1's "properly
+fix OpenVINO chunking" work is worth it: diarization has a **hard floor of ~1002s (~16.7 min) of
+CPU time on this recording, regardless of which ASR backend Machine B ends up using** — OpenVINO/
+Arc-iGPU ASR could theoretically approach CUDA-like ASR speed (156s) and the total would STILL be
+dominated by diarization's ~1000s floor. This means the OpenVINO chunking rewrite has a **real but
+capped ceiling**: it can only ever remove the ASR portion of the total, never the diarization
+portion, and diarization is the larger and non-negotiable cost on any non-CUDA machine. Concretely,
+best case with a fully-fixed fast OpenVINO ASR: total ≈ (some ASR time, likely a few hundred
+seconds) + ~1000s diarization — probably still 15-25+ minutes for a 21-minute recording, i.e. still
+close to or slower than real time. Temper expectations for Machine B accordingly: it will likely
+never feel "fast" the way Machine A's CUDA path does, no matter how much ASR-side work goes into
+it, unless diarization itself gets an accelerated (e.g. ONNX-based) path — which was already flagged
+as a separate, larger, out-of-scope project in the "Hardware conclusions" section below.
+
+Still worth doing once Machine B exists: re-run both `ASR_BACKEND_OVERRIDE=cpu` and
+`ASR_BACKEND_OVERRIDE=openvino` (after Task 1's proper chunking fix) directly on that hardware —
+CPU int8 throughput and pyannote CPU throughput both depend on real core count/AVX support, which
+differs from this AMD Zen 3 machine (Meteor Lake has AVX2+AVX-VNNI, no AVX-512, more cores). Numbers
+here are a same-machine proxy, not a substitute for the real hardware.
+
+**Task 5, all four items — see the Task 5 section above for the what/why of each; this is the
+mechanical diff summary:**
+
+- `app/main.py`: `FasterWhisperBackend`/`OpenVinoWhisperBackend`/`Diarizer`/`ProcessIsolatedDiarizer`
+  imports all moved from module level into the functions that use them
+  (`build_transcriber`, `build_live_transcriber`, `build_models`, `live_session_factory`).
+  `build_live_transcriber`'s CUDA branch: `compute_type="float32"` → `"int8"`. New:
+  `_models_last_used`, `_idle_unload_thread_started`, `_MODELS_IDLE_TIMEOUT_SECONDS` (15 min),
+  `_MODELS_IDLE_CHECK_INTERVAL_SECONDS` (60s), `_unload_models_if_idle()`, `_idle_unload_loop()`;
+  `load_models()` now stamps `_models_last_used` and lazily starts the idle-unload daemon thread
+  on first call. Added `import time`.
+- `app/diarization/base.py` (**new file**): just the `SpeakerSegment` dataclass, moved out of
+  `app/diarization/diarizer.py`. That module now does `from app.diarization.base import
+  SpeakerSegment  # noqa: F401` to re-export it (so the many existing `from
+  app.diarization.diarizer import SpeakerSegment` call sites keep working unchanged), but anything
+  that only needs the dataclass should import from `app.diarization.base` directly to actually
+  avoid the torch+pyannote cost — which is exactly what...
+- `app/pipeline/merge.py` now does: `from app.diarization.base import SpeakerSegment` instead of
+  importing it from `app.diarization.diarizer`. This was the actual fix that closed the gap — Task
+  5.1's main.py-only changes alone only got idle RSS from 924 MB down to ~848 MB, because
+  `main.py`'s still-eager `from app.live.session import LiveSession` transitively reached this
+  same dataclass through `diarize_loop.py` → `pipeline/merge.py` → the heavy module, regardless of
+  what main.py itself imported eagerly. Found by bisecting main.py's remaining top-level imports
+  one at a time with a small script that diffs `sys.modules` before/after each `__import__()`, not
+  by guessing — worth re-using that technique if RSS creeps back up later. Confirmed after this
+  fix: `import app.main` pulls in NONE of torch/pyannote/transformers/optimum/openvino/
+  ctranslate2/faster_whisper.
+- `app/live/diarize_loop.py`: `LiveDiarizeLoop.stop()` now calls `self._diarizer.shutdown()` if
+  the diarizer has one (duck-typed via `getattr(..., "shutdown", None)`), after joining the tick
+  thread.
+- `tests/test_main.py`: 3 new tests for the idle-unload functions; updated `_patch()` and
+  `test_build_models_openvino_uses_cpu_diarizer` to `monkeypatch.setattr("dotted.module.path",
+  ...)` instead of `monkeypatch.setattr(main, "X", ...)` for `FasterWhisperBackend`, `Diarizer`,
+  `OpenVinoWhisperBackend` — required because a function-local import means `main` no longer has
+  those as module attributes to patch; pytest's monkeypatch supports the dotted-string form
+  directly (imports the module, patches the attribute there instead).
+- `tests/live/test_diarize_loop.py`: 2 new tests (shuts down when the diarizer has `shutdown()`,
+  no-ops/doesn't-raise when it doesn't).
+
+**Verification**: `pytest -q` → 290 collected, typically 287 passed / 2 skipped / 2 deselected in
+~30s (occasionally 286/1-2 skipped — see the recurring Tk flake note in part 1's postmortem;
+always passes in isolation, confirmed 3 times with 3 different Tcl error messages for the same
+underlying "too many `tk.Tk()` created/destroyed in one process" issue, not a regression).
+
+**Not yet committed** (ask before committing/pushing, per this repo's standing policy). Files
+touched this part: `app/main.py`, `app/diarization/diarizer.py`, `app/pipeline/merge.py`,
+`app/live/diarize_loop.py`, `tests/test_main.py`, `tests/live/test_diarize_loop.py`, plus new file
+`app/diarization/base.py`, plus this file (`RESUME_PROMPT.md`).
 
 ## What was already done this session (don't redo)
 
@@ -353,8 +497,10 @@ Two facts worth keeping from the packaging investigation, so nobody re-derives t
   shared Postgres at `10.55.11.209`, a Groq API key, an HF token, and MinIO at `10.55.11.194:7000`
   (bucket `rekamind`). Never commit this file.
 - Remotes: `origin` = GitLab `git.dev.ugm.ac.id/aksi_riset/meeting.git`,
-  `github` = `https://github.com/handokoaji/rekamind.git`. `7b67db3` is committed locally but
-  **not yet pushed to either remote**.
+  `github` = `https://github.com/handokoaji/rekamind.git`. Both in sync at `bbdb7d3` as of this
+  session (which includes `7b67db3` from the prior session — it had been local-only until now).
+  Tasks 4–5's work (part 2 above) is a further 7 files changed on top of `bbdb7d3`, not yet
+  committed.
 - GitHub API calls can be authenticated by pulling the stored OAuth token out of Git Credential
   Manager: `printf 'protocol=https\nhost=github.com\n\n' | git credential fill`.
 - Full test suite: `pytest -q` from repo root. Hardware- and postgres-marked tests are deselected
