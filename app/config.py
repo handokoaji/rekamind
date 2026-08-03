@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     minio_bucket: str = ""
     recordings_dir: Path = Path("./recordings")
     asr_backend_override: str = ""
+    # Independent from asr_backend_override: lets the live-preview pipeline
+    # use a different backend than the batch pass. Empty means "same as
+    # batch", i.e. today's behavior, unchanged.
+    live_asr_backend_override: str = ""
 
     @model_validator(mode="after")
     def _default_device_identity(self) -> "Settings":

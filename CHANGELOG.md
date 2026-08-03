@@ -5,6 +5,38 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-08-03
+
+Validated the Intel Core Ultra 7 155H (CPU/iGPU/NPU) path on real hardware.
+
+### Added
+
+- `LIVE_ASR_BACKEND_OVERRIDE` setting: lets the live-preview pipeline use a
+  different ASR backend than the batch pass, independent of
+  `ASR_BACKEND_OVERRIDE`. Empty (default) keeps today's behavior — live
+  follows whatever backend batch is using.
+
+### Changed
+
+- `OpenVinoWhisperBackend` (Intel iGPU) now chunks audio into
+  `MAX_TRANSCRIBE_SECONDS` (30s) windows instead of hard-raising
+  `NotImplementedError` past the first one — the batch pass (Transkrip) can
+  now actually be used with `ASR_BACKEND_OVERRIDE=openvino` on a real,
+  full-length meeting recording, which it could not before.
+
+### Removed
+
+- An NPU ASR backend (`openvino-genai`'s `WhisperPipeline`, process-isolated
+  the same way `ProcessIsolatedDiarizer` is) was built and evaluated on the
+  Core Ultra 7 155H's NPU, then removed. Root cause: the NPU compiler only
+  supports greedy decoding — beam search fails outright with a static-shape
+  tensor error — and greedy decoding on real Indonesian speech reliably
+  degenerated into repeated phrases or drifted into English, confirmed via
+  side-by-side transcription of the same recording (iGPU: correct, stable
+  Indonesian; NPU: garbled English), even after tuning
+  `repetition_penalty`/`min_new_tokens`. Not worth keeping without an
+  upstream NPU decoding fix.
+
 ## [0.1.0] - 2026-08-02
 
 First tagged release. Validated end-to-end on one machine (AMD Ryzen 5 5600G +

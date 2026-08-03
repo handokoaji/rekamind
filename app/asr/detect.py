@@ -26,12 +26,16 @@ def detect_backend(override: str = "") -> str:
         return override
     if _cuda_available():
         return "cuda"
-    # "openvino" is deliberately NOT auto-selected here even when a GPU/NPU is
-    # available: OpenVinoWhisperBackend has no chunking loop and hard-fails
-    # past 30 seconds of audio (see app.asr.openvino_backend), so picking it
-    # automatically would break every real meeting on Intel hardware. Still
-    # reachable via ASR_BACKEND_OVERRIDE=openvino for development. Remove this
-    # quarantine once that backend supports chunking (RESUME_PROMPT.md Task 1).
+    # "openvino" (iGPU) is deliberately NOT auto-selected here even when the
+    # GPU is available: it's only validated on the one Intel machine this
+    # project has tested against so far, not "any Intel GPU" in general.
+    # Still reachable via ASR_BACKEND_OVERRIDE=openvino (see
+    # app.asr.openvino_backend). NPU support was attempted and removed --
+    # openvino-genai's NPU pipeline only supports greedy decoding (no beam
+    # search, confirmed via "Cannot set a new bigger shape to this tensor"),
+    # which reliably drifted real Indonesian speech into English/repeated
+    # garbage even with repetition_penalty tuning. Not worth resurrecting
+    # without an NPU-side decoding fix upstream.
     if _ctranslate2_importable():
         return "cpu"
     raise UnsupportedHardwareError(

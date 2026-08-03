@@ -224,6 +224,26 @@ def test_build_models_openvino_uses_cpu_diarizer(monkeypatch):
     assert diarizer.device == "cpu"
 
 
+def test_live_session_factory_uses_live_backend_name_independently_of_batch(monkeypatch):
+    """The live pipeline must be able to pick a different backend than batch
+    (e.g. live="openvino" while batch stays "cuda") -- CUDA/batch must never
+    be touched by an override that only targets live_asr_backend_override."""
+    import inspect
+
+    source = inspect.getsource(main.main)
+    live_factory_start = source.index("def live_session_factory")
+    live_factory_source = source[live_factory_start:]
+
+    assert "build_live_transcriber(live_backend_name)" in live_factory_source
+    assert "diarizer_device(live_backend_name)" in live_factory_source
+    # Batch stays on the plain backend_name, untouched by the live override.
+    batch_source = source[:live_factory_start]
+    assert "load_models(backend_name, settings)" in batch_source
+    assert (
+        "live_backend_name = settings.live_asr_backend_override or backend_name" in source
+    )
+
+
 def test_main_shows_wizard_on_first_run_and_reports_cancellation(monkeypatch):
     """Packaged mode, no config.json yet: the wizard must run, and if the
     user closes it without submitting, the gate reports False so main()
@@ -387,7 +407,7 @@ def test_main_shows_error_and_returns_when_retried_init_db_also_fails(monkeypatc
     path just above."""
     fake_settings = SimpleNamespace(
         database_url="sqlite+aiosqlite:///:memory:", asr_backend_override="",
-        hf_token="", groq_api_key="", device_id="d", device_label="l",
+        live_asr_backend_override="", hf_token="", groq_api_key="", device_id="d", device_label="l",
     )
 
     def _fake_get_settings():

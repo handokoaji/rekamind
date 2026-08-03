@@ -8,11 +8,9 @@ from app.asr.base import TranscriptSegmentResult
 from app.settings_store import model_cache_dir_path
 
 # Whisper's feature extractor hard-truncates to a fixed 30-second window
-# (480000 samples @16kHz) -- there is no chunking loop here, unlike
-# faster-whisper's CUDA/CPU backends which chunk internally. Anything longer
-# is silently cut, with no error, and the cut part is just gone. Raising here
-# is deliberate: a wrong transcript that looks complete (the batch pass is the
-# authoritative one, straight into the MoM docx) is worse than a loud failure.
+# (480000 samples @16kHz), unlike faster-whisper's CUDA/CPU backends which
+# chunk internally. transcribe() below slices audio into windows of this
+# size and calls generate() once per window, offsetting timestamps.
 MAX_TRANSCRIBE_SECONDS = 30.0
 
 
@@ -52,19 +50,17 @@ class OpenVinoWhisperBackend:
 
     def transcribe(self, wav_path: Path, language: str = "id") -> list[TranscriptSegmentResult]:
         audio, samplerate = _load_audio_array(wav_path)
-        duration_seconds = len(audio) / samplerate
-        if duration_seconds > MAX_TRANSCRIBE_SECONDS:
-            # No chunking loop exists yet (see MAX_TRANSCRIBE_SECONDS docstring)
-            # -- failing loudly beats silently transcribing only the first 30s
-            # of a real meeting and calling it done.
-            raise NotImplementedError(
-                f"OpenVinoWhisperBackend tidak mendukung audio lebih dari "
-                f"{MAX_TRANSCRIBE_SECONDS:.0f} detik (durasi: {duration_seconds:.0f} detik). "
-                "Backend ini belum mendukung transkripsi bertahap (chunking)."
-            )
-        inputs = self._processor(audio, sampling_rate=samplerate, return_tensors="pt")
-        predicted_ids = self._model.generate(inputs.input_features, language=language)
-        text = self._processor.batch_decode(predicted_ids, skip_special_tokens=True)[0]
-
-        duration_ms = int(len(audio) / samplerate * 1000)
-        return [TranscriptSegmentResult(start_ms=0, end_ms=duration_ms, text=text.strip())]
+        step = int(MAX_TRANSCRIBE_SECONDS * samplerate)
+        segments = []
+        for start in range(0, len(audio), step):
+            window = audio[start:start + step]
+            inputs = self._processor(window, sampling_rate=samplerate, return_tensors="pt")
+            predicted_ids = self._model.generate(inputs.input_features, language=language)
+            text = self._processor.batch_decode(predicted_ids, skip_special_tokens=True)[0]
+            end = start + len(window)
+            segments.append(TranscriptSegmentResult(
+                start_ms=int(start / samplerate * 1000),
+                end_ms=int(end / samplerate * 1000),
+                text=text.strip(),
+            ))
+        return segments

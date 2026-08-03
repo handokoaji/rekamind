@@ -2,7 +2,6 @@ import wave
 from unittest.mock import MagicMock
 
 import numpy as np
-import pytest
 
 from app.asr.openvino_backend import MAX_TRANSCRIBE_SECONDS, OpenVinoWhisperBackend, _load_audio_array
 
@@ -54,21 +53,28 @@ def test_transcribe_maps_whisper_output_to_segments(monkeypatch, tmp_path):
     assert segments[0].start_ms == 0
 
 
-def test_transcribe_raises_instead_of_silently_truncating_long_audio(monkeypatch, tmp_path):
-    """No chunking loop exists yet -- the feature extractor would otherwise
-    silently cut anything past 30s and this backend would confidently return a
-    transcript of a fraction of the real meeting."""
+def test_transcribe_chunks_audio_longer_than_the_window(monkeypatch, tmp_path):
+    """The feature extractor hard-truncates each call to 30s -- transcribe()
+    must slice longer audio into windows itself instead of silently returning
+    a transcript of only the first window."""
     backend = _build_backend(monkeypatch)
     over_limit_seconds = MAX_TRANSCRIBE_SECONDS + 1
     monkeypatch.setattr(
         "app.asr.openvino_backend._load_audio_array",
         lambda wav_path: (np.zeros(int(16000 * over_limit_seconds), dtype=np.float32), 16000),
     )
+    backend._processor.batch_decode.return_value = ["potongan"]
 
     wav_path = tmp_path / "audio.wav"
     wav_path.touch()
-    with pytest.raises(NotImplementedError):
-        backend.transcribe(wav_path)
+    segments = backend.transcribe(wav_path)
+
+    assert len(segments) == 2
+    assert backend._model.generate.call_count == 2
+    assert segments[0].start_ms == 0
+    assert segments[0].end_ms == int(MAX_TRANSCRIBE_SECONDS * 1000)
+    assert segments[1].start_ms == int(MAX_TRANSCRIBE_SECONDS * 1000)
+    assert segments[1].end_ms == int(over_limit_seconds * 1000)
 
 
 def test_transcribe_allows_audio_at_exactly_the_limit(monkeypatch, tmp_path):

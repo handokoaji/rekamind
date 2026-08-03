@@ -295,6 +295,10 @@ def main() -> None:
     except UnsupportedHardwareError as exc:
         messagebox.showerror("Rekamind", str(exc))
         sys.exit(1)
+    # Independent from backend_name: lets the live-preview pipeline use a
+    # different backend than the batch pass (see Settings.live_asr_backend_override).
+    # Empty means "same as batch" -- today's behavior, unchanged.
+    live_backend_name = settings.live_asr_backend_override or backend_name
     check_ffmpeg_available()
     engine = make_engine(settings.database_url)
     try:
@@ -342,7 +346,7 @@ def main() -> None:
     def live_session_factory(mic_wav_path, speaker_wav_path, scratch_dir):
         nonlocal live_transcriber, live_diarizer
         if live_transcriber is None:
-            live_transcriber = build_live_transcriber(backend_name)
+            live_transcriber = build_live_transcriber(live_backend_name)
         if live_diarizer is None:
             # Process-isolated (not the plain Diarizer main.py uses for the batch
             # pass): pyannote/CUDA has been observed to crash the whole process
@@ -355,7 +359,7 @@ def main() -> None:
             # the child worker process, on the first "Mulai Rekam".
             from app.live.diarize_worker import ProcessIsolatedDiarizer
             live_diarizer = ProcessIsolatedDiarizer(
-                hf_token=settings.hf_token, device=diarizer_device(backend_name),
+                hf_token=settings.hf_token, device=diarizer_device(live_backend_name),
             )
         mic_queue: "queue.Queue" = queue.Queue(maxsize=200)
         speaker_queue: "queue.Queue" = queue.Queue(maxsize=200)

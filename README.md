@@ -49,8 +49,12 @@ results with a team. Rekamind sits between the two:
 - Optional MinIO-based sync so meetings recorded on one device are visible
   and downloadable from another
 - Automatic CUDA / CPU backend detection with a clear error instead of a
-  silent slow fallback (an OpenVINO backend exists for Intel GPU/NPU but is
-  not yet auto-selected — see `ASR_BACKEND_OVERRIDE` below)
+  silent slow fallback (an OpenVINO backend for Intel iGPU is also available,
+  validated on a Core Ultra 7 155H, but not yet auto-selected — see
+  `ASR_BACKEND_OVERRIDE` below)
+- The live-preview pipeline can use a different ASR backend than the
+  post-meeting batch pass (`LIVE_ASR_BACKEND_OVERRIDE`), independent of
+  `ASR_BACKEND_OVERRIDE`
 - Meeting lifecycle recovery — an app crash mid-transcription doesn't leave
   a meeting stuck; it's reset and retryable on next launch
 - Lightweight when idle — ASR/diarization libraries load lazily on the first
@@ -89,7 +93,9 @@ diarization) are optional — the app runs without them, just without
 summaries or speaker labels. See `.env.example` for the full list of
 settings, including `STORAGE_BACKEND` (`sqlite` or `postgres`) and the
 `ASR_BACKEND_OVERRIDE` escape hatch if auto-detection picks the wrong
-hardware backend. On multi-device setups, `device_id`/`device_label` default
+hardware backend (`cuda`/`openvino`/`cpu`), and `LIVE_ASR_BACKEND_OVERRIDE`
+if you want the live preview on a different backend than the batch pass. On
+multi-device setups, `device_id`/`device_label` default
 to the machine's hostname in dev mode, so each machine gets a distinct
 identity with no manual configuration.
 
@@ -121,7 +127,13 @@ pytest -m postgres      # needs a real Postgres server
 - [x] MinIO-based file/metadata sync across devices
 - [x] Hardware capability detection hardening (CUDA / CPU, OpenVINO quarantined
       until it's validated on real Intel hardware)
-- [ ] Validate the Intel Core Ultra 7 155H (CPU/OpenVINO) path on real hardware
+- [x] Validate the Intel Core Ultra 7 155H (CPU/OpenVINO) path on real
+      hardware — CPU and iGPU (`ASR_BACKEND_OVERRIDE=openvino`, now with
+      chunking for full-length recordings) both confirmed working. An NPU
+      backend was also built and evaluated on this same machine, then
+      removed: the NPU compiler only supports greedy decoding, which
+      produced unreliable, occasionally wrong-language output on real speech
+      — not worth keeping without an upstream decoding fix.
 - [ ] Packaged Windows `.exe` installer (PyInstaller + Inno Setup)
 
 See [CHANGELOG.md](CHANGELOG.md) for release notes.
