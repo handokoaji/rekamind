@@ -4,10 +4,21 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.storage.models import Meeting, Speaker, Summary, TranscriptSegment
 from app.storage import repository as repo
+
+# Meeting.status's state-machine order (see app/storage/models.py) -- pull()
+# uses this to only ever move a locally-known meeting FORWARD, never let a
+# stale/out-of-order manifest (e.g. from a device that pulled before someone
+# else finished processing it) clobber further-along local progress. "failed"
+# deliberately never overwrites anything: a stale failure from a run that's
+# since been retried elsewhere shouldn't stick.
+_STATUS_ORDER = {
+    "scheduled": 0, "recording": 1, "recorded": 2, "transcribing": 3,
+    "transcribed": 4, "summarizing": 5, "completed": 6, "failed": -1,
+}
 
 # meeting_dir is always uuid4().hex on the writing side, and device_id is
 # either that or a sanitized hostname (see Settings._default_device_identity)
@@ -91,11 +102,12 @@ def push(session_factory, settings) -> dict:
         manifests = 0
         uploaded = 0
         async with session_factory() as session:
-            result = await session.execute(
-                select(Meeting).where(
-                    Meeting.device_id == settings.device_id, Meeting.deleted_at.is_(None)
-                )
-            )
+            # Not just this device's own meetings any more: a meeting pulled
+            # from another device and then transcribed/summarized HERE (see
+            # RecorderController._ensure_audio_files) needs its result pushed
+            # back too, so it becomes visible to the original owner and any
+            # other device on the next pull.
+            result = await session.execute(select(Meeting).where(Meeting.deleted_at.is_(None)))
             meetings = list(result.scalars().all())
             for meeting in meetings:
                 if not meeting.recording_dir:
@@ -110,6 +122,15 @@ def push(session_factory, settings) -> dict:
                 speakers_by_id = {s.id: s for s in speaker_result.scalars().all()}
                 summary = await repo.get_summary(session, meeting.id)
 
+                is_own = meeting.device_id == settings.device_id
+                # A meeting only ever pulled here (browsed, never processed) has
+                # nothing new to contribute -- pushing it back would overwrite
+                # the owner's manifest with a stale copy of what we pulled
+                # earlier, since this device has no way to know if the owner
+                # has since moved it further along themselves.
+                if not is_own and not segments and summary is None:
+                    continue
+
                 manifest = build_manifest(meeting, segments, speakers_by_id, summary)
                 prefix = manifest_object_prefix(meeting.device_id, Path(meeting.recording_dir).name)
                 manifest_bytes = json.dumps(manifest).encode("utf-8")
@@ -122,7 +143,13 @@ def push(session_factory, settings) -> dict:
                 if meeting.synced_at is None:
                     recording_dir = Path(meeting.recording_dir)
                     any_uploaded = False
-                    for filename in ("mic.wav", "speaker.wav", "mom.docx"):
+                    # For a foreign meeting, mic.wav/speaker.wav were fetched
+                    # FROM this exact prefix in the first place (see
+                    # _ensure_audio_files) -- re-uploading them back would just
+                    # waste bandwidth on a (potentially huge) unchanged file.
+                    # Only mom.docx can be genuinely new here.
+                    filenames = ("mic.wav", "speaker.wav", "mom.docx") if is_own else ("mom.docx",)
+                    for filename in filenames:
                         local_path = recording_dir / filename
                         if local_path.exists():
                             client.fput_object(settings.minio_bucket, f"{prefix}/{filename}", str(local_path))
@@ -158,18 +185,32 @@ def pull(session_factory, settings) -> dict:
                 if len(parts) != 3:
                     continue  # not <device_id>/<meeting_uuid>/manifest.json -- malformed, skip
                 device_id, meeting_uuid, _ = parts
-                if device_id == settings.device_id:
-                    continue
                 if not (_is_safe_path_component(device_id) and _is_safe_path_component(meeting_uuid)):
                     continue  # malformed/malicious object name -- skip, don't let it touch the filesystem
                 recordings_root = Path(settings.recordings_dir).resolve()
-                recording_dir = (recordings_root / device_id / meeting_uuid).resolve()
+                # A manifest under our OWN device_id prefix isn't necessarily one
+                # we wrote: another device may have transcribed one of our
+                # meetings (see push()'s "foreign meeting processed here" case)
+                # and pushed the result back to OUR prefix so we'd pick it up.
+                # Our own meetings live at recordings_dir/<uuid> (no device_id
+                # folder -- see start_meeting/import_meeting), unlike a pulled
+                # copy of someone else's, which lives at
+                # recordings_dir/<their_device_id>/<uuid>.
+                is_own_meeting = device_id == settings.device_id
+                if is_own_meeting:
+                    recording_dir = (recordings_root / meeting_uuid).resolve()
+                else:
+                    recording_dir = (recordings_root / device_id / meeting_uuid).resolve()
                 if not recording_dir.is_relative_to(recordings_root):
                     continue  # defense in depth -- should be unreachable once the charset check above passes
-                existing = await session.execute(
+                existing_result = await session.execute(
                     select(Meeting).where(Meeting.recording_dir == str(recording_dir))
                 )
-                if existing.scalar_one_or_none() is not None:
+                existing = existing_result.scalar_one_or_none()
+                if is_own_meeting and existing is None:
+                    # A manifest claiming to be ours but matching no meeting we
+                    # actually have locally -- never fabricate a new "own"
+                    # meeting from someone else's write into our prefix.
                     continue
 
                 response = client.get_object(settings.minio_bucket, obj.object_name)
@@ -178,17 +219,35 @@ def pull(session_factory, settings) -> dict:
                 finally:
                     response.close()
                     response.release_conn()
+                remote_status = manifest["status"]
 
-                meeting = Meeting(
-                    title=manifest["title"],
-                    scheduled_time=_parse_iso(manifest.get("scheduled_time")),
-                    start_time=_parse_iso(manifest.get("start_time")),
-                    end_time=_parse_iso(manifest.get("end_time")),
-                    status=manifest["status"], device_id=manifest["device_id"],
-                    device_label=manifest.get("device_label"), recording_dir=str(recording_dir),
-                )
-                session.add(meeting)
-                await session.flush()
+                if existing is not None:
+                    # Someone (possibly a third device) has moved this meeting
+                    # further along since we first pulled it -- refresh our
+                    # copy so Transkrip/Ringkasan/Lihat Transkrip reflect it.
+                    # Never move status BACKWARD: an in-flight local action
+                    # (e.g. this device is mid-Transkrip on the same foreign
+                    # meeting right now) must not be clobbered by a manifest
+                    # that just hasn't caught up yet.
+                    if _STATUS_ORDER.get(remote_status, 0) <= _STATUS_ORDER.get(existing.status, 0):
+                        continue
+                    meeting = existing
+                    meeting.status = remote_status
+                    meeting.start_time = _parse_iso(manifest.get("start_time"))
+                    meeting.end_time = _parse_iso(manifest.get("end_time"))
+                    await session.execute(delete(TranscriptSegment).where(TranscriptSegment.meeting_id == meeting.id))
+                    await session.execute(delete(Summary).where(Summary.meeting_id == meeting.id))
+                else:
+                    meeting = Meeting(
+                        title=manifest["title"],
+                        scheduled_time=_parse_iso(manifest.get("scheduled_time")),
+                        start_time=_parse_iso(manifest.get("start_time")),
+                        end_time=_parse_iso(manifest.get("end_time")),
+                        status=remote_status, device_id=manifest["device_id"],
+                        device_label=manifest.get("device_label"), recording_dir=str(recording_dir),
+                    )
+                    session.add(meeting)
+                    await session.flush()
 
                 label_to_speaker_id: dict[str, int | None] = {"Anda": None}
                 for seg in manifest["segments"]:

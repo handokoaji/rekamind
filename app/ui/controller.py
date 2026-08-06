@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import shutil
+import subprocess
 import uuid
 import wave
 from datetime import datetime, timezone
@@ -17,6 +18,41 @@ logger = logging.getLogger(__name__)
 def _wav_duration_ms(path: Path) -> int:
     with wave.open(str(path), "rb") as wf:
         return int(wf.getnframes() / wf.getframerate() * 1000)
+
+
+def _extract_audio_to_wav(source: Path, dest: Path) -> None:
+    """Uses ffmpeg to pull the audio track out of any file (audio or video)
+    into a plain 16kHz mono WAV -- the one format every backend in app/asr/
+    and the diarizer (stdlib `wave`, no arbitrary-container support) already
+    knows how to read. ffmpeg is an optional runtime dep (see
+    check_ffmpeg_available in main.py) so it's checked explicitly here rather
+    than surfacing as a cryptic FileNotFoundError from subprocess."""
+    if shutil.which("ffmpeg") is None:
+        raise RuntimeError(
+            "ffmpeg tidak ditemukan. Pasang dengan: winget install ffmpeg, "
+            "lalu buka ulang Rekamind."
+        )
+    result = subprocess.run(
+        ["ffmpeg", "-y", "-i", str(source), "-vn", "-ac", "1", "-ar", "16000", str(dest)],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg gagal membaca {source.name}: {result.stderr[-500:]}")
+
+
+def _write_silence_wav(path: Path, seconds: float = 1.0) -> None:
+    """Placeholder mic.wav for an imported meeting: transcribe_and_diarize
+    always transcribes mic_wav separately from speaker_wav (spec: "Anda" vs
+    diarized speakers), but an imported recording is a single mixed track
+    with no separate mic channel -- it all goes to speaker.wav instead, where
+    diarization actually runs. A near-silent file keeps every downstream
+    reader (wave.open, the transcriber) happy without special-casing "no mic
+    track" through the rest of the pipeline."""
+    with wave.open(str(path), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(16000)
+        wf.writeframes(b"\x00\x00" * int(seconds * 16000))
 
 
 class RecorderController:
@@ -151,6 +187,72 @@ class RecorderController:
             self.state = "error"
             raise
 
+    def import_meeting(self, title: str, source_path: str) -> int:
+        """Blocking -- call from a background thread. Creates a meeting
+        straight from an already-recorded audio/video file, skipping Mulai
+        Rekam/Stop Rekam entirely: it lands in Riwayat with status "recorded",
+        ready for Transkrip/Ringkasan like any meeting captured live."""
+        source = Path(source_path)
+        if not source.exists():
+            raise ValueError(f"File tidak ditemukan: {source_path}")
+
+        session_dirname = uuid.uuid4().hex
+        meeting_dir = self._recordings_dir / session_dirname
+        meeting_dir.mkdir(parents=True, exist_ok=True)
+        mic_path = meeting_dir / "mic.wav"
+        speaker_path = meeting_dir / "speaker.wav"
+
+        try:
+            _extract_audio_to_wav(source, speaker_path)
+            _write_silence_wav(mic_path)
+
+            async def _create():
+                async with self._session_factory() as session:
+                    meeting = await repo.create_meeting(
+                        session, title, datetime.now(timezone.utc), recording_dir=str(meeting_dir),
+                        device_id=self._device_id, device_label=self._device_label,
+                    )
+                    await repo.start_recording(session, meeting.id)
+                    await repo.stop_recording(session, meeting.id)
+                    await repo.save_recording_file(
+                        session, meeting.id, str(mic_path), "mic", _wav_duration_ms(mic_path)
+                    )
+                    await repo.save_recording_file(
+                        session, meeting.id, str(speaker_path), "speaker", _wav_duration_ms(speaker_path)
+                    )
+                    await session.commit()
+                    return meeting.id
+
+            return asyncio.run(_create())
+        except Exception:
+            shutil.rmtree(meeting_dir, ignore_errors=True)
+            raise
+
+    def _ensure_audio_files(self, meeting: Meeting) -> None:
+        """A meeting pulled from another device (see app/sync/minio_client.py)
+        has a DB row here but its mic.wav/speaker.wav only ever lived on the
+        recording device's own disk -- fetch them from MinIO on demand, same
+        lazy-download pattern as ensure_docx_available() uses for mom.docx,
+        so Transkrip works on a meeting this device didn't record."""
+        if meeting.device_id == self._device_id or meeting.recording_dir is None:
+            return
+        recording_dir = Path(meeting.recording_dir)
+        mic_path = recording_dir / "mic.wav"
+        speaker_path = recording_dir / "speaker.wav"
+        if mic_path.exists() and speaker_path.exists():
+            return
+        if self._settings is None or not self._settings.minio_is_configured:
+            raise RuntimeError(
+                "Rekaman ini ada di device lain dan sync (MinIO) belum diatur "
+                "di device ini, jadi filenya tidak bisa diambil."
+            )
+        meeting_dir_name = recording_dir.name
+        for path in (mic_path, speaker_path):
+            if not path.exists():
+                minio_client.download_file(
+                    self._settings, meeting.device_id, meeting_dir_name, path.name, path,
+                )
+
     def run_transcribe(self, meeting_id: int) -> None:
         """Blocking -- call from a background thread (the UI layer owns
         threading, matching start_meeting/stop_meeting's existing pattern)."""
@@ -168,6 +270,9 @@ class RecorderController:
                     )
                 mic_wav = Path(meeting.recording_dir) / "mic.wav"
                 speaker_wav = Path(meeting.recording_dir) / "speaker.wav"
+            # Outside the session block: a MinIO download of a large WAV
+            # shouldn't hold a DB session/connection open for its duration.
+            self._ensure_audio_files(meeting)
             await self._transcribe_fn(meeting_id=meeting_id, mic_wav=mic_wav, speaker_wav=speaker_wav)
 
         asyncio.run(_run())
@@ -258,8 +363,13 @@ class RecorderController:
 
     def ensure_docx_available(self, meeting_id: int) -> str | None:
         """Blocking -- call from a background thread. Downloads the docx from
-        MinIO on demand if this meeting was pulled from another device and
-        the file isn't on disk locally yet."""
+        MinIO on demand if it isn't on disk locally yet -- not just for a
+        meeting pulled from another device, but also for a meeting THIS
+        device recorded but had summarized elsewhere (see
+        _ensure_audio_files/run_transcribe): that docx only ever gets pushed
+        to MinIO by the device that made it, never copied back here on its
+        own, so "it's my own meeting" is no longer a guarantee the file is
+        already local."""
         async def _get():
             async with self._session_factory() as session:
                 meeting = await session.get(Meeting, meeting_id)
@@ -272,18 +382,22 @@ class RecorderController:
         docx_path = Path(summary.docx_path)
         if docx_path.exists():
             return str(docx_path)
-        # meeting can be None (row deleted between the two queries above) or
-        # have no recording_dir (legacy row predating that column) -- either
-        # way there's no remote object name to build, so nothing to fetch.
-        if meeting is None or meeting.recording_dir is None:
+        # meeting can be None (row deleted between the two queries above),
+        # have no recording_dir (legacy row predating that column), or have
+        # no device_id (ditto) -- either way there's no remote object name to
+        # build, so nothing to fetch.
+        if meeting is None or meeting.recording_dir is None or meeting.device_id is None:
             return None
-        if meeting.device_id and meeting.device_id != self._device_id:
-            meeting_dir_name = Path(meeting.recording_dir).name
-            minio_client.download_file(
-                self._settings, meeting.device_id, meeting_dir_name, "mom.docx", docx_path,
+        if self._settings is None or not self._settings.minio_is_configured:
+            raise RuntimeError(
+                "Docx meeting ini belum ada di device ini dan sync (MinIO) "
+                "belum diatur, jadi tidak bisa diambil."
             )
-            return str(docx_path)
-        return None
+        meeting_dir_name = Path(meeting.recording_dir).name
+        minio_client.download_file(
+            self._settings, meeting.device_id, meeting_dir_name, "mom.docx", docx_path,
+        )
+        return str(docx_path)
 
     def get_docx_path(self, meeting_id: int) -> str | None:
         async def _get():

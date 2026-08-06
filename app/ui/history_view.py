@@ -3,9 +3,15 @@ import os
 import queue
 import threading
 import tkinter as tk
-from tkinter import messagebox, scrolledtext, ttk
+from pathlib import Path
+from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 
 from app.timeutil import to_wib
+
+_IMPORT_FILETYPES = [
+    ("Rekaman audio/video", "*.wav *.mp3 *.m4a *.aac *.flac *.ogg *.mp4 *.mkv *.mov *.avi *.webm"),
+    ("Semua file", "*.*"),
+]
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +55,7 @@ class HistoryView(tk.Frame):
         self._busy_meeting_ids: set[int] = set()
         self._action_error: tuple[int, str] | None = None
         self._sync_in_progress = False
+        self._import_in_progress = False
         # Background threads (transcribe/summarize/retry/delete/sync workers)
         # must never call self.after() themselves -- Tkinter only honors it
         # while the main thread is inside mainloop(), so a call from a worker
@@ -86,6 +93,12 @@ class HistoryView(tk.Frame):
         self._view_transcript_button = tk.Button(action_frame, text="Lihat Transkrip", command=self._handle_view_transcript)
         self._delete_button = tk.Button(action_frame, text="Hapus", command=self._handle_delete)
         self._sync_button = tk.Button(action_frame, text="Sync Sekarang", command=self._handle_sync)
+
+        # Not tied to a selection (unlike Transkrip/Ringkasan/etc. above), so it's
+        # packed once here and left alone -- _update_action_panel()'s pack_forget
+        # loop below only ever touches the per-meeting action buttons.
+        self._import_button = tk.Button(action_frame, text="Impor Rekaman", command=self._handle_import)
+        self._import_button.pack(side="left")
 
         self._transcript_view = scrolledtext.ScrolledText(self, height=10, width=60)
 
@@ -169,20 +182,23 @@ class HistoryView(tk.Frame):
         self._status_label.config(text=label)
 
         state = "disabled" if meeting.id in self._busy_meeting_ids else "normal"
-        is_own = meeting.device_id is None or meeting.device_id == self._controller.local_device_id
-        if status == "recorded" and is_own:
+        # Transkrip/Ringkasan/Coba Lagi now work on a meeting from another
+        # device too: RecorderController._ensure_audio_files fetches its
+        # mic.wav/speaker.wav from MinIO on demand before processing (needs
+        # sync configured on this device -- if it isn't, the action fails
+        # with a clear message instead of silently doing nothing).
+        if status == "recorded":
             self._transcribe_button.config(state=state)
             self._transcribe_button.pack(side="left")
         elif status == "transcribed":
-            if is_own:
-                self._summarize_button.config(state=state)
-                self._summarize_button.pack(side="left")
+            self._summarize_button.config(state=state)
+            self._summarize_button.pack(side="left")
             self._view_transcript_button.pack(side="left")
         elif status == "completed":
             self._download_button.config(state=state)
             self._download_button.pack(side="left")
             self._view_transcript_button.pack(side="left")
-        elif status == "failed" and is_own:
+        elif status == "failed":
             self._retry_button.config(state=state)
             self._retry_button.pack(side="left")
 
@@ -286,6 +302,38 @@ class HistoryView(tk.Frame):
                 message = f"Sync gagal: {exc}"
             finally:
                 self._sync_in_progress = False
+                self._pending_actions.put(lambda: self._sync_status_label.config(text=message))
+                self._pending_actions.put(self.refresh)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _handle_import(self) -> None:
+        if self._import_in_progress:
+            return
+        path = filedialog.askopenfilename(title="Pilih file rekaman", filetypes=_IMPORT_FILETYPES)
+        if not path:
+            return
+        title = simpledialog.askstring(
+            "Impor Rekaman", "Judul meeting:", initialvalue=Path(path).stem, parent=self,
+        )
+        if not title:
+            return
+
+        self._import_in_progress = True
+        self._import_button.config(state="disabled")
+        self._sync_status_label.config(text="Mengimpor rekaman...")
+
+        def _worker():
+            message = "Impor gagal: error tidak diketahui"
+            try:
+                self._controller.import_meeting(title, path)
+                message = "Impor selesai -- meeting siap ditranskrip di Riwayat."
+            except Exception as exc:
+                logger.warning("import failed: %s", exc)
+                message = f"Impor gagal: {exc}"
+            finally:
+                self._import_in_progress = False
+                self._pending_actions.put(lambda: self._import_button.config(state="normal"))
                 self._pending_actions.put(lambda: self._sync_status_label.config(text=message))
                 self._pending_actions.put(self.refresh)
 

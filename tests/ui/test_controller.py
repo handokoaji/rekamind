@@ -117,6 +117,123 @@ def test_stop_meeting_raises_when_no_active_recording(tmp_path):
         assert "no meeting is currently being recorded" in str(e)
 
 
+def test_import_meeting_creates_recorded_meeting_from_uploaded_file(tmp_path, monkeypatch):
+    # ffmpeg itself isn't under test here -- swap it for a stub that just
+    # writes a silent WAV, same as the fixture files used elsewhere in this
+    # module, so the test doesn't need a real ffmpeg binary on PATH.
+    monkeypatch.setattr(
+        "app.ui.controller._extract_audio_to_wav",
+        lambda source, dest: _write_silent_wav(dest),
+    )
+
+    engine = make_engine("sqlite+aiosqlite:///:memory:")
+    asyncio.run(init_db(engine))
+    session_factory = make_session_factory(engine)
+    controller = _make_controller(tmp_path, session_factory)
+
+    source = tmp_path / "upload.mp4"
+    source.write_bytes(b"not really a video, just needs to exist")
+
+    meeting_id = controller.import_meeting("Rapat Zoom", str(source))
+
+    async def _get():
+        async with session_factory() as session:
+            from app.storage.models import Meeting
+            return await session.get(Meeting, meeting_id)
+
+    meeting = asyncio.run(_get())
+    assert meeting.status == "recorded"
+    assert meeting.title == "Rapat Zoom"
+    recording_dir = Path(meeting.recording_dir)
+    assert (recording_dir / "mic.wav").exists()
+    assert (recording_dir / "speaker.wav").exists()
+
+
+def test_import_meeting_raises_for_missing_source_file(tmp_path):
+    engine = make_engine("sqlite+aiosqlite:///:memory:")
+    asyncio.run(init_db(engine))
+    session_factory = make_session_factory(engine)
+    controller = _make_controller(tmp_path, session_factory)
+
+    try:
+        controller.import_meeting("Rapat", str(tmp_path / "tidak_ada.mp4"))
+        assert False, "expected ValueError"
+    except ValueError as e:
+        assert "tidak ditemukan" in str(e)
+
+
+class _FakeSyncSettings:
+    def __init__(self, minio_is_configured):
+        self.minio_is_configured = minio_is_configured
+
+
+def test_run_transcribe_downloads_foreign_meeting_audio_before_transcribing(tmp_path, monkeypatch):
+    downloaded = []
+
+    def fake_download(settings, device_id, meeting_dir, filename, dest):
+        downloaded.append((device_id, meeting_dir, filename))
+        _write_silent_wav(dest)
+
+    monkeypatch.setattr("app.ui.controller.minio_client.download_file", fake_download)
+
+    engine = make_engine("sqlite+aiosqlite:///:memory:")
+    asyncio.run(init_db(engine))
+    session_factory = make_session_factory(engine)
+
+    calls = []
+
+    async def spy_transcribe_fn(meeting_id, mic_wav, speaker_wav):
+        calls.append((mic_wav, speaker_wav))
+
+    controller = _make_controller(
+        tmp_path, session_factory, transcribe_fn=spy_transcribe_fn,
+        device_id="dev1", settings=_FakeSyncSettings(minio_is_configured=True),
+    )
+
+    async def _seed():
+        recording_dir = tmp_path / "dev2" / "uuid123"
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(
+                session, "Rapat Lain", None, recording_dir=str(recording_dir), device_id="dev2",
+            )
+            await session.commit()
+            return meeting.id
+
+    meeting_id = asyncio.run(_seed())
+
+    controller.run_transcribe(meeting_id)
+
+    assert len(calls) == 1
+    assert {filename for _, _, filename in downloaded} == {"mic.wav", "speaker.wav"}
+    assert all(device_id == "dev2" and meeting_dir == "uuid123" for device_id, meeting_dir, _ in downloaded)
+
+
+def test_run_transcribe_raises_clear_error_for_foreign_meeting_without_sync_configured(tmp_path):
+    engine = make_engine("sqlite+aiosqlite:///:memory:")
+    asyncio.run(init_db(engine))
+    session_factory = make_session_factory(engine)
+    controller = _make_controller(
+        tmp_path, session_factory, device_id="dev1", settings=_FakeSyncSettings(minio_is_configured=False),
+    )
+
+    async def _seed():
+        recording_dir = tmp_path / "dev2" / "uuid123"
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(
+                session, "Rapat Lain", None, recording_dir=str(recording_dir), device_id="dev2",
+            )
+            await session.commit()
+            return meeting.id
+
+    meeting_id = asyncio.run(_seed())
+
+    try:
+        controller.run_transcribe(meeting_id)
+        assert False, "expected RuntimeError"
+    except RuntimeError as e:
+        assert "sync" in str(e).lower()
+
+
 def test_run_transcribe_calls_transcribe_fn_with_recording_paths(tmp_path):
     engine = make_engine("sqlite+aiosqlite:///:memory:")
     asyncio.run(init_db(engine))
@@ -293,6 +410,81 @@ def test_list_meetings_returns_created_meetings(tmp_path):
 
     titles = {m.title for m in controller.list_meetings()}
     assert titles == {"Rapat A", "Rapat B"}
+
+
+def test_ensure_docx_available_downloads_own_meetings_docx_when_missing_locally(tmp_path, monkeypatch):
+    """The meeting is this device's own recording, but it got summarized on
+    a different device (e.g. one with an NVIDIA GPU) -- the docx only ever
+    landed in MinIO, never copied back onto this disk automatically. Must
+    still be fetched instead of being treated as "own, so must be local"."""
+    downloaded = []
+
+    def fake_download(settings, device_id, meeting_dir, filename, dest):
+        downloaded.append((device_id, meeting_dir, filename))
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"fake docx")
+
+    monkeypatch.setattr("app.ui.controller.minio_client.download_file", fake_download)
+
+    engine = make_engine("sqlite+aiosqlite:///:memory:")
+    asyncio.run(init_db(engine))
+    session_factory = make_session_factory(engine)
+    controller = _make_controller(
+        tmp_path, session_factory, device_id="dev1", settings=_FakeSyncSettings(minio_is_configured=True),
+    )
+
+    docx_path = tmp_path / "uuid123" / "mom.docx"  # not written to disk -- simulates "made elsewhere"
+
+    async def _seed():
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(
+                session, "Rapat Saya", None, recording_dir=str(tmp_path / "uuid123"), device_id="dev1",
+            )
+            await repo.save_summary(
+                session, meeting.id, mom_json="{}", docx_path=str(docx_path),
+                groq_model="m", status="ready",
+            )
+            await session.commit()
+            return meeting.id
+
+    meeting_id = asyncio.run(_seed())
+
+    result = controller.ensure_docx_available(meeting_id)
+
+    assert result == str(docx_path)
+    assert docx_path.exists()
+    assert downloaded == [("dev1", "uuid123", "mom.docx")]
+
+
+def test_ensure_docx_available_raises_clear_error_when_sync_not_configured(tmp_path):
+    engine = make_engine("sqlite+aiosqlite:///:memory:")
+    asyncio.run(init_db(engine))
+    session_factory = make_session_factory(engine)
+    controller = _make_controller(
+        tmp_path, session_factory, device_id="dev1", settings=_FakeSyncSettings(minio_is_configured=False),
+    )
+
+    docx_path = tmp_path / "uuid123" / "mom.docx"
+
+    async def _seed():
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(
+                session, "Rapat Saya", None, recording_dir=str(tmp_path / "uuid123"), device_id="dev1",
+            )
+            await repo.save_summary(
+                session, meeting.id, mom_json="{}", docx_path=str(docx_path),
+                groq_model="m", status="ready",
+            )
+            await session.commit()
+            return meeting.id
+
+    meeting_id = asyncio.run(_seed())
+
+    try:
+        controller.ensure_docx_available(meeting_id)
+        assert False, "expected RuntimeError"
+    except RuntimeError as e:
+        assert "sync" in str(e).lower()
 
 
 def test_get_transcript_and_get_docx_path(tmp_path):

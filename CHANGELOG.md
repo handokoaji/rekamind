@@ -5,6 +5,41 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-08-06
+
+### Added
+
+- **Impor Rekaman**: add a meeting straight from an uploaded audio/video file
+  (`app/ui/controller.py::RecorderController.import_meeting`), skipping
+  Mulai Rekam/Stop Rekam entirely. ffmpeg extracts the audio track to a
+  16kHz mono `speaker.wav` (so it's diarized into per-speaker labels like
+  any recorded meeting); `mic.wav` is a near-silent placeholder since an
+  uploaded file has no separate mic channel. Lands in Riwayat with status
+  "recorded", ready for Transkrip/Ringkasan immediately.
+- **Cross-device processing via sync**: Transkrip/Ringkasan/Coba Lagi now
+  work on a meeting recorded by another device, not just this device's own.
+  `RecorderController._ensure_audio_files` fetches `mic.wav`/`speaker.wav`
+  from MinIO on demand (same lazy-download pattern `ensure_docx_available`
+  already used for `mom.docx`) before processing. `push()`/`pull()`
+  (`app/sync/minio_client.py`) now round-trip results both ways:
+  - `push()` also pushes a foreign meeting's manifest (and its `mom.docx`)
+    back to the *original owner's* MinIO prefix once this device has
+    actually transcribed/summarized it, not just this device's own meetings.
+  - `pull()` updates an already-known meeting in place when the remote
+    manifest has moved further along the status state machine (never
+    backward, so an in-flight local action is never clobbered by a stale
+    manifest) -- including manifests written to *this device's own* prefix
+    by someone else who processed one of its meetings, which used to be
+    skipped outright.
+  - `ensure_docx_available` no longer assumes "my own meeting" implies "docx
+    already on my disk" -- it can now be fetched from MinIO regardless of
+    who authored it.
+
+### Fixed
+
+- `app/__init__.py::__version__` was still `0.1.0`; the v0.1.1 release only
+  bumped `pyproject.toml`. Both now agree.
+
 ## [0.1.1] - 2026-08-03
 
 Validated the Intel Core Ultra 7 155H (CPU/iGPU/NPU) path on real hardware.

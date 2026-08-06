@@ -480,27 +480,30 @@ def test_own_meeting_shows_processing_buttons():
 
 
 @pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
-def test_pulled_meeting_hides_processing_buttons_but_keeps_view_and_delete():
+def test_pulled_meeting_shows_processing_buttons_too():
+    # Transkrip/Ringkasan/Coba Lagi now work on a meeting pulled from another
+    # device: RecorderController._ensure_audio_files fetches the WAVs from
+    # MinIO on demand, so the UI no longer hides these behind device ownership.
     root = tk.Tk()
     controller = FakeController([_meeting(1, "Rapat Lain", "recorded", device_id="dev2")])
     view = HistoryView(root, controller)
     view._tree.selection_set("1")
     view._on_select()
 
-    assert str(view._transcribe_button.winfo_manager()) == ""
+    assert str(view._transcribe_button.winfo_manager()) == "pack"
     assert str(view._delete_button.winfo_manager()) == "pack"
     root.destroy()
 
 
 @pytest.mark.skipif(not _tk_available(), reason="no display available for Tkinter")
-def test_pulled_meeting_transcribed_status_shows_only_view_not_summarize():
+def test_pulled_meeting_transcribed_status_shows_summarize_too():
     root = tk.Tk()
     controller = FakeController([_meeting(1, "Rapat Lain", "transcribed", device_id="dev2")])
     view = HistoryView(root, controller)
     view._tree.selection_set("1")
     view._on_select()
 
-    assert str(view._summarize_button.winfo_manager()) == ""
+    assert str(view._summarize_button.winfo_manager()) == "pack"
     assert str(view._view_transcript_button.winfo_manager()) == "pack"
     root.destroy()
 

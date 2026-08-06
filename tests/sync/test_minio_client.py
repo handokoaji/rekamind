@@ -195,6 +195,45 @@ def test_push_does_not_mark_synced_when_no_files_exist_yet(monkeypatch, tmp_path
     assert asyncio.run(_get_synced_at()) is None
 
 
+def test_push_uploads_foreign_meeting_that_was_processed_here(monkeypatch, tmp_path):
+    """A meeting pulled from dev2 but transcribed on THIS device (dev1) --
+    via RecorderController._ensure_audio_files -- must still get pushed back
+    so dev2 (or anyone else) sees the result on their next pull. Only
+    mom.docx is re-uploaded, not mic.wav/speaker.wav (already at that prefix
+    since that's where we fetched them from)."""
+    fake_module = _fake_minio_module()
+    fake_client = fake_module.Minio.return_value
+    monkeypatch.setitem(sys.modules, "minio", fake_module)
+
+    session_factory = _make_db()
+
+    async def _seed():
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(
+                session, "Rapat Lain", None, recording_dir=str(tmp_path / "dev2" / "uuid123"),
+                device_id="dev2", device_label="Laptop Lain",
+            )
+            await repo.mark_meeting_status(session, meeting.id, "transcribed")
+            await repo.save_transcript_segments(session, [{
+                "meeting_id": meeting.id, "speaker_id": None, "source": "mic",
+                "start_ms": 0, "end_ms": 500, "text": "Halo",
+            }])
+            await session.commit()
+            return meeting.id
+
+    meeting_id = asyncio.run(_seed())
+    recording_dir = tmp_path / "dev2" / "uuid123"
+    recording_dir.mkdir(parents=True)
+    (recording_dir / "mic.wav").write_bytes(b"fake")
+    (recording_dir / "speaker.wav").write_bytes(b"fake")
+
+    result = minio_client.push(session_factory, FakeSettings(device_id="dev1"))
+
+    assert result["manifests"] == 1
+    uploaded_keys = [c.args[1] for c in fake_client.fput_object.call_args_list]
+    assert uploaded_keys == []  # no mom.docx written yet, and the WAVs aren't re-uploaded
+
+
 def test_push_skips_re_uploading_files_when_already_synced(monkeypatch, tmp_path):
     fake_module = _fake_minio_module()
     fake_client = fake_module.Minio.return_value
@@ -288,7 +327,11 @@ def test_pull_creates_local_meeting_from_remote_manifest(monkeypatch, tmp_path):
     assert summary.docx_path == str(tmp_path / "dev2" / "uuid123" / "mom.docx")
 
 
-def test_pull_skips_manifests_owned_by_local_device(monkeypatch, tmp_path):
+def test_pull_ignores_own_prefix_manifest_matching_no_local_meeting(monkeypatch, tmp_path):
+    """A manifest under our own device_id prefix that doesn't match any
+    meeting we actually have locally must never fabricate a new "own"
+    meeting row -- e.g. a stale/bogus object, or one from before a local
+    meeting was deleted."""
     fake_module = _fake_minio_module()
     fake_client = fake_module.Minio.return_value
     monkeypatch.setitem(sys.modules, "minio", fake_module)
@@ -302,6 +345,56 @@ def test_pull_skips_manifests_owned_by_local_device(monkeypatch, tmp_path):
 
     assert result["pulled"] == 0
     fake_client.get_object.assert_not_called()
+
+
+def test_pull_updates_own_meeting_processed_by_another_device(monkeypatch, tmp_path):
+    """The scenario this whole update-in-place mechanism exists for: this
+    device recorded the meeting (own prefix, no device_id folder on disk),
+    another device transcribed it and pushed the result back to OUR prefix
+    (see push()'s "foreign meeting processed here" case) -- our own next
+    pull must pick that up instead of skipping our own prefix outright."""
+    fake_module = _fake_minio_module()
+    fake_client = fake_module.Minio.return_value
+    monkeypatch.setitem(sys.modules, "minio", fake_module)
+    fake_client.list_objects.return_value = [_fake_object("dev1/uuid123/manifest.json")]
+
+    remote_manifest = {
+        "title": "Rapat Saya", "scheduled_time": None, "start_time": None, "end_time": None,
+        "status": "transcribed", "device_id": "dev1", "device_label": "Laptop Budi",
+        "segments": [{"speaker_label": "Anda", "source": "mic", "start_ms": 0, "end_ms": 500, "text": "Halo"}],
+        "summary": None,
+    }
+    fake_client.get_object.return_value = _fake_manifest_response(remote_manifest)
+
+    session_factory = _make_db()
+
+    async def _seed_own():
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(
+                session, "Rapat Saya", None,
+                recording_dir=str((tmp_path / "uuid123").resolve()), device_id="dev1",
+            )
+            await repo.mark_meeting_status(session, meeting.id, "recorded")
+            await session.commit()
+            return meeting.id
+
+    meeting_id = asyncio.run(_seed_own())
+    settings = FakeSettings(device_id="dev1")
+    settings.recordings_dir = tmp_path
+
+    result = minio_client.pull(session_factory, settings)
+
+    assert result["pulled"] == 1
+
+    async def _get():
+        async with session_factory() as session:
+            m = await session.get(Meeting, meeting_id)
+            segs = await session.execute(select(TranscriptSegment))
+            return m, segs.scalars().all()
+
+    meeting, segments = asyncio.run(_get())
+    assert meeting.status == "transcribed"
+    assert [s.text for s in segments] == ["Halo"]
 
 
 def test_download_file_fetches_object_to_dest(monkeypatch, tmp_path):
@@ -357,20 +450,30 @@ def test_pull_skips_manifest_with_path_traversal_in_object_name(monkeypatch, tmp
     fake_client.get_object.assert_not_called()
 
 
-def test_pull_skips_manifests_already_known_locally(monkeypatch, tmp_path):
+def test_pull_skips_update_when_remote_status_not_ahead_of_local(monkeypatch, tmp_path):
+    """Remote manifest still shows the same status we already have locally --
+    nothing new to pull, and specifically no duplicate Meeting row."""
     fake_module = _fake_minio_module()
     fake_client = fake_module.Minio.return_value
     monkeypatch.setitem(sys.modules, "minio", fake_module)
     fake_client.list_objects.return_value = [_fake_object("dev2/uuid123/manifest.json")]
 
+    remote_manifest = {
+        "title": "Rapat Remote", "scheduled_time": None, "start_time": None, "end_time": None,
+        "status": "recorded", "device_id": "dev2", "device_label": "Laptop Lain",
+        "segments": [], "summary": None,
+    }
+    fake_client.get_object.return_value = _fake_manifest_response(remote_manifest)
+
     session_factory = _make_db()
 
     async def _seed_existing():
         async with session_factory() as session:
-            await repo.create_meeting(
+            meeting = await repo.create_meeting(
                 session, "Sudah Ada", None,
                 recording_dir=str(tmp_path / "dev2" / "uuid123"), device_id="dev2",
             )
+            await repo.mark_meeting_status(session, meeting.id, "recorded")
             await session.commit()
 
     asyncio.run(_seed_existing())
@@ -380,7 +483,109 @@ def test_pull_skips_manifests_already_known_locally(monkeypatch, tmp_path):
     result = minio_client.pull(session_factory, settings)
 
     assert result["pulled"] == 0
-    fake_client.get_object.assert_not_called()
+
+    async def _get():
+        async with session_factory() as session:
+            r = await session.execute(select(Meeting))
+            return r.scalars().all()
+
+    meetings = asyncio.run(_get())
+    assert len(meetings) == 1
+    assert meetings[0].title == "Sudah Ada"  # untouched, not overwritten from the manifest
+
+
+def test_pull_updates_existing_meeting_when_remote_status_moved_forward(monkeypatch, tmp_path):
+    """A meeting we pulled earlier ("recorded") got transcribed on a third
+    device since -- the next pull should refresh our local copy in place
+    (same row, new status/segments), not skip it and not duplicate it."""
+    fake_module = _fake_minio_module()
+    fake_client = fake_module.Minio.return_value
+    monkeypatch.setitem(sys.modules, "minio", fake_module)
+    fake_client.list_objects.return_value = [_fake_object("dev2/uuid123/manifest.json")]
+
+    remote_manifest = {
+        "title": "Rapat Remote", "scheduled_time": None, "start_time": None, "end_time": None,
+        "status": "transcribed", "device_id": "dev2", "device_label": "Laptop Lain",
+        "segments": [{"speaker_label": "Anda", "source": "mic", "start_ms": 0, "end_ms": 500, "text": "Halo"}],
+        "summary": None,
+    }
+    fake_client.get_object.return_value = _fake_manifest_response(remote_manifest)
+
+    session_factory = _make_db()
+
+    async def _seed_existing():
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(
+                session, "Rapat Remote", None,
+                recording_dir=str(tmp_path / "dev2" / "uuid123"), device_id="dev2",
+            )
+            await repo.mark_meeting_status(session, meeting.id, "recorded")
+            await session.commit()
+            return meeting.id
+
+    meeting_id = asyncio.run(_seed_existing())
+    settings = FakeSettings(device_id="dev1")
+    settings.recordings_dir = tmp_path
+
+    result = minio_client.pull(session_factory, settings)
+
+    assert result["pulled"] == 1
+
+    async def _get():
+        async with session_factory() as session:
+            r = await session.execute(select(Meeting))
+            meetings = r.scalars().all()
+            segs = await session.execute(select(TranscriptSegment))
+            return meetings, segs.scalars().all()
+
+    meetings, segments = asyncio.run(_get())
+    assert len(meetings) == 1  # updated in place, not duplicated
+    assert meetings[0].id == meeting_id
+    assert meetings[0].status == "transcribed"
+    assert [s.text for s in segments] == ["Halo"]
+
+
+def test_pull_does_not_downgrade_local_status_from_stale_remote_manifest(monkeypatch, tmp_path):
+    """This device is mid-Transkrip on a foreign meeting (local status
+    "transcribing") while a sync happens to run -- the remote manifest still
+    shows the old "recorded" status because the owner hasn't touched it.
+    Pulling must not clobber the in-flight local progress."""
+    fake_module = _fake_minio_module()
+    fake_client = fake_module.Minio.return_value
+    monkeypatch.setitem(sys.modules, "minio", fake_module)
+    fake_client.list_objects.return_value = [_fake_object("dev2/uuid123/manifest.json")]
+
+    remote_manifest = {
+        "title": "Rapat Remote", "scheduled_time": None, "start_time": None, "end_time": None,
+        "status": "recorded", "device_id": "dev2", "device_label": "Laptop Lain",
+        "segments": [], "summary": None,
+    }
+    fake_client.get_object.return_value = _fake_manifest_response(remote_manifest)
+
+    session_factory = _make_db()
+
+    async def _seed_existing():
+        async with session_factory() as session:
+            meeting = await repo.create_meeting(
+                session, "Rapat Remote", None,
+                recording_dir=str(tmp_path / "dev2" / "uuid123"), device_id="dev2",
+            )
+            await repo.mark_meeting_status(session, meeting.id, "transcribing")
+            await session.commit()
+            return meeting.id
+
+    meeting_id = asyncio.run(_seed_existing())
+    settings = FakeSettings(device_id="dev1")
+    settings.recordings_dir = tmp_path
+
+    minio_client.pull(session_factory, settings)
+
+    async def _get_status():
+        async with session_factory() as session:
+            m = await session.get(Meeting, meeting_id)
+            return m.status
+
+    assert asyncio.run(_get_status()) == "transcribing"
 
 
 def test_pull_skips_a_malformed_object_name_without_losing_other_meetings(monkeypatch, tmp_path):
