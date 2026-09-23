@@ -17,7 +17,10 @@ def build_docx_filename(meeting_date: datetime, meeting_title: str) -> str:
     return f"{to_wib(meeting_date).strftime('%Y-%m-%d')}-{slug}.docx"
 
 
-def export_mom_docx(meeting_title: str, meeting_date: datetime, mom: MomResult, output_path: Path) -> Path:
+def export_mom_docx(
+    meeting_title: str, meeting_date: datetime, mom: MomResult, output_path: Path,
+    transcript_lines: list[str] | None = None,
+) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     doc = Document()
 
@@ -44,6 +47,11 @@ def export_mom_docx(meeting_title: str, meeting_date: datetime, mom: MomResult, 
 
     doc.add_heading("Catatan Detail", level=1)
     doc.add_paragraph(mom.detailed_notes)
+
+    if transcript_lines:
+        doc.add_heading("Transkrip Lengkap", level=1)
+        for line in transcript_lines:
+            doc.add_paragraph(line)
 
     doc.save(str(output_path))
     return output_path

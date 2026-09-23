@@ -163,6 +163,14 @@ async def get_final_transcript(session: AsyncSession, meeting_id: int) -> list[t
     """[(speaker_label, text), ...] ordered by start_ms, read straight from the
     DB so summarize_and_export never needs the in-memory result of an earlier
     transcribe_and_diarize call -- they can run in different app sessions."""
+    rows = await get_final_transcript_timed(session, meeting_id)
+    return [(label, text) for _, _, label, text in rows]
+
+
+async def get_final_transcript_timed(
+    session: AsyncSession, meeting_id: int,
+) -> list[tuple[int, int, str, str]]:
+    """[(start_ms, end_ms, speaker_label, text), ...] ordered by start_ms."""
     result = await session.execute(
         select(TranscriptSegment)
         .where(TranscriptSegment.meeting_id == meeting_id, TranscriptSegment.is_final.is_(True))
@@ -175,7 +183,7 @@ async def get_final_transcript(session: AsyncSession, meeting_id: int) -> list[t
         else:
             speaker = await session.get(Speaker, seg.speaker_id)
             label = speaker.label if speaker else "Speaker ?"
-        rows.append((label, seg.text))
+        rows.append((seg.start_ms, seg.end_ms, label, seg.text))
     return rows
 
 

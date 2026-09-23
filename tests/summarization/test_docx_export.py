@@ -31,10 +31,14 @@ def test_docx_body_date_matches_the_filename_date(tmp_path):
     meeting_date = datetime(2026, 7, 31, 20, 0, tzinfo=timezone.utc)
     output_path = tmp_path / build_docx_filename(meeting_date, "Rapat Malam")
 
-    export_mom_docx("Rapat Malam", meeting_date, mom, output_path)
+    export_mom_docx(
+        "Rapat Malam", meeting_date, mom, output_path,
+        transcript_lines=["[00:00:01 - 00:00:03] Anda: Halo"],
+    )
 
     doc = Document(str(output_path))
     full_text = "\n".join(p.text for p in doc.paragraphs)
+    assert full_text.endswith("Transkrip Lengkap\n[00:00:01 - 00:00:03] Anda: Halo")
     assert "01 August 2026 03:00 WIB" in full_text
     assert output_path.name.startswith("2026-08-01")
 

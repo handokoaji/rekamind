@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-09-23
+
+### Added
+
+- **Full transcript in the MoM docx**: `mom.docx` now ends with a
+  "Transkrip Lengkap" section listing every final transcript segment as
+  `[HH:MM:SS - HH:MM:SS] Speaker: text` (offsets from the start of the
+  recording). Backed by the new `repo.get_final_transcript_timed` and
+  `app/timeutil.py::format_transcript_lines`. Only docx files generated from
+  now on include it -- re-run Ringkasan on an older meeting to regenerate its
+  docx with the transcript.
+
 ## [0.2.0] - 2026-08-06
 
 ### Added

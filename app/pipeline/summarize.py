@@ -6,6 +6,7 @@ from app.storage import repository as repo
 from app.storage.models import Summary
 from app.summarization.docx_export import export_mom_docx
 from app.summarization.groq_client import GroqSummarizer
+from app.timeutil import format_transcript_lines
 
 
 async def summarize_and_export(
@@ -21,12 +22,15 @@ async def summarize_and_export(
         await session.commit()
 
     async with session_factory() as session:
-        rows = await repo.get_final_transcript(session, meeting_id)
-    transcript_text = "\n".join(f"{label}: {text}" for label, text in rows)
+        rows = await repo.get_final_transcript_timed(session, meeting_id)
+    transcript_text = "\n".join(f"{label}: {text}" for _, _, label, text in rows)
 
     try:
         mom = summarizer.summarize(meeting_title, transcript_text)
-        docx_path = export_mom_docx(meeting_title, meeting_date, mom, docx_output_path)
+        docx_path = export_mom_docx(
+            meeting_title, meeting_date, mom, docx_output_path,
+            transcript_lines=format_transcript_lines(rows),
+        )
         mom_json = json.dumps({
             "minute_by_minute": mom.minute_by_minute,
             "decisions": mom.decisions,
