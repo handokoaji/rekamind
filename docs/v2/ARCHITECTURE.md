@@ -65,13 +65,25 @@ Cangkangnya sengaja tipis: seluruh logika ada di `recorder/` (`controller`, `set
 | UI | SPA yang sama dengan versi web, ditanam di aplikasi. Komponen perekam hanya tampil di dalam Tauri; klien Tauri dimuat malas sehingga bundel browser tidak membayarnya |
 | Kontrak Rust↔UI | Satu berkas emas `desktop/contract/ui-state.json` dihasilkan oleh tes Rust dan dibaca oleh tes web. Perubahan di salah satu sisi menggagalkan tes, bukan aplikasi |
 | Keamanan | CSP ketat; hak IPC hanya untuk jendela `main` yang memuat aset lokal (tidak ada konten remote yang dapat memanggil IPC); URL server hanya http(s) |
-| Selama rapat | Tidak ada yang berat: backend lokal yang sedang menganggur dimatikan saat rekaman mulai, dan permintaan data dijeda (bukan gagal) sehingga UI tidak menampilkan galat palsu |
+| Selama rapat | Tidak ada yang berat. Backend lokal yang menganggur dimatikan saat rekaman mulai, dan **controller menolak menyalakannya lagi selama merekam**, apa pun yang diminta UI (invarian ini ditemukan lewat pengukuran: UI sempat menghidupkannya kembali). Unggahan rapat sebelumnya menunggu rapat yang sedang berjalan selesai. Permintaan data dijeda (bukan gagal) sehingga UI tidak menampilkan galat palsu |
 | Setelah rapat | Backend lokal dinyalakan on-demand untuk unggah dan pemrosesan, lalu dimatikan setelah menganggur 10 menit (membebaskan RAM dan GPU) |
 | Indikator rekaman | Bilah merah di setiap halaman, ikon tray merah, judul jendela "● Merekam", notifikasi; kartu perekam menampilkan level mic dan audio komputer dan menyatakan sumber yang bermasalah dengan kata-kata |
-| Tidak mudah terhenti | Menutup jendela menyembunyikannya ke tray (bila tray ada); Stop memakai dialog konfirmasi; hotkey/tray berhenti langsung |
+| Jendela | Ditutup = **dihancurkan** (bukan disembunyikan): WebView adalah bagian terberat, jadi selama rapat dengan jendela tertutup yang hidup hanya proses shell. Dibuka lagi dari tray atau peluncuran kedua (single-instance). `--hidden` memulai langsung ke tray tanpa jendela |
+| Tidak mudah terhenti | Menutup jendela tidak mengakhiri rekaman maupun aplikasi (selama tray ada); Stop memakai dialog konfirmasi; hotkey/tray berhenti langsung |
 | Penutupan | Keluar, logout, `SIGTERM`: file WAV ditutup dengan benar dan rekaman tetap ada sebagai "belum terunggah" |
 | Pemulihan | Rekaman yang tidak sempat terunggah, atau terhenti oleh crash, tampil di daftar "belum terunggah" dengan tombol Unggah dan Hapus (dengan konfirmasi) |
 | Tray tidak ada | Aplikasi tetap berjalan tanpa tray (diuji: sandbox tanpa D-Bus) |
+
+**Diukur** (rilis, Linux/WebKitGTK, PSS, audio sintetis, jadi tanpa biaya perangkat audio asli):
+
+| Keadaan | Memori |
+|---|---|
+| Jendela terbuka, menganggur, backend lokal menyala | ±319 MB (shell 76 + WebKit 153 + Python 90) |
+| **Merekam, jendela terbuka**, backend mati | ±240 MB |
+| **Merekam, jendela ditutup**, backend mati | **±79 MB** (hanya shell; tanpa WebKit, tanpa Python) |
+| Perekam CLI saja (`rekamind-rec`) | ±3,7 MB |
+
+Sisa 79 MB pada shell sebagian besar adalah pustaka GTK/WebKit yang ter-link di Linux. Di Windows (Win32 native + WebView2 di luar proses) angkanya bisa sangat berbeda: **ukur di PC Anda**. Bila ternyata terlalu besar, opsinya memisahkan perekam menjadi proses agen kecil terpisah dari shell; keputusan itu sebaiknya menunggu angka Windows.
 
 **Diverifikasi** (Linux, WebKitGTK di X11 virtual, backend Python asli): UI tampil di WebView; `Ctrl+Alt+R` global memulai/menghentikan rekaman; level mic/speaker bergerak; unggah ke backend yang dinyalakan on-demand; rapat baru muncul otomatis di daftar; `SIGTERM` saat merekam menghasilkan WAV valid.
 

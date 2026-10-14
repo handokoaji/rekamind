@@ -213,3 +213,113 @@ fn recording_then_stopping_starts_the_local_backend_uploads_and_it_idles_out() {
     );
     assert!(!lb.owns_process(), "and shut down again once idle");
 }
+
+#[test]
+fn nothing_can_bring_the_backend_back_while_a_recording_is_running() {
+    // Regression found by running the real app: the UI's status poll raced with the start of a
+    // recording, saw the backend (just stopped) as down, and asked for it again -> it respawned
+    // mid-meeting. The controller itself must refuse.
+    let d = tempfile::tempdir().unwrap();
+    let port = free_port();
+    let (prog, args) = fake_server_script(d.path(), port);
+    let lb = Arc::new(LocalBackend::new(
+        prog,
+        args,
+        vec![],
+        format!("http://127.0.0.1:{port}"),
+    ));
+    let synth = || -> Box<dyn rekamind_recorder::backend::Backend> {
+        let s = Script {
+            realtime: true,
+            active_ms: 60_000,
+            ..Default::default()
+        };
+        Box::new(SyntheticBackend::new(s.clone(), s))
+    };
+    let c = Controller::new(d.path().join("rec"), Config::default(), synth)
+        .with_local_backend(lb.clone());
+
+    c.ensure_backend(Duration::from_secs(10)).unwrap(); // fine while idle
+    assert!(lb.owns_process() && lb.is_healthy());
+
+    c.start("Rapat").unwrap();
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(
+        !lb.owns_process(),
+        "starting a recording stopped the idle backend"
+    );
+    for _ in 0..3 {
+        let e = c.ensure_backend(Duration::from_secs(5)).unwrap_err();
+        assert!(e.contains("selama merekam"), "{e}");
+    }
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(
+        !lb.owns_process() && !lb.is_healthy(),
+        "no backend process exists during the meeting"
+    );
+
+    c.stop().unwrap();
+    c.ensure_backend(Duration::from_secs(10)).unwrap(); // and it comes back afterwards
+    assert!(lb.is_healthy());
+    lb.stop();
+}
+
+#[test]
+fn recording_a_second_meeting_straight_away_holds_the_first_upload_until_it_ends() {
+    // The first meeting's upload wants the local backend; the user starts the next meeting at once.
+    // Heavy work must wait for the second meeting to finish, then both uploads must complete.
+    let d = tempfile::tempdir().unwrap();
+    let port = free_port();
+    let (prog, args) = fake_server_script(d.path(), port);
+    let url = format!("http://127.0.0.1:{port}");
+    let lb = Arc::new(LocalBackend::new(prog, args, vec![], url.clone()));
+    let synth = || -> Box<dyn rekamind_recorder::backend::Backend> {
+        let s = Script {
+            realtime: true,
+            active_ms: 60_000,
+            ..Default::default()
+        };
+        Box::new(SyntheticBackend::new(s.clone(), s))
+    };
+    let c = Controller::new(
+        d.path().join("rec"),
+        Config {
+            server: Some(url),
+            ..Default::default()
+        },
+        synth,
+    )
+    .with_local_backend(lb.clone());
+
+    c.start("Rapat A").unwrap();
+    std::thread::sleep(Duration::from_millis(1100)); // distinct folder names (second resolution)
+    c.stop().unwrap(); // upload A begins: wants the backend
+    c.start("Rapat B").unwrap(); // ...but a new meeting starts immediately
+    for _ in 0..8 {
+        std::thread::sleep(Duration::from_millis(400));
+        assert!(
+            !lb.is_healthy(),
+            "a backend process came up during meeting B"
+        );
+        let s = c.state();
+        assert_eq!(s.phase, Phase::Recording);
+    }
+    std::thread::sleep(Duration::from_millis(500));
+    c.stop().unwrap(); // meeting B ends: now both can upload
+
+    let t = Instant::now();
+    loop {
+        let s = c.state();
+        if s.phase == Phase::Done && s.upload.is_none() && s.pending.is_empty() {
+            break;
+        }
+        assert!(s.phase != Phase::NeedsAttention, "{:?}", s.last);
+        assert!(t.elapsed() < Duration::from_secs(40), "timed out: {s:?}");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    assert!(
+        c.scan_pending().is_empty(),
+        "both meetings reached the server"
+    );
+    lb.stop();
+}

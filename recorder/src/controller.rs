@@ -4,6 +4,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -131,6 +132,9 @@ pub struct Controller {
     local: Mutex<Option<Arc<LocalBackend>>>,
     /// Called on every phase change (start, stop, upload finished) so a shell can update its tray/UI.
     observer: Observer,
+    /// Uploads run one at a time (the status slot is single); this counts those queued or running.
+    uploads: Arc<AtomicUsize>,
+    upload_lock: Arc<Mutex<()>>,
     /// Tests substitute this so retries don't sleep for real.
     sleeper: Arc<dyn Fn(Duration) + Send + Sync>,
 }
@@ -187,6 +191,8 @@ impl Controller {
             inner: Arc::default(),
             local: Mutex::new(None),
             observer: Arc::default(),
+            uploads: Arc::default(),
+            upload_lock: Arc::default(),
             sleeper: Arc::new(std::thread::sleep),
         }
     }
@@ -203,6 +209,22 @@ impl Controller {
 
     pub fn local_backend(&self) -> Option<Arc<LocalBackend>> {
         self.local.lock().unwrap().clone()
+    }
+
+    /// Start the on-demand local backend, unless a recording is running. This is an invariant, not
+    /// a courtesy: nothing heavy may become resident during a meeting, whoever asks (the UI's
+    /// status poll can race with the start of a recording and would otherwise bring it right back).
+    pub fn ensure_backend(&self, timeout: Duration) -> Result<(), String> {
+        let Some(l) = self.local_backend() else {
+            return Ok(());
+        };
+        // Held for the whole call so a recording cannot start between the check and the spawn.
+        let inner = self.inner.lock().unwrap();
+        if inner.active.is_some() {
+            return Err("Layanan pemrosesan lokal tidak dinyalakan selama merekam.".into());
+        }
+        drop(inner);
+        l.ensure(timeout)
     }
 
     pub fn set_observer(&self, f: impl Fn() + Send + Sync + 'static) {
@@ -352,27 +374,60 @@ impl Controller {
             self.local_backend(),
             self.observer.clone(),
         );
+        let (uploads, lock) = (self.uploads.clone(), self.upload_lock.clone());
+        uploads.fetch_add(1, Ordering::SeqCst);
         std::thread::spawn(move || {
-            if let Some(l) = &local {
-                inner.lock().unwrap().uploading = Some(UploadView {
-                    step: "menyalakan mesin pemrosesan lokal".into(),
-                    fraction: 0.0,
+            let _one_at_a_time = lock.lock().unwrap();
+            let fail = |inner: &Mutex<Inner>,
+                        title: String,
+                        dir: &Path,
+                        warnings: Vec<String>,
+                        e: String| {
+                let mut g = inner.lock().unwrap();
+                g.last = Some(Outcome {
+                    title,
+                    dir: dir.to_string_lossy().into_owned(),
+                    meeting_id: None,
+                    warnings,
+                    error: Some(format!(
+                        "{e}. Rekaman aman di komputer ini; coba lagi nanti."
+                    )),
                 });
-                if let Err(e) = l.ensure(Duration::from_secs(90)) {
-                    let mut g = inner.lock().unwrap();
-                    g.uploading = None;
-                    g.last = Some(Outcome {
-                        title,
-                        dir: dir.to_string_lossy().into_owned(),
-                        meeting_id: None,
-                        warnings,
-                        error: Some(format!(
-                            "{e}. Rekaman aman di komputer ini; coba lagi nanti."
-                        )),
+            };
+            let finish = |inner: &Mutex<Inner>| {
+                if uploads.fetch_sub(1, Ordering::SeqCst) == 1 {
+                    inner.lock().unwrap().uploading = None;
+                }
+                Controller::notify(&observer);
+            };
+            if let Some(l) = &local {
+                // Heavy work waits for the meeting to end: if a new recording is running, hold off.
+                loop {
+                    let recording = inner.lock().unwrap().active.is_some();
+                    inner.lock().unwrap().uploading = Some(UploadView {
+                        step: if recording {
+                            "menunggu rapat yang sedang direkam selesai"
+                        } else {
+                            "menyalakan mesin pemrosesan lokal"
+                        }
+                        .into(),
+                        fraction: 0.0,
                     });
-                    drop(g);
-                    Controller::notify(&observer);
-                    return;
+                    if recording {
+                        std::thread::sleep(Duration::from_millis(500));
+                        continue;
+                    }
+                    if let Err(e) = l.ensure(Duration::from_secs(90)) {
+                        fail(&inner, title, &dir, warnings, e);
+                        finish(&inner);
+                        return;
+                    }
+                    // A recording may have started while the backend was coming up: back off, again.
+                    if inner.lock().unwrap().active.is_some() {
+                        l.stop_if_idle();
+                        continue;
+                    }
+                    break;
                 }
             }
             let client = Client::new(cfg.server.as_deref().unwrap_or_default(), cfg.token.clone());
@@ -390,35 +445,23 @@ impl Controller {
                 },
                 move |d| sleeper(d),
             );
-            let mut g = inner.lock().unwrap();
-            g.uploading = None;
-            let dir_s = dir.to_string_lossy().into_owned();
-            g.last = Some(match res {
+            match res {
                 Ok(id) => {
                     let _ = fs::write(
                         dir.join(UPLOADED_FILE),
                         format!("{{\"meeting_id\":\"{id}\"}}"),
                     );
-                    Outcome {
+                    inner.lock().unwrap().last = Some(Outcome {
                         title,
-                        dir: dir_s,
+                        dir: dir.to_string_lossy().into_owned(),
                         meeting_id: Some(id),
                         error: None,
                         warnings,
-                    }
+                    });
                 }
-                Err(e) => Outcome {
-                    title,
-                    dir: dir_s,
-                    meeting_id: None,
-                    error: Some(format!(
-                        "{e}. Rekaman aman di komputer ini; coba lagi nanti."
-                    )),
-                    warnings,
-                },
-            });
-            drop(g);
-            Controller::notify(&observer);
+                Err(e) => fail(&inner, title, &dir, warnings, e),
+            }
+            finish(&inner);
         });
     }
 
