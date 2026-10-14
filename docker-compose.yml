@@ -1,0 +1,23 @@
+# Rekamind backend. Works as a Portainer stack (Stacks -> Add stack -> paste, or
+# "Repository" pointing at this repo) and with plain `docker compose up -d`.
+#
+# SECURITY: the API has no authentication yet. The port is therefore published on
+# loopback only. To reach it from other machines, put a reverse proxy with auth in
+# front (or wait for the auth milestone) -- do not just change this to 0.0.0.0.
+services:
+  rekamind:
+    build: ./server
+    image: rekamind-server:local
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${REKAMIND_PORT:-8787}:8787"
+    environment:
+      REKAMIND_ENGINES: ${REKAMIND_ENGINES:-none}
+      # Leave empty for SQLite in the volume. For a shared server use e.g.
+      # postgresql+asyncpg://rekamind:secret@db:5432/rekamind
+      REKAMIND_DATABASE_URL: ${REKAMIND_DATABASE_URL:-}
+    volumes:
+      - rekamind-data:/data
+
+volumes:
+  rekamind-data:

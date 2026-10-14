@@ -1,0 +1,124 @@
+import uuid
+from datetime import date, datetime, timezone
+
+from sqlalchemy import JSON, Date, DateTime, Float, ForeignKey, Index, Text
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _new_id() -> str:
+    return uuid.uuid4().hex
+
+
+class Meeting(Base):
+    __tablename__ = "meetings"
+
+    id: Mapped[str] = mapped_column(primary_key=True, default=_new_id)
+    title: Mapped[str]
+    language: Mapped[str] = mapped_column(default="id")
+    # recording -> recorded -> queued -> processing -> review -> done, or failed
+    status: Mapped[str] = mapped_column(default="recording")
+    local_user_name: Mapped[str | None] = mapped_column(default=None)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    error: Mapped[str | None] = mapped_column(Text, default=None)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    participants: Mapped[list["Participant"]] = relationship(back_populates="meeting", cascade="all, delete-orphan")
+    segments: Mapped[list["Segment"]] = relationship(
+        back_populates="meeting", cascade="all, delete-orphan", order_by="Segment.start_ms"
+    )
+    tasks: Mapped[list["Task"]] = relationship(back_populates="meeting", cascade="all, delete-orphan")
+    summary: Mapped["Summary | None"] = relationship(
+        back_populates="meeting", uselist=False, cascade="all, delete-orphan"
+    )
+
+
+class Participant(Base):
+    """A speaker in one meeting. `label` is what diarization produced; `name`
+    is what the user renamed it to, and what task assignees get matched against."""
+
+    __tablename__ = "participants"
+
+    id: Mapped[str] = mapped_column(primary_key=True, default=_new_id)
+    meeting_id: Mapped[str] = mapped_column(ForeignKey("meetings.id", ondelete="CASCADE"), index=True)
+    label: Mapped[str]
+    name: Mapped[str | None] = mapped_column(default=None)
+    is_local_user: Mapped[bool] = mapped_column(default=False)
+
+    meeting: Mapped[Meeting] = relationship(back_populates="participants")
+
+
+class Segment(Base):
+    __tablename__ = "segments"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    meeting_id: Mapped[str] = mapped_column(ForeignKey("meetings.id", ondelete="CASCADE"), index=True)
+    participant_id: Mapped[str | None] = mapped_column(ForeignKey("participants.id"), default=None)
+    source: Mapped[str]  # "mic" | "speaker"
+    start_ms: Mapped[int]
+    end_ms: Mapped[int]
+    text: Mapped[str] = mapped_column(Text)
+
+    meeting: Mapped[Meeting] = relationship(back_populates="segments")
+
+
+class Summary(Base):
+    __tablename__ = "summaries"
+
+    meeting_id: Mapped[str] = mapped_column(ForeignKey("meetings.id", ondelete="CASCADE"), primary_key=True)
+    overview: Mapped[str] = mapped_column(Text, default="")
+    decisions: Mapped[list] = mapped_column(JSON, default=list)
+    minutes: Mapped[list] = mapped_column(JSON, default=list)
+
+    meeting: Mapped[Meeting] = relationship(back_populates="summary")
+
+
+class Task(Base):
+    __tablename__ = "tasks"
+
+    id: Mapped[str] = mapped_column(primary_key=True, default=_new_id)
+    meeting_id: Mapped[str] = mapped_column(ForeignKey("meetings.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str]
+    description: Mapped[str] = mapped_column(Text, default="")
+    # Both kept: the raw name the LLM heard, and the resolved participant if one matched.
+    assignee_name: Mapped[str | None] = mapped_column(default=None)
+    assignee_participant_id: Mapped[str | None] = mapped_column(ForeignKey("participants.id"), default=None)
+    deadline_text: Mapped[str | None] = mapped_column(default=None)
+    deadline: Mapped[date | None] = mapped_column(Date, default=None)
+    deadline_approximate: Mapped[bool] = mapped_column(default=False)
+    estimate_minutes: Mapped[int | None] = mapped_column(default=None)
+    priority: Mapped[str] = mapped_column(default="medium")
+    confidence: Mapped[float] = mapped_column(Float, default=0.5)
+    evidence_start_ms: Mapped[int | None] = mapped_column(default=None)
+    evidence_quote: Mapped[str] = mapped_column(Text, default="")
+    # suggested -> confirmed | rejected. Only confirmed tasks are exportable.
+    status: Mapped[str] = mapped_column(default="suggested")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+    meeting: Mapped[Meeting] = relationship(back_populates="tasks")
+
+
+class Job(Base):
+    __tablename__ = "jobs"
+    __table_args__ = (Index("ix_jobs_status_created", "status", "created_at"),)
+
+    id: Mapped[str] = mapped_column(primary_key=True, default=_new_id)
+    meeting_id: Mapped[str] = mapped_column(ForeignKey("meetings.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(default="process")
+    status: Mapped[str] = mapped_column(default="queued")  # queued | running | done | failed
+    stage: Mapped[str | None] = mapped_column(default=None)
+    progress: Mapped[int] = mapped_column(default=0)  # 0..100
+    error: Mapped[str | None] = mapped_column(Text, default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
