@@ -128,7 +128,31 @@ Yang dipakai: OAuth 2.0 murni. Tidak memakai OIDC (discovery, `id_token`, `/user
 
 Pola yang disarankan: **backend Rekamind menjadi confidential client (BFF)**. Browser/aplikasi desktop tidak pernah memegang `client_secret`; backend yang menukar kode, memvalidasi token lewat introspeksi (cache ≤60 dtk), dan memberi sesi miliknya sendiri. Ini juga memenuhi aturan introspeksi di atas.
 
-Ganjalan yang perlu Anda putuskan:
-1. Dokumen menyatakan `/oauth/authorize` **mewajibkan** `code_challenge` (PKCE), sedangkan PKCE belum bisa dipakai. Selama itu, alur Authorization Code kemungkinan tidak dapat dipakai.
-2. Tersisa grant `password` (kredensial LDAP dikirim ke backend kita). Itu jalan pintas yang menempatkan kata sandi UGM pengguna di aplikasi kita dan dihapus dari OAuth 2.1; saya hanya akan memakainya bila Anda menyetujuinya secara eksplisit.
-3. Perlu: `client_id`/`client_secret`, redirect URI terdaftar, scope yang diizinkan, dan akses ke server dev (`oauth.dev.ugm.ac.id`) untuk pengujian.
+### Alur: Authorization Code tanpa PKCE (dikonfirmasi pemilik IdP: berfungsi dan aman)
+
+Tanpa PKCE, keamanan alur ini bertumpu pada hal lain, jadi semuanya wajib ada:
+
+1. **Hanya backend yang memegang `client_secret`** (confidential client). Browser dan aplikasi desktop tidak pernah melihatnya maupun token IdP.
+2. **`state` acak per percobaan login**, diikat ke cookie httpOnly bertanda tangan, dan diperiksa di callback. Tanpa PKCE, ini satu-satunya pelindung dari penyuntikan kode login (login CSRF).
+3. **`redirect_uri` terdaftar persis** di IdP (`https://<backend>/auth/callback`) dan HTTPS wajib.
+
+```
+SPA ──▶ GET /auth/login ──▶ 302 /oauth/authorize?response_type=code&client_id&redirect_uri&scope=user.read&state
+IdP ──▶ GET /auth/callback?code&state ──▶ backend: cek state ──▶ POST /oauth/token (Basic auth client)
+        ──▶ POST /oauth/introspect (identitas: sub, email, unit_id) ──▶ buat sesi Rekamind ──▶ 302 ke SPA
+```
+- Sesi Rekamind berupa id acak (hanya hash-nya disimpan di DB) dalam cookie `httpOnly; Secure; SameSite=Lax`. Token IdP tetap di server dan di-refresh di sana.
+- Permintaan yang mengubah data diperiksa `Origin` (perlindungan CSRF tambahan).
+- **Aplikasi desktop → backend remote:** buka browser sistem ke `/auth/login`, lalu backend menyerahkan kode sekali-pakai ke `http://127.0.0.1:<port>` yang ditukar desktop dengan token sesi Rekamind. Desktop tidak pernah memegang rahasia IdP.
+- **Mode lokal** (backend di laptop pengguna): **tanpa login.** `client_secret` tidak boleh disebar ke tiap laptop karena itu bukan rahasia lagi; mode lokal hanya melayani `127.0.0.1`.
+- **Worker GPU → API:** `client_credentials` (atau kunci API khusus).
+
+Risiko sisa tanpa PKCE: bila `client_secret` bocor atau pendaftaran `redirect_uri` longgar, pencurian kode login menjadi mungkin. Kunci rahasia hanya di variabel lingkungan server.
+
+Masih perlu dari Anda sebelum dikerjakan:
+1. `client_id`/`client_secret` untuk Rekamind dan redirect URI terdaftar (`https://<domain-backend>/auth/callback`), plus akses ke server dev untuk uji.
+2. **Siapa yang boleh memakai Rekamind?** Semua akun UGM, atau daftar yang dibatasi (per `unit_id`/username)? Autentikasi hanya membuktikan siapa orangnya, bukan hak aksesnya.
+3. Apakah client ini mendapat `refresh_token`, dan berapa umur access token-nya.
+4. Meeting milik siapa dan siapa yang boleh melihat: milik pribadi saja, atau dibagikan per unit/tim? (Menentukan model data: kolom pemilik, tabel berbagi.)
+
+Rencana pengujian: karena IdP asli tidak terjangkau dari sandbox, alur ini akan diuji terhadap **IdP tiruan yang mengikuti `openapi.json`**. Itu membuktikan logika kita (state, sesi, penolakan), bukan perilaku IdP nyata, yang tetap harus dicoba di jaringan Anda.
