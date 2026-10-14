@@ -638,3 +638,24 @@ async def test_login_endpoints_are_rate_limited(stack):
     codes = [(await b.get("/auth/login")).status_code for _ in range(35)]
     assert codes.count(429) >= 4 and codes[0] == 302
     assert (await b.get("/auth/login")).headers.get("retry-after") == "60"
+
+
+async def test_permanent_delete_follows_ownership_and_a_super_admin_may_do_it(stack):
+    alice = await stack.user_browser("alice@kantor.id")
+    bob = await stack.user_browser("bob@kantor.id")
+    boss = await stack.user_browser("boss@kantor.id", sub="sub-boss")
+    o = {"origin": BASE}
+    m, *_ = await make_processed_meeting(stack, alice, "Rapat rahasia")
+
+    # a stranger can neither purge nor soft-delete, and learns nothing (404, same as "does not exist")
+    assert (await bob.delete(f"/api/meetings/{m}?permanent=true", headers=o)).status_code == 404
+    assert (await bob.delete(f"/api/meetings/{m}", headers=o)).status_code == 404
+    assert (await alice.get(f"/api/meetings/{m}")).status_code == 200, "nothing happened to it"
+
+    # not even after the owner has put it in the trash (the 'deleted' lookup must not widen access)
+    assert (await alice.delete(f"/api/meetings/{m}", headers=o)).status_code == 204
+    assert (await bob.delete(f"/api/meetings/{m}?permanent=true", headers=o)).status_code == 404
+    assert (await bob.post(f"/api/meetings/{m}/restore", headers=o)).status_code == 404
+
+    assert (await boss.delete(f"/api/meetings/{m}?permanent=true", headers=o)).status_code == 204
+    assert (await alice.post(f"/api/meetings/{m}/restore", headers=o)).status_code == 404, "gone for good"

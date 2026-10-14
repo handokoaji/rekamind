@@ -26,6 +26,22 @@ describe("MeetingsPage", () => {
     expect(screen.getAllByText("Perlu ditinjau").length).toBeGreaterThan(0);
   });
 
+  it("pages through a long history instead of silently showing only the newest 50", async () => {
+    const urls: string[] = [];
+    const page = (from: number, n: number) => Array.from({ length: n }, (_, i) => meeting({ id: String(from + i).padStart(32, "0"), title: `Rapat ${from + i}` }));
+    setup((u) => {
+      urls.push(u);
+      if (u.includes("/capabilities")) return json({ processing_ready: true, engines: {} });
+      return json(u.includes("offset=50") ? page(50, 7) : page(0, 50));
+    });
+    expect(await screen.findByText("Rapat 0")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Tampilkan lebih banyak" }));
+    expect(await screen.findByText("Rapat 56")).toBeInTheDocument();
+    expect(screen.getByText("Rapat 0")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Tampilkan lebih banyak" })).toBeNull(); // 7 < 50: that was the last page
+    expect(urls.some((u) => u.includes("offset=50"))).toBe(true);
+  });
+
   it("explains what to do when there are no meetings yet", async () => {
     setup((u) => (u.includes("/capabilities") ? json({ processing_ready: false, engines: {} }) : json([])));
     expect(await screen.findByRole("heading", { name: "Belum ada rapat" })).toBeInTheDocument();

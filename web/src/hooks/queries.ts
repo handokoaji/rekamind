@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { api } from "../lib/api";
 import type { MeetingDetail, Scope, TaskPatch } from "../lib/types";
 
@@ -10,13 +11,22 @@ export const useHealth = () =>
 export const useCapabilities = () => useQuery({ queryKey: ["capabilities"], queryFn: api.capabilities, staleTime: 60_000 });
 
 /** Polls only while something is actually being processed, so an idle page makes no requests. */
-export const useMeetings = (q: string, status: string, scope: Scope = "mine") =>
-  useQuery({
+export const MEETINGS_PAGE = 50;
+
+/** Newest first, a page at a time ("Tampilkan lebih banyak"). Polls only while something is being
+ *  processed, so an idle page makes no requests. */
+export const useMeetings = (q: string, status: string, scope: Scope = "mine") => {
+  const query = useInfiniteQuery({
     queryKey: ["meetings", q, status, scope],
-    queryFn: () => api.meetings(q, status, scope),
-    refetchInterval: (query) => (query.state.data?.some((m) => m.job || ACTIVE.has(m.status)) ? 2_000 : false),
+    queryFn: ({ pageParam }) => api.meetings(q, status, scope, pageParam, MEETINGS_PAGE),
+    initialPageParam: 0,
+    getNextPageParam: (last, all) => (last.length === MEETINGS_PAGE ? all.length * MEETINGS_PAGE : undefined),
+    refetchInterval: (qr) => (qr.state.data?.pages.some((pg) => pg.some((m) => m.job || ACTIVE.has(m.status))) ? 2_000 : false),
     placeholderData: (prev) => prev,
   });
+  const data = useMemo(() => query.data?.pages.flat(), [query.data]);
+  return { ...query, data };
+};
 
 export const useMeeting = (id: string) =>
   useQuery({

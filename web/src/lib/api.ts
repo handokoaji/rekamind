@@ -71,8 +71,10 @@ export const api = {
   adminUsers: () => request<AdminUser[]>("GET", "/admin/users"),
   inviteUser: (email: string, role: Role) => request<AdminUser>("POST", "/admin/users", { email, role }),
   patchUser: (id: string, patch: { role?: Role; disabled?: boolean }) => request<AdminUser>("PATCH", `/admin/users/${id}`, patch),
-  meetings: (q = "", status = "", scope: Scope = "mine") => {
+  meetings: (q = "", status = "", scope: Scope = "mine", offset = 0, limit = 50) => {
     const p = new URLSearchParams();
+    if (offset) p.set("offset", String(offset));
+    if (limit !== 50) p.set("limit", String(limit));
     if (q) p.set("q", q);
     if (status) p.set("status", status);
     if (scope === "all") p.set("scope", "all");

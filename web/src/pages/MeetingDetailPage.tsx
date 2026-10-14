@@ -3,7 +3,8 @@ import {
   ArrowLeft, Check, ClipboardCopy, Download, FileText, HelpCircle, ListChecks, Pencil, Play, RotateCcw, ShieldAlert,
   ShieldCheck, Undo2, Users, X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useWindowVirtualizer } from "@tanstack/react-virtual";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { usePlayer } from "../components/Player";
@@ -192,29 +193,52 @@ function TranscriptTab({ m }: { m: MeetingDetail }) {
   if (!groups.length) return <EmptyState icon={<FileText className="size-6" />} title="Belum ada transkrip">Transkrip muncul setelah rapat diproses.</EmptyState>;
   const live = player.now?.meetingId === m.id ? player : null;
 
+  const row = (g: { pid: string | null; segs: Segment[] }) => {
+    const sp = g.pid ? byId.get(g.pid) : undefined;
+    const first = g.segs[0]!;
+    return (
+      <>
+        <button onClick={() => player.play({ meetingId: m.id, source: first.source, label: speakerName(sp?.p) }, first.start_ms)}
+          className="mt-0.5 h-7 w-[4.5rem] shrink-0 rounded-md text-xs tabular-nums text-muted hover:bg-primary-soft hover:text-primary" aria-label={`Putar dari ${formatClock(first.start_ms)}`}>
+          ▶ {formatClock(first.start_ms)}
+        </button>
+        <div className="min-w-0 flex-1">
+          <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-semibold", sp?.tone ?? "bg-border text-muted")}>{speakerName(sp?.p)}</span>
+          <p className="mt-1.5 leading-relaxed">
+            {g.segs.map((s) => {
+              const active = live?.now?.source === s.source && live.ms >= s.start_ms && live.ms <= s.end_ms;
+              return <span key={s.id} onClick={() => player.play({ meetingId: m.id, source: s.source, label: speakerName(sp?.p) }, s.start_ms)}
+                className={cn("cursor-pointer rounded px-0.5 transition-colors hover:bg-primary-soft", active && "bg-primary-soft text-primary")}>{s.text} </span>;
+            })}
+          </p>
+        </div>
+      </>);
+  };
+
+  // A multi-hour meeting is thousands of segments (tens of thousands of DOM nodes). Past a threshold only
+  // what is on screen is rendered; below it the plain list keeps find-in-page and screen readers complete.
+  if (groups.length > VIRTUALIZE_AFTER) return <VirtualTranscript groups={groups} row={row} />;
   return (
     <ol className="flex flex-col gap-5">
-      {groups.map((g, i) => {
-        const sp = g.pid ? byId.get(g.pid) : undefined;
-        const first = g.segs[0]!;
-        return (
-          <li key={i} className="flex gap-3">
-            <button onClick={() => player.play({ meetingId: m.id, source: first.source, label: speakerName(sp?.p) }, first.start_ms)}
-              className="mt-0.5 h-7 w-14 shrink-0 rounded-md text-xs tabular-nums text-muted hover:bg-primary-soft hover:text-primary" aria-label={`Putar dari ${formatClock(first.start_ms)}`}>
-              ▶ {formatClock(first.start_ms)}
-            </button>
-            <div className="min-w-0 flex-1">
-              <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-semibold", sp?.tone ?? "bg-border text-muted")}>{speakerName(sp?.p)}</span>
-              <p className="mt-1.5 leading-relaxed">
-                {g.segs.map((s) => {
-                  const active = live?.now?.source === s.source && live.ms >= s.start_ms && live.ms <= s.end_ms;
-                  return <span key={s.id} onClick={() => player.play({ meetingId: m.id, source: s.source, label: speakerName(sp?.p) }, s.start_ms)}
-                    className={cn("cursor-pointer rounded px-0.5 transition-colors hover:bg-primary-soft", active && "bg-primary-soft text-primary")}>{s.text} </span>;
-                })}
-              </p>
-            </div>
-          </li>);
-      })}
+      {groups.map((g, i) => <li key={i} className="flex gap-3">{row(g)}</li>)}
+    </ol>
+  );
+}
+
+const VIRTUALIZE_AFTER = 150;
+
+function VirtualTranscript<G>({ groups, row }: { groups: G[]; row: (g: G) => ReactNode }) {
+  const listRef = useRef<HTMLOListElement>(null);
+  const [margin, setMargin] = useState(0);
+  useLayoutEffect(() => { setMargin(listRef.current?.offsetTop ?? 0); }, []);
+  const v = useWindowVirtualizer({ count: groups.length, estimateSize: () => 110, overscan: 8, scrollMargin: margin, gap: 20 });
+  return (
+    <ol ref={listRef} className="relative" style={{ height: v.getTotalSize() }} aria-label={`Transkrip, ${groups.length} bagian`}>
+      {v.getVirtualItems().map((it) => (
+        <li key={it.key} data-index={it.index} ref={v.measureElement} aria-setsize={groups.length} aria-posinset={it.index + 1}
+          className="absolute left-0 top-0 flex w-full gap-3" style={{ transform: `translateY(${it.start - v.options.scrollMargin}px)` }}>
+          {row(groups[it.index]!)}
+        </li>))}
     </ol>
   );
 }

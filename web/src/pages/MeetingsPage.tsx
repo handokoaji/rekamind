@@ -94,7 +94,7 @@ export function MeetingsPage() {
   const search = useRef<HTMLInputElement>(null);
   const { canAdmin } = useAuth();
   const scope = canAdmin && params.get("scope") === "all" ? "all" : "mine";
-  const { data, error, isLoading, refetch } = useMeetings(q, status, scope);
+  const { data, error, isLoading, refetch, hasNextPage, fetchNextPage, isFetchingNextPage } = useMeetings(q, status, scope);
   const caps = useCapabilities();
 
   useEffect(() => {
@@ -167,7 +167,10 @@ export function MeetingsPage() {
           )}
         </Card>
       ) : (
-        <ul className="flex flex-col gap-3">{data?.map((m) => <Row key={m.id} m={m} canProcess={caps.data?.processing_ready ?? false} showOwner={scope === "all"} />)}</ul>
+        <>
+          <ul className="flex flex-col gap-3">{data?.map((m) => <Row key={m.id} m={m} canProcess={caps.data?.processing_ready ?? false} showOwner={scope === "all"} />)}</ul>
+          {hasNextPage && <Button className="self-center" loading={isFetchingNextPage} onClick={() => void fetchNextPage()}>Tampilkan lebih banyak</Button>}
+        </>
       )}
 
       {upload && <Suspense fallback={null}><UploadDialog open={upload} onOpenChange={setUpload} onCreated={(id) => nav(`/rapat/${id}`)} /></Suspense>}

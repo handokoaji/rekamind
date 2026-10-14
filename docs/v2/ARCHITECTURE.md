@@ -175,3 +175,19 @@ rapat miliknya, super admin bisa semuanya, login desktop lewat browser sistem. R
 client, dan batas pembuktian ada di [`docs/AUTH.md`](../AUTH.md). Rencana awal yang berbasis OAuth UGM
 dibatalkan (proyek ini open source, jadi tidak boleh bergantung pada satu IdP kampus); UGM bisa menjadi
 penyedia kedua di masa depan.
+
+
+## Uji beban (sandbox Linux, hasil terukur)
+
+| Skenario | Hasil |
+|---|---|
+| 1 rapat 2 jam (2 × 230 MB WAV) lewat klien Rust ke backend beku | 6,8 dtk; RSS server 117 → 120 MB (datar) |
+| 4 rapat 2 jam serentak (1,8 GB) | 31 dtk; RSS puncak 125 MB; folder tmp kosong; semua `review` |
+| 3 rapat 2 jam serentak ke Postgres + SeaweedFS asli | 28,5 dtk; RSS puncak 199 MB; 6 objek 230.400.044 B persis; cache kosong |
+| 2 jam m4a stereo 44,1 kHz (117 MB, kasus terburuk AAC) | 55 dtk konversi di thread; RSS 151 MB; server tetap menjawab 10–20 ms selama konversi |
+| Unggah melebihi batas / klien memutus di tengah | 413 dalam 0,5 dtk / tanpa sisa file tmp |
+| Rapat 4 jam: 4000 segmen transkrip, 300 task, 3000 rapat | Transkrip sebelum virtualisasi: 24.087 simpul DOM, tab 0,9 dtk, *long task* 565 ms. **Sesudah: 165 simpul, 0,19 dtk, tanpa long task**. Daftar rapat: halaman 50 + "Tampilkan lebih banyak" (sebelumnya hanya 50 terbaru yang terlihat) |
+| API daftar rapat, 60 koneksi serentak, 3000 rapat | 125 req/s, p50 447 ms, p95 861 ms (satu proses uvicorn) |
+| Perekam 5 menit | CPU 0,67%, memori 3,7 MB |
+
+Belum diukur: transkripsi model nyata, 100+ pengguna aktif, tab Task dengan 300 task (1 dtk; tidak realistis).

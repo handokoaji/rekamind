@@ -22,6 +22,18 @@ Data aplikasi (Windows: `%LOCALAPPDATA%\\id.rekamind.desktop`): `recordings\\` (
 `docker compose up -d --build`, atau tempel `docker-compose.yml` sebagai stack di Portainer. Wajib mengisi login Google
 milik Anda sendiri: lihat [AUTH.md](AUTH.md). Aplikasi desktop lalu dipilih ke mode **Server terpisah**.
 
+### Di belakang reverse proxy (nginx, Caddy, Traefik)
+
+Rapat panjang berarti unggahan besar: 2 jam = ±460 MB (dua WAV). File non-WAV (mp3/m4a) diubah ke WAV oleh server
+saat diunggah; 2 jam m4a stereo butuh ±55 detik. Atur proxy agar tidak memutus ini, mis. nginx:
+
+```nginx
+client_max_body_size 4g;          # sama dengan REKAMIND_MAX_UPLOAD_MB (bawaan 4096)
+proxy_request_buffering off;      # alirkan ke server, jangan tampung dulu di disk proxy
+proxy_read_timeout 600s;
+proxy_send_timeout 600s;
+```
+
 ## Membangun installer sendiri
 
 ```bash
