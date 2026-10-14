@@ -1,11 +1,11 @@
 import asyncio
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from . import __version__, jobs
@@ -14,8 +14,16 @@ from .db import init_db, make_engine, make_session_factory
 from .engines.base import Engines
 from .engines.registry import build_engines
 from .models import Job, Meeting, Participant, Task
-from .schemas import (JobOut, MeetingCreate, MeetingDetail, MeetingSummaryOut, ParticipantOut, ParticipantPatch,
-                      TaskOut, TaskPatch)
+from .schemas import (
+    JobOut,
+    MeetingCreate,
+    MeetingDetail,
+    MeetingSummaryOut,
+    ParticipantOut,
+    ParticipantPatch,
+    TaskOut,
+    TaskPatch,
+)
 from .storage import LocalStorage, Storage
 from .worker import Worker
 
@@ -73,7 +81,7 @@ def create_app(settings: Settings | None = None, *, engines: Engines | None = No
     @app.post("/api/meetings", status_code=201, response_model=MeetingSummaryOut)
     async def create_meeting(body: MeetingCreate, db: Db):
         m = Meeting(title=body.title, language=body.language, local_user_name=body.local_user_name,
-                    started_at=body.started_at or datetime.now(timezone.utc))
+                    started_at=body.started_at or datetime.now(UTC))
         db.add(m)
         await db.commit()
         return m
@@ -91,7 +99,7 @@ def create_app(settings: Settings | None = None, *, engines: Engines | None = No
     @app.delete("/api/meetings/{meeting_id}", status_code=204)
     async def delete_meeting(meeting_id: str, db: Db):
         m = await _meeting(db, meeting_id)
-        m.deleted_at = datetime.now(timezone.utc)  # soft delete: undoable, and safe against sync resurrection
+        m.deleted_at = datetime.now(UTC)  # soft delete: undoable, and safe against sync resurrection
         await db.commit()
 
     @app.put("/api/meetings/{meeting_id}/audio/{source}", status_code=201)
@@ -107,7 +115,7 @@ def create_app(settings: Settings | None = None, *, engines: Engines | None = No
         m = await _meeting(db, meeting_id)
         if m.status != "recording":
             raise HTTPException(409, "Rapat tidak sedang direkam")
-        m.status, m.ended_at = "recorded", datetime.now(timezone.utc)
+        m.status, m.ended_at = "recorded", datetime.now(UTC)
         await db.commit()
         return m
 

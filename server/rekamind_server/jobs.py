@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -36,7 +36,7 @@ async def claim_next(sf: async_sessionmaker[AsyncSession]) -> Job | None:
             res = await s.execute(
                 update(Job)
                 .where(Job.id == job_id, Job.status == "queued")
-                .values(status="running", claimed_at=datetime.now(timezone.utc), attempts=Job.attempts + 1)
+                .values(status="running", claimed_at=datetime.now(UTC), attempts=Job.attempts + 1)
             )
             await s.commit()
             if res.rowcount == 1:
@@ -58,7 +58,7 @@ async def finish(sf: async_sessionmaker[AsyncSession], job_id: str, error: str |
                 status="failed" if error else "done",
                 error=error,
                 progress=100 if not error else Job.progress,
-                finished_at=datetime.now(timezone.utc),
+                finished_at=datetime.now(UTC),
             )
         )
         await s.commit()
@@ -75,7 +75,7 @@ async def recover_abandoned(sf: async_sessionmaker[AsyncSession]) -> int:
     async with sf() as s:
         poisoned = (await s.execute(select(Job).where(Job.status == "running", Job.attempts >= MAX_ATTEMPTS))).scalars().all()
         for j in poisoned:
-            j.status, j.finished_at = "failed", datetime.now(timezone.utc)
+            j.status, j.finished_at = "failed", datetime.now(UTC)
             j.error = f"Pemrosesan berhenti tiba-tiba {j.attempts}x (kemungkinan file audio bermasalah atau memori habis)"
             m = await s.get(Meeting, j.meeting_id)
             if m:

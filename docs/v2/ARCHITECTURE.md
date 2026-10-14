@@ -46,15 +46,15 @@ docker compose up -d --build        # atau tempel docker-compose.yml sebagai sta
 - Default: SQLite di volume `rekamind-data`; port hanya di `127.0.0.1`.
 - **Belum ada autentikasi.** Jangan buka ke jaringan tanpa reverse proxy ber-auth. Auth dikerjakan setelah MVP.
 - GPU di Docker (NVIDIA Container Toolkit) ditambahkan bersamaan dengan engine nyata. AMD/Vulkan di dalam container lebih rumit dan belum dievaluasi.
-- Image belum pernah di-build di lingkungan pengembangan ini (tidak ada daemon Docker); hanya sintaks compose yang divalidasi.
+- Image sudah di-build dan dijalankan di sandbox (non-root, data bertahan setelah restart). Pembangunan di sandbox memakai CA proxy sementara; build normal tidak memerlukannya. Status healthcheck "healthy" belum teramati.
 
 ## Status
 
 | Fase | Isi | Status |
 |---|---|---|
 | 0 | Benchmark engine pada rekaman Indonesia nyata | **Menunggu rekaman contoh** |
-| 1 | Inti backend: model, antrean job, pipeline, API, task terstruktur, Docker | Sebagian: 33 tes lolos, engine nyata belum ada (hanya `fake`) |
-| 1b | Engine nyata (faster-whisper, pyannote/sherpa-onnx, Groq/OpenAI-compatible), S3, Alembic | Belum |
+| 1 | Inti backend: model, antrean job, pipeline, API, task terstruktur, Docker | Selesai; 49 tes lolos di SQLite, alur yang sama diuji di Postgres 16 dan di container |
+| 1b | Engine: faster-whisper, pyannote, LLM OpenAI-compatible, bench | Ditulis; **model/GPU belum teruji** (hanya stub). S3 dan Alembic belum |
 | 2 | SPA React (riwayat, detail, review task, pengaturan) | Belum |
 | 3 | Shell Tauri + perekam Rust + installer | Belum |
 | 4 | Mode remote: worker GPU, unggah presigned URL, autentikasi | Belum |
@@ -92,3 +92,9 @@ Diurutkan menurut nilai/biaya. Yang bertanda ⚠ punya risiko yang perlu keputus
 - Dukungan GPU AMD/Intel lewat Vulkan belum diuji; jalur NVIDIA adalah satu-satunya yang terbukti di proyek ini.
 - Alembic (migrasi skema) belum dipasang; sekarang `create_all`. Wajib sebelum rilis pertama.
 - Tanpa autentikasi, backend hanya aman di loopback.
+
+## Pengujian: apa yang sudah dibuktikan
+
+Dibuktikan di sandbox (Linux, tanpa GPU): 49 tes unit/API; alur penuh lewat HTTP dengan worker bawaan; Postgres 16 sungguhan (klaim job bersamaan: 1 pemenang dari 6); container Docker non-root dengan data bertahan setelah restart; lint ruff bersih.
+
+Ditunda ke akhir (butuh PC/GPU): kecepatan dan akurasi model nyata (`python -m rekamind_server.bench`), faster-whisper/pyannote asli, perekam Rust di Windows (CPU/RAM saat merekam), installer, latensi end-to-end.

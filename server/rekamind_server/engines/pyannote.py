@@ -68,7 +68,7 @@ class PyannoteDiarizer:
 
             torch.cuda.empty_cache()
         except Exception:  # torch absent or no CUDA: nothing to free
-            pass
+            log.debug("cuda cache not cleared", exc_info=True)
 
 
 class SingleSpeakerDiarizer:

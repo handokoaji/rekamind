@@ -2,10 +2,11 @@
 whisper.cpp, OpenVINO, a remote GPU server, an LLM provider...) implements one
 of these, so the pipeline never knows which hardware it is running on."""
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Protocol
+from typing import Protocol
 
 from ..schemas import ExtractionResult
 

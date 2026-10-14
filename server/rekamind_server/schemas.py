@@ -1,12 +1,10 @@
 """Pydantic models: the LLM extraction contract and the API's response shapes."""
 
+import re
 from datetime import date, datetime
 from typing import Literal
 
-import re
-
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-
 
 # ---- LLM extraction contract -------------------------------------------------
 # `ExtractionResult.model_json_schema()` is what a structured-output LLM call is

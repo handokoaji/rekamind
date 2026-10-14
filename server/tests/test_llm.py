@@ -1,11 +1,15 @@
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 import pytest
 
 from rekamind_server.engines.base import ExtractionInput
-from rekamind_server.engines.llm import LlmError, OpenAiCompatExtractor, chunk_transcript
+from rekamind_server.engines.llm import (
+    LlmError,
+    OpenAiCompatExtractor,
+    chunk_transcript,
+)
 
 GOOD = {
     "overview": "Rapat vendor",
@@ -17,7 +21,7 @@ GOOD = {
 
 
 def _inp(transcript="[00:01] ME: halo"):
-    return ExtractionInput("Rapat", datetime(2026, 10, 14, tzinfo=timezone.utc), "id", ["Budi"], transcript)
+    return ExtractionInput("Rapat", datetime(2026, 10, 14, tzinfo=UTC), "id", ["Budi"], transcript)
 
 
 def _llm(handler):

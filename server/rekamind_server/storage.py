@@ -1,6 +1,7 @@
 import re
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import AsyncIterator, Literal, Protocol
+from typing import Literal, Protocol
 
 Source = Literal["mic", "speaker"]
 _MEETING_ID = re.compile(r"[0-9a-f]{32}")

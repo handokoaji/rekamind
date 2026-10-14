@@ -8,7 +8,7 @@ import time
 import httpx
 from pydantic import ValidationError
 
-from ..schemas import ExtractedTask, ExtractionResult
+from ..schemas import ExtractionResult
 from .base import ExtractionInput
 
 log = logging.getLogger(__name__)
