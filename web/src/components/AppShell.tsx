@@ -1,7 +1,9 @@
-import { CheckSquare, FileAudio, Settings, WifiOff } from "lucide-react";
+import { CheckSquare, FileAudio, Settings, Users, WifiOff } from "lucide-react";
 import { Suspense, useEffect } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { useAuth } from "../hooks/auth";
 import { useHealth } from "../hooks/queries";
+import { UserMenu } from "./UserMenu";
 import { cn } from "../lib/cn";
 import { useBackendReady } from "../desktop/backend";
 import { isDesktop } from "../desktop/bridge";
@@ -61,6 +63,8 @@ function Content() {
 }
 
 export function AppShell() {
+  const { canAdmin } = useAuth();
+  const items = canAdmin ? [...nav.slice(0, 2), { to: "/admin", label: "Pengguna", icon: Users }, nav[2]!] : nav;
   return (
     <div className="min-h-screen pb-24">
       <a href="#utama" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-card focus:px-3 focus:py-2">
@@ -76,7 +80,7 @@ export function AppShell() {
             Rekamind
           </NavLink>
           <nav aria-label="Utama" className="flex gap-1">
-            {nav.map(({ to, label, icon: Icon, end }) => (
+            {items.map(({ to, label, icon: Icon, end }) => (
               <NavLink key={to} to={to} end={end}
                 className={({ isActive }) => cn("flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
                   isActive ? "bg-primary-soft text-primary" : "text-muted hover:text-fg")}>
@@ -85,7 +89,7 @@ export function AppShell() {
               </NavLink>
             ))}
           </nav>
-          <div className="ml-auto"><ServerStatus /></div>
+          <div className="ml-auto flex items-center gap-3"><ServerStatus /><UserMenu /></div>
         </div>
       </header>
       <main id="utama" className="mx-auto max-w-5xl px-4 py-8">

@@ -110,7 +110,7 @@ cd web && npx playwright test     # E2E: backend asli + build produksi (perlu: n
 docker compose up -d --build        # atau tempel docker-compose.yml sebagai stack di Portainer
 ```
 - Default: SQLite di volume `rekamind-data`; port hanya di `127.0.0.1`.
-- **Belum ada autentikasi.** Jangan buka ke jaringan tanpa reverse proxy ber-auth. Auth dikerjakan setelah MVP.
+- **Login Google wajib** (`REKAMIND_AUTH=google`): isi `REKAMIND_GOOGLE_CLIENT_ID/SECRET`, `REKAMIND_PUBLIC_URL`, `REKAMIND_SUPERADMINS` (lihat `docs/AUTH.md`). Server menolak start bila tidak diisi. Pasang di belakang reverse proxy HTTPS.
 - GPU di Docker (NVIDIA Container Toolkit) ditambahkan bersamaan dengan engine nyata. AMD/Vulkan di dalam container lebih rumit dan belum dievaluasi.
 - Image (backend + UI) sudah dibangun dan dijalankan di sandbox: non-root, healthcheck `healthy`, UI tersaji, 5 tes E2E lolos terhadap container, memori idle ±72 MiB. Dua catatan jujur: sandbox memakai CA proxy sementara (build normal tidak memerlukannya) dan tahap Node pada Dockerfile tidak bisa dibangun di sana karena Docker Hub membatasi penarikan image `node` (429); langkahnya (`npm ci && npm run build`) diuji terpisah di salinan bersih.
 
@@ -159,7 +159,7 @@ Diurutkan menurut nilai/biaya. Yang bertanda ⚠ punya risiko yang perlu keputus
 
 - Akurasi ASR/diarisasi bahasa Indonesia belum diukur; pilihan model masih hipotesis sampai Fase 0.
 - Dukungan GPU AMD/Intel lewat Vulkan belum diuji; jalur NVIDIA adalah satu-satunya yang terbukti di proyek ini.
-- Tanpa autentikasi, backend hanya aman di loopback.
+- Login Google belum dicoba terhadap Google asli, hanya terhadap IdP tiruan (lihat `docs/AUTH.md`).
 
 ## Pengujian: apa yang sudah dibuktikan
 
@@ -167,47 +167,10 @@ Dibuktikan di sandbox (Linux, tanpa GPU): 49 tes unit/API; alur penuh lewat HTTP
 
 Ditunda ke akhir (butuh PC/GPU): kecepatan dan akurasi model nyata (`python -m rekamind_server.bench`), faster-whisper/pyannote asli, perekam Rust di Windows (CPU/RAM saat merekam), installer, latensi end-to-end.
 
-## Autentikasi (rencana, belum dikerjakan)
+## Autentikasi
 
-Sumber: `openapi.json` "UGM ID 2.0" yang Anda berikan. Server asli tidak bisa dijangkau dari sandbox, jadi **semua di bawah ini belum diuji terhadap server sungguhan**.
-
-Yang dipakai: OAuth 2.0 murni. Tidak memakai OIDC (discovery, `id_token`, `/userinfo`) maupun PKCE, sesuai arahan Anda.
-
-| Kebutuhan | Endpoint / grant dari dokumen |
-|---|---|
-| Validasi token | `POST /oauth/introspect` (Basic auth client; RFC 7662). Hanya client penerbit token yang boleh mengintrospeksinya |
-| Identitas | Respons introspeksi: `sub` (username), `data.email`, `data.unit_id`, `scope`, `exp` |
-| Profil | `GET /api/me` (scope `user.read`) |
-| Cabut sesi | `POST /oauth/revoke` |
-| Worker GPU → API | `client_credentials` |
-
-Pola yang disarankan: **backend Rekamind menjadi confidential client (BFF)**. Browser/aplikasi desktop tidak pernah memegang `client_secret`; backend yang menukar kode, memvalidasi token lewat introspeksi (cache ≤60 dtk), dan memberi sesi miliknya sendiri. Ini juga memenuhi aturan introspeksi di atas.
-
-### Alur: Authorization Code tanpa PKCE (dikonfirmasi pemilik IdP: berfungsi dan aman)
-
-Tanpa PKCE, keamanan alur ini bertumpu pada hal lain, jadi semuanya wajib ada:
-
-1. **Hanya backend yang memegang `client_secret`** (confidential client). Browser dan aplikasi desktop tidak pernah melihatnya maupun token IdP.
-2. **`state` acak per percobaan login**, diikat ke cookie httpOnly bertanda tangan, dan diperiksa di callback. Tanpa PKCE, ini satu-satunya pelindung dari penyuntikan kode login (login CSRF).
-3. **`redirect_uri` terdaftar persis** di IdP (`https://<backend>/auth/callback`) dan HTTPS wajib.
-
-```
-SPA ──▶ GET /auth/login ──▶ 302 /oauth/authorize?response_type=code&client_id&redirect_uri&scope=user.read&state
-IdP ──▶ GET /auth/callback?code&state ──▶ backend: cek state ──▶ POST /oauth/token (Basic auth client)
-        ──▶ POST /oauth/introspect (identitas: sub, email, unit_id) ──▶ buat sesi Rekamind ──▶ 302 ke SPA
-```
-- Sesi Rekamind berupa id acak (hanya hash-nya disimpan di DB) dalam cookie `httpOnly; Secure; SameSite=Lax`. Token IdP tetap di server dan di-refresh di sana.
-- Permintaan yang mengubah data diperiksa `Origin` (perlindungan CSRF tambahan).
-- **Aplikasi desktop → backend remote:** buka browser sistem ke `/auth/login`, lalu backend menyerahkan kode sekali-pakai ke `http://127.0.0.1:<port>` yang ditukar desktop dengan token sesi Rekamind. Desktop tidak pernah memegang rahasia IdP.
-- **Mode lokal** (backend di laptop pengguna): **tanpa login.** `client_secret` tidak boleh disebar ke tiap laptop karena itu bukan rahasia lagi; mode lokal hanya melayani `127.0.0.1`.
-- **Worker GPU → API:** `client_credentials` (atau kunci API khusus).
-
-Risiko sisa tanpa PKCE: bila `client_secret` bocor atau pendaftaran `redirect_uri` longgar, pencurian kode login menjadi mungkin. Kunci rahasia hanya di variabel lingkungan server.
-
-Masih perlu dari Anda sebelum dikerjakan:
-1. `client_id`/`client_secret` untuk Rekamind dan redirect URI terdaftar (`https://<domain-backend>/auth/callback`), plus akses ke server dev untuk uji.
-2. **Siapa yang boleh memakai Rekamind?** Semua akun UGM, atau daftar yang dibatasi (per `unit_id`/username)? Autentikasi hanya membuktikan siapa orangnya, bukan hak aksesnya.
-3. Apakah client ini mendapat `refresh_token`, dan berapa umur access token-nya.
-4. Meeting milik siapa dan siapa yang boleh melihat: milik pribadi saja, atau dibagikan per unit/tim? (Menentukan model data: kolom pemilik, tabel berbagi.)
-
-Rencana pengujian: karena IdP asli tidak terjangkau dari sandbox, alur ini akan diuji terhadap **IdP tiruan yang mengikuti `openapi.json`**. Itu membuktikan logika kita (state, sesi, penolakan), bukan perilaku IdP nyata, yang tetap harus dicoba di jaringan Anda.
+Sudah dikerjakan dan diuji: login Google (OIDC + PKCE) dengan kredensial milik pemasang, user hanya melihat
+rapat miliknya, super admin bisa semuanya, login desktop lewat browser sistem. Rincian, cara membuat OAuth
+client, dan batas pembuktian ada di [`docs/AUTH.md`](../AUTH.md). Rencana awal yang berbasis OAuth UGM
+dibatalkan (proyek ini open source, jadi tidak boleh bergantung pada satu IdP kampus); UGM bisa menjadi
+penyedia kedua di masa depan.

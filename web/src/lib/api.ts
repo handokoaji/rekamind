@@ -1,5 +1,5 @@
 import type {
-  Capabilities, Meeting, MeetingDetail, Participant, Source, Task, TaskPatch, TaskStatus, TaskWithMeeting,
+  AdminUser, Capabilities, Me, Meeting, MeetingDetail, Participant, Role, Scope, Source, Task, TaskPatch, TaskStatus, TaskWithMeeting,
 } from "./types";
 
 const KEY = "rekamind.backendUrl";
@@ -25,8 +25,15 @@ export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 
-// Placeholder for the OAuth bearer token; every request already flows through here.
-function authHeaders(): Record<string, string> { return {}; }
+/** The desktop app logs in out of band and hands us a bearer token; a browser uses its session cookie
+ *  instead, which needs no code here at all. */
+let bearer: string | null = null;
+export const setAuthToken = (t: string | null) => { bearer = t; };
+function authHeaders(): Record<string, string> { return bearer ? { authorization: `Bearer ${bearer}` } : {}; }
+
+/** Called whenever the server says "not signed in": the UI then shows the login screen. */
+const unauthorized = new Set<() => void>();
+export const onUnauthorized = (fn: () => void) => { unauthorized.add(fn); return () => { unauthorized.delete(fn); }; };
 
 function messageFrom(body: unknown, status: number): string {
   const detail = (body as { detail?: unknown } | null)?.detail;
@@ -40,7 +47,7 @@ function messageFrom(body: unknown, status: number): string {
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${getBackendUrl()}/api${path}`, {
+    res = await fetch(`${getBackendUrl()}${path.startsWith("/../") ? path.slice(3) : `/api${path}`}`, {
       method,
       headers: { ...authHeaders(), ...(body !== undefined ? { "content-type": "application/json" } : {}) },
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -50,6 +57,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
   if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => null);
+  // /me is how the app *asks* whether it is signed in; reacting to its own 401 would ask again forever.
+  if (res.status === 401 && path !== "/me") unauthorized.forEach((f) => f());
   if (!res.ok) throw new ApiError(res.status, messageFrom(data, res.status));
   return data as T;
 }
@@ -57,10 +66,16 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 export const api = {
   health: () => request<{ status: string; version: string }>("GET", "/health"),
   capabilities: () => request<Capabilities>("GET", "/capabilities"),
-  meetings: (q = "", status = "") => {
+  me: () => request<Me>("GET", "/me"),
+  logout: () => request<void>("POST", "/../auth/logout"),
+  adminUsers: () => request<AdminUser[]>("GET", "/admin/users"),
+  inviteUser: (email: string, role: Role) => request<AdminUser>("POST", "/admin/users", { email, role }),
+  patchUser: (id: string, patch: { role?: Role; disabled?: boolean }) => request<AdminUser>("PATCH", `/admin/users/${id}`, patch),
+  meetings: (q = "", status = "", scope: Scope = "mine") => {
     const p = new URLSearchParams();
     if (q) p.set("q", q);
     if (status) p.set("status", status);
+    if (scope === "all") p.set("scope", "all");
     return request<Meeting[]>("GET", `/meetings${p.size ? `?${p}` : ""}`);
   },
   meeting: (id: string) => request<MeetingDetail>("GET", `/meetings/${id}`),
@@ -72,7 +87,12 @@ export const api = {
   restoreMeeting: (id: string) => request<Meeting>("POST", `/meetings/${id}/restore`),
   process: (id: string) => request("POST", `/meetings/${id}/process`),
   renameParticipant: (id: string, name: string | null) => request<Participant>("PATCH", `/participants/${id}`, { name }),
-  tasks: (status?: TaskStatus) => request<TaskWithMeeting[]>("GET", `/tasks${status ? `?status=${status}` : ""}`),
+  tasks: (status?: TaskStatus, scope: Scope = "mine") => {
+    const p = new URLSearchParams();
+    if (status) p.set("status", status);
+    if (scope === "all") p.set("scope", "all");
+    return request<TaskWithMeeting[]>("GET", `/tasks${p.size ? `?${p}` : ""}`);
+  },
   patchTask: (id: string, patch: TaskPatch) => request<Task>("PATCH", `/tasks/${id}`, patch),
   audioUrl: (id: string, source: Source) => `${getBackendUrl()}/api/meetings/${id}/audio/${source}`,
 };

@@ -397,3 +397,28 @@ fn ui_state_json_matches_the_golden_contract_file() {
         std::fs::read_to_string(&path).expect("contract file missing: run with UPDATE_CONTRACT=1");
     assert_eq!(on_disk, pretty, "UiState JSON changed: update web/src/desktop/types.ts, then regenerate with UPDATE_CONTRACT=1");
 }
+
+#[test]
+fn an_expired_login_keeps_the_recording_and_says_how_to_continue() {
+    let m = start(|r: &Req| {
+        if r.path == "/api/health" {
+            (200, r#"{"status":"ok"}"#.into())
+        } else {
+            (401, r#"{"detail":"x"}"#.into())
+        }
+    });
+    let d = tempfile::tempdir().unwrap();
+    let c = ctl(d.path(), Some(&m.url));
+    record_a_bit(&c, "Sesi habis");
+    let s = wait_for(&c, "attention", |s| s.phase == Phase::NeedsAttention);
+    let err = s.last.unwrap().error.unwrap();
+    assert!(
+        err.contains("Sesi login berakhir") && err.contains("aman"),
+        "{err}"
+    );
+    assert_eq!(
+        s.pending.len(),
+        1,
+        "the audio is still on disk, ready to upload after signing in again"
+    );
+}

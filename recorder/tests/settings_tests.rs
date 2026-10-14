@@ -95,20 +95,26 @@ fn the_name_is_trimmed_and_capped() {
 fn config_and_local_backend_follow_the_mode() {
     let local = Settings::default();
     assert_eq!(
-        local.to_config().server.as_deref(),
+        local.to_config(None).server.as_deref(),
         Some("http://127.0.0.1:8787")
     );
-    assert!(local.local_backend().is_some());
+    assert!(local.local_backend("t").is_some());
     let remote = Settings {
         mode: "remote".into(),
         server: "https://x.id".into(),
         local_user_name: "Andi".into(),
         ..Default::default()
     };
-    assert_eq!(remote.to_config().server.as_deref(), Some("https://x.id"));
-    assert_eq!(remote.to_config().local_user_name.as_deref(), Some("Andi"));
+    assert_eq!(
+        remote.to_config(None).server.as_deref(),
+        Some("https://x.id")
+    );
+    assert_eq!(
+        remote.to_config(None).local_user_name.as_deref(),
+        Some("Andi")
+    );
     assert!(
-        remote.local_backend().is_none(),
+        remote.local_backend("t").is_none(),
         "a remote server is never started or stopped by this app"
     );
 }

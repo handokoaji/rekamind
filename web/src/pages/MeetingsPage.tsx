@@ -10,6 +10,7 @@ import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { EmptyState, ErrorState, ProgressBar, Skeleton } from "../components/ui/Feedback";
 import { Input } from "../components/ui/Field";
+import { useAuth } from "../hooks/auth";
 import { useCapabilities, useMeetings, useProcessMeeting } from "../hooks/queries";
 import { api } from "../lib/api";
 import { cn } from "../lib/cn";
@@ -33,7 +34,7 @@ function useDebounced<T>(v: T, ms = 250) {
   return d;
 }
 
-function Row({ m, canProcess }: { m: Meeting; canProcess: boolean }) {
+function Row({ m, canProcess, showOwner }: { m: Meeting; canProcess: boolean; showOwner: boolean }) {
   const qc = useQueryClient();
   const process = useProcessMeeting();
   const needsRun = m.status === "recorded" || m.status === "failed";
@@ -53,7 +54,7 @@ function Row({ m, canProcess }: { m: Meeting; canProcess: boolean }) {
       <Card className="flex flex-wrap items-center gap-x-4 gap-y-3 p-4 transition-shadow hover:shadow-md">
         <Link to={`/rapat/${m.id}`} className="min-w-0 flex-1 basis-60 rounded-lg outline-offset-4">
           <p className="truncate font-semibold">{m.title}</p>
-          <p className="mt-0.5 text-sm text-muted">{formatDateTime(m.started_at)}</p>
+          <p className="mt-0.5 text-sm text-muted">{formatDateTime(m.started_at)}{showOwner && m.owner_email && <> · <span className="font-medium text-fg">{m.owner_email}</span></>}</p>
           {m.status === "failed" && m.error && <p className="mt-1 line-clamp-2 text-sm text-danger">{m.error}</p>}
         </Link>
         {m.job && (
@@ -88,7 +89,9 @@ export function MeetingsPage() {
   const [upload, setUpload] = useState(false);
   const nav = useNavigate();
   const search = useRef<HTMLInputElement>(null);
-  const { data, error, isLoading, refetch } = useMeetings(q, status);
+  const { canAdmin } = useAuth();
+  const scope = canAdmin && params.get("scope") === "all" ? "all" : "mine";
+  const { data, error, isLoading, refetch } = useMeetings(q, status, scope);
   const caps = useCapabilities();
 
   useEffect(() => {
@@ -101,6 +104,7 @@ export function MeetingsPage() {
   }, []);
 
   const setStatus = (v: string) => setParams((p) => { v ? p.set("status", v) : p.delete("status"); return p; }, { replace: true });
+  const setScope = (v: string) => setParams((p) => { v === "all" ? p.set("scope", "all") : p.delete("scope"); return p; }, { replace: true });
   const filtering = Boolean(q || status);
 
   return (
@@ -114,6 +118,13 @@ export function MeetingsPage() {
       </div>
 
       {isDesktop() && <RecordCard />}
+
+      {canAdmin && (
+        <div role="group" aria-label="Cakupan rapat" className="flex w-fit gap-1 rounded-lg border border-border bg-card p-1">
+          {([["mine", "Milik saya"], ["all", "Semua pengguna"]] as const).map(([v, l]) => (
+            <button key={v} onClick={() => setScope(v)} aria-pressed={scope === v}
+              className={cn("rounded-md px-3 py-1.5 text-sm font-medium transition-colors", scope === v ? "bg-primary text-primary-fg" : "text-muted hover:text-fg")}>{l}</button>))}
+        </div>)}
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-60 flex-1">
@@ -152,7 +163,7 @@ export function MeetingsPage() {
           )}
         </Card>
       ) : (
-        <ul className="flex flex-col gap-3">{data?.map((m) => <Row key={m.id} m={m} canProcess={caps.data?.processing_ready ?? false} />)}</ul>
+        <ul className="flex flex-col gap-3">{data?.map((m) => <Row key={m.id} m={m} canProcess={caps.data?.processing_ready ?? false} showOwner={scope === "all"} />)}</ul>
       )}
 
       {upload && <Suspense fallback={null}><UploadDialog open={upload} onOpenChange={setUpload} onCreated={(id) => nav(`/rapat/${id}`)} /></Suspense>}

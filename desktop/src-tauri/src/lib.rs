@@ -8,8 +8,10 @@ use std::time::Duration;
 use rekamind_recorder::backend::synthetic::{Script, SyntheticBackend};
 use rekamind_recorder::backend::{default_backend, Backend};
 use rekamind_recorder::controller::{Controller, Phase, UiState};
+use rekamind_recorder::api::Client;
 use rekamind_recorder::local_backend::Watcher;
-use rekamind_recorder::settings::Settings;
+use rekamind_recorder::login::{PendingLogin, TokenStore};
+use rekamind_recorder::settings::{new_local_token, Settings};
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -33,6 +35,46 @@ struct Shared {
     last_phase: Mutex<Phase>,
     watcher: Mutex<Option<Watcher>>,
     hotkey_error: Mutex<Option<String>>,
+    /// Per-launch secret for a local backend; never written to disk.
+    local_token: String,
+    store: Arc<dyn TokenStore>,
+    /// Signed-in user's token for a remote server (None until they sign in).
+    user_token: Mutex<Option<String>>,
+}
+
+impl Shared {
+    /// The credential for whichever server is selected.
+    fn credential(&self, s: &Settings) -> Option<String> {
+        if s.mode == "local" {
+            Some(self.local_token.clone())
+        } else {
+            self.user_token.lock().unwrap().clone()
+        }
+    }
+}
+
+/// The login token in the operating system's credential store (Windows Credential Manager, ...).
+/// If the store is unavailable the token simply is not remembered: the user signs in again next launch.
+struct KeyringStore;
+
+impl KeyringStore {
+    fn entry() -> Result<keyring::Entry, String> {
+        keyring::Entry::new("id.rekamind.desktop", "login-token").map_err(|e| e.to_string())
+    }
+}
+
+impl TokenStore for KeyringStore {
+    fn load(&self) -> Option<String> {
+        Self::entry().ok()?.get_password().ok()
+    }
+    fn save(&self, token: &str) -> Result<(), String> {
+        Self::entry()?.set_password(token).map_err(|e| e.to_string())
+    }
+    fn clear(&self) {
+        if let Ok(e) = Self::entry() {
+            let _ = e.delete_credential();
+        }
+    }
 }
 
 fn backend_factory() -> Box<dyn Backend> {
@@ -186,13 +228,15 @@ fn recorder_dismiss(app: AppHandle, sh: State<'_, Shared>) {
 struct SettingsView {
     settings: Settings,
     server_url: String,
+    /// Credential the UI must send to the selected server (the local secret, or the signed-in token).
+    auth_token: Option<String>,
     recordings_dir: String,
     hotkey_error: Option<String>,
 }
 
 fn view(sh: &Shared) -> SettingsView {
     let s = sh.settings.lock().unwrap().clone();
-    SettingsView { server_url: s.server_url(), settings: s, recordings_dir: sh.recordings.to_string_lossy().into_owned(), hotkey_error: sh.hotkey_error.lock().unwrap().clone() }
+    SettingsView { server_url: s.server_url(), auth_token: sh.credential(&s), settings: s, recordings_dir: sh.recordings.to_string_lossy().into_owned(), hotkey_error: sh.hotkey_error.lock().unwrap().clone() }
 }
 
 #[tauri::command]
@@ -212,8 +256,8 @@ fn settings_set(app: AppHandle, sh: State<'_, Shared>, settings: Settings) -> Re
     if let Some(old) = sh.ctl.local_backend() {
         old.stop();
     }
-    sh.ctl.set_config(settings.to_config());
-    sh.ctl.set_local_backend(settings.local_backend());
+    sh.ctl.set_config(settings.to_config(sh.credential(&settings).as_deref()));
+    sh.ctl.set_local_backend(settings.local_backend(&sh.local_token));
     *sh.settings.lock().unwrap() = settings.clone();
     restart_watcher(&sh);
     if settings.hotkey != old_hotkey {
@@ -228,6 +272,54 @@ fn settings_set(app: AppHandle, sh: State<'_, Shared>, settings: Settings) -> Re
 async fn backend_ensure(sh: State<'_, Shared>) -> Result<(), String> {
     let ctl = sh.ctl.clone();
     tauri::async_runtime::spawn_blocking(move || ctl.ensure_backend(Duration::from_secs(90))).await.map_err(|e| e.to_string())?
+}
+
+#[derive(serde::Serialize)]
+struct LoginResult {
+    email: String,
+    token: String,
+    /// False when the OS credential store refused it: the user is signed in for now, but will have
+    /// to sign in again next time the app starts.
+    remembered: bool,
+}
+
+/// Sign in to a remote server with Google, through the system browser (see `rekamind_recorder::login`).
+#[tauri::command]
+async fn auth_login(sh: State<'_, Shared>) -> Result<LoginResult, String> {
+    let settings = sh.settings.lock().unwrap().clone();
+    if settings.mode != "remote" {
+        return Err("Mode lokal tidak memerlukan login.".into());
+    }
+    let server = settings.server_url();
+    let store = sh.store.clone();
+    let (email, token, remembered) = tauri::async_runtime::spawn_blocking(move || -> Result<(String, String, bool), String> {
+        let pending = PendingLogin::begin(&server).map_err(|e| format!("tidak bisa membuka port lokal untuk login: {e}"))?;
+        webbrowser::open(&pending.url).map_err(|e| format!("tidak bisa membuka browser ({e}). Buka alamat ini sendiri: {}", pending.url))?;
+        let code = pending.wait_for_code(Duration::from_secs(300))?;
+        let t = Client::new(&server, None).desktop_token(&code, &pending.verifier).map_err(|e| e.to_string())?;
+        let remembered = store.save(&t.access_token).is_ok();
+        Ok((t.email, t.access_token, remembered))
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    *sh.user_token.lock().unwrap() = Some(token.clone());
+    sh.ctl.set_config(settings.to_config(Some(&token)));
+    Ok(LoginResult { email, token, remembered })
+}
+
+#[tauri::command]
+async fn auth_logout(app: AppHandle, sh: State<'_, Shared>) -> Result<(), String> {
+    let settings = sh.settings.lock().unwrap().clone();
+    let token = sh.user_token.lock().unwrap().take();
+    sh.store.clear();
+    sh.ctl.set_config(settings.to_config(sh.credential(&settings).as_deref()));
+    if let (Some(t), true) = (token, settings.mode == "remote") {
+        let server = settings.server_url();
+        // Best effort: even if the server is unreachable the local token is already gone.
+        let _ = tauri::async_runtime::spawn_blocking(move || Client::new(&server, Some(t)).logout()).await;
+    }
+    on_change(&app);
+    Ok(())
 }
 
 // ----------------------------------------------------------------------------- app
@@ -252,8 +344,12 @@ pub fn run() {
             let settings_path = config_dir.join("settings.json");
             let settings = Settings::load(&settings_path);
 
-            let ctl = Arc::new(Controller::new(recordings.clone(), settings.to_config(), backend_factory));
-            ctl.set_local_backend(settings.local_backend());
+            let local_token = new_local_token();
+            let store: Arc<dyn TokenStore> = Arc::new(KeyringStore);
+            let user_token = store.load();
+            let credential = if settings.mode == "local" { Some(local_token.clone()) } else { user_token.clone() };
+            let ctl = Arc::new(Controller::new(recordings.clone(), settings.to_config(credential.as_deref()), backend_factory));
+            ctl.set_local_backend(settings.local_backend(&local_token));
             let handle = app.handle().clone();
             ctl.set_observer(move || on_change(&handle));
 
@@ -279,6 +375,9 @@ pub fn run() {
                 last_phase: Mutex::new(Phase::Idle),
                 watcher: Mutex::new(None),
                 hotkey_error: Mutex::new(None),
+                local_token,
+                store,
+                user_token: Mutex::new(user_token),
             });
             let sh = app.state::<Shared>();
             restart_watcher(&sh);
@@ -351,6 +450,8 @@ pub fn run() {
             settings_get,
             settings_set,
             backend_ensure,
+            auth_login,
+            auth_logout,
         ])
         .build(tauri::generate_context!())
         .expect("gagal membangun aplikasi Rekamind");

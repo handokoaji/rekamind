@@ -22,6 +22,7 @@ export default defineConfig({
     reuseExistingServer: false,
     env: {
       REKAMIND_PORT: String(PORT),
+      REKAMIND_AUTH: "none",
       REKAMIND_ENGINES: "fake",
       REKAMIND_DATA_DIR: join(tmpdir(), `rekamind-e2e-${Date.now()}`),
       REKAMIND_WEB_DIR: "../web/dist",

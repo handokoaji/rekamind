@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { Badge } from "../components/ui/Badge";
 import { Card } from "../components/ui/Card";
 import { EmptyState, ErrorState, Skeleton } from "../components/ui/Feedback";
+import { useAuth } from "../hooks/auth";
 import { useAllTasks } from "../hooks/queries";
 import { cn } from "../lib/cn";
 import { formatDay, formatMinutes } from "../lib/format";
@@ -13,7 +14,9 @@ import type { TaskStatus } from "../lib/types";
 const tabs: TaskStatus[] = ["confirmed", "suggested", "rejected"];
 
 export function TasksPage() {
-  const { data, error, isLoading, refetch } = useAllTasks();
+  const { canAdmin } = useAuth();
+  const [all, setAll] = useState(false);
+  const { data, error, isLoading, refetch } = useAllTasks(canAdmin && all ? "all" : "mine");
   const [tab, setTab] = useState<TaskStatus>("confirmed");
   const shown = data?.filter((t) => t.status === tab) ?? [];
   const count = (s: TaskStatus) => data?.filter((t) => t.status === s).length ?? 0;
@@ -24,6 +27,8 @@ export function TasksPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Task</h1>
         <p className="mt-1 text-sm text-muted">Task dari semua rapat. Hanya yang sudah Anda konfirmasi yang siap diteruskan ke sistem task manager.</p>
       </div>
+      {canAdmin && (
+        <label className="flex w-fit items-center gap-2 text-sm"><input type="checkbox" className="size-4 accent-[var(--primary)]" checked={all} onChange={(e) => setAll(e.target.checked)} /> Tampilkan task semua pengguna</label>)}
       <div role="tablist" aria-label="Status task" className="flex gap-1.5">
         {tabs.map((s) => (
           <button key={s} role="tab" aria-selected={tab === s} onClick={() => setTab(s)}

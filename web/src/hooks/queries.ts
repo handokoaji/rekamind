@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
-import type { MeetingDetail, TaskPatch } from "../lib/types";
+import type { MeetingDetail, Scope, TaskPatch } from "../lib/types";
 
 const ACTIVE = new Set(["queued", "processing"]);
 
@@ -10,10 +10,10 @@ export const useHealth = () =>
 export const useCapabilities = () => useQuery({ queryKey: ["capabilities"], queryFn: api.capabilities, staleTime: 60_000 });
 
 /** Polls only while something is actually being processed, so an idle page makes no requests. */
-export const useMeetings = (q: string, status: string) =>
+export const useMeetings = (q: string, status: string, scope: Scope = "mine") =>
   useQuery({
-    queryKey: ["meetings", q, status],
-    queryFn: () => api.meetings(q, status),
+    queryKey: ["meetings", q, status, scope],
+    queryFn: () => api.meetings(q, status, scope),
     refetchInterval: (query) => (query.state.data?.some((m) => m.job || ACTIVE.has(m.status)) ? 2_000 : false),
     placeholderData: (prev) => prev,
   });
@@ -25,7 +25,7 @@ export const useMeeting = (id: string) =>
     refetchInterval: (query) => (query.state.data && ACTIVE.has(query.state.data.status) ? 2_000 : false),
   });
 
-export const useAllTasks = () => useQuery({ queryKey: ["tasks"], queryFn: () => api.tasks() });
+export const useAllTasks = (scope: Scope = "mine") => useQuery({ queryKey: ["tasks", scope], queryFn: () => api.tasks(undefined, scope) });
 
 export function useInvalidate() {
   const qc = useQueryClient();

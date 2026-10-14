@@ -1,4 +1,4 @@
-import type { DesktopSettings, SettingsView, UiState } from "./types";
+import type { DesktopSettings, LoginResult, SettingsView, UiState } from "./types";
 
 /** True only inside the Tauri shell. In a normal browser every desktop feature stays hidden. */
 export const isDesktop = (): boolean => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -36,4 +36,6 @@ export const desktop = {
   settings: () => invoke<SettingsView>("settings_get"),
   saveSettings: (settings: DesktopSettings) => invoke<SettingsView>("settings_set", { settings }),
   ensureBackend: () => invoke<void>("backend_ensure"),
+  login: () => invoke<LoginResult>("auth_login"),
+  logout: () => invoke<void>("auth_logout"),
 };

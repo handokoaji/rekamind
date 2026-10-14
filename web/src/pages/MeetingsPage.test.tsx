@@ -3,15 +3,19 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { AuthProvider } from "../hooks/auth";
+import type { Me } from "../lib/types";
 import { MeetingsPage } from "./MeetingsPage";
 
-const meeting = (o = {}) => ({ id: "a".repeat(32), title: "Rapat vendor", status: "review", language: "id", started_at: "2026-10-14T01:00:00Z", ended_at: null, error: null, job: null, ...o });
+const me: Me = { id: "u1", email: "alice@kantor.id", name: "Alice", picture: null, role: "user", auth_mode: "google" };
+
+const meeting = (o = {}) => ({ id: "a".repeat(32), title: "Rapat vendor", status: "review", language: "id", started_at: "2026-10-14T01:00:00Z", ended_at: null, error: null, job: null, owner_email: "alice@kantor.id", ...o });
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 
 function setup(handler: (url: string) => Response | Promise<Response>) {
   vi.stubGlobal("fetch", vi.fn((url: string) => Promise.resolve(handler(String(url)))));
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={client}><MemoryRouter><MeetingsPage /></MemoryRouter></QueryClientProvider>);
+  return render(<QueryClientProvider client={client}><AuthProvider me={me}><MemoryRouter><MeetingsPage /></MemoryRouter></AuthProvider></QueryClientProvider>);
 }
 afterEach(() => vi.unstubAllGlobals());
 

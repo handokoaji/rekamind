@@ -9,6 +9,10 @@ use serde_json::{json, Value};
 
 use crate::Source;
 
+/// Shown when the server rejects our credentials.
+pub const SESSION_EXPIRED: &str =
+    "Sesi login berakhir. Masuk lagi di Rekamind, lalu coba unggah ulang";
+
 pub struct Client {
     base: String,
     token: Option<String>,
@@ -66,6 +70,11 @@ impl Client {
         if (200..300).contains(&status) {
             return Ok(body);
         }
+        if status == 401 {
+            // The one failure the user can act on, so say exactly what to do. Matched by the UI and
+            // the controller (a recording is never discarded for this: it stays on disk).
+            return Err(ApiError(SESSION_EXPIRED.into()));
+        }
         let detail = body
             .get("detail")
             .and_then(Value::as_str)
@@ -74,7 +83,11 @@ impl Client {
     }
 
     fn post(&self, path: &str, body: Option<Value>) -> Result<Value, ApiError> {
-        let mut req = self.agent.post(format!("{}/api{path}", self.base));
+        let url = match path.strip_prefix("/../") {
+            Some(p) => format!("{}/{p}", self.base), // outside /api
+            None => format!("{}/api{path}", self.base),
+        };
+        let mut req = self.agent.post(url);
         if let Some(a) = self.auth() {
             req = req.header("authorization", a);
         }
@@ -84,6 +97,23 @@ impl Client {
         }
         .map_err(err)?;
         Self::read(resp)
+    }
+
+    /// Trade the one-time loopback code (plus the PKCE verifier) for a Rekamind token.
+    pub fn desktop_token(
+        &self,
+        code: &str,
+        verifier: &str,
+    ) -> Result<crate::login::Token, ApiError> {
+        let v = self.post(
+            "/../auth/desktop/token",
+            Some(json!({ "code": code, "verifier": verifier })),
+        )?;
+        crate::login::parse_token(&v)
+    }
+
+    pub fn logout(&self) -> Result<(), ApiError> {
+        self.post("/../auth/logout", None).map(|_| ())
     }
 
     pub fn health(&self) -> Result<(), ApiError> {

@@ -7,6 +7,7 @@ pub mod api;
 pub mod backend;
 pub mod controller;
 pub mod local_backend;
+pub mod login;
 pub mod meter;
 pub mod resample;
 pub mod session;

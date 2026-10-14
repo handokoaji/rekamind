@@ -35,8 +35,8 @@ class Key:
 
 
 class MockIdp:
-    def __init__(self, client_id="cid", client_secret="csecret", redirect_uri="http://127.0.0.1:8787/auth/callback"):
-        self.client_id, self.client_secret, self.redirect_uri = client_id, client_secret, redirect_uri
+    def __init__(self, client_id="cid", client_secret="csecret", redirect_uri="http://127.0.0.1:8787/auth/callback", issuer=ISSUER):
+        self.client_id, self.client_secret, self.redirect_uri, self.issuer = client_id, client_secret, redirect_uri, issuer
         self.key = Key("k1")
         self.extra_keys: list[Key] = []
         self.identity = {"sub": "sub-boss", "email": "boss@kantor.id", "email_verified": True, "name": "Boss"}
@@ -48,7 +48,7 @@ class MockIdp:
     # ---- minting ----------------------------------------------------------
     def mint(self, _nonce: str, /, *, key: Key | None = None, alg="RS256", **claims) -> str:
         now = int(time.time())
-        body = {"iss": ISSUER, "aud": self.client_id, "iat": now, "exp": now + 600, "nonce": _nonce, **self.identity,
+        body = {"iss": self.issuer, "aud": self.client_id, "iat": now, "exp": now + 600, "nonce": _nonce, **self.identity,
                 **self.claim_overrides, **claims}
         body = {k: v for k, v in body.items() if v is not None}  # None removes a claim
         k = key or self.key
@@ -64,8 +64,8 @@ class MockIdp:
 
         @app.get("/.well-known/openid-configuration")
         async def discovery():
-            return {"issuer": ISSUER, "authorization_endpoint": f"{ISSUER}/authorize", "token_endpoint": f"{ISSUER}/token",
-                    "jwks_uri": f"{ISSUER}/jwks"}
+            return {"issuer": self.issuer, "authorization_endpoint": f"{self.issuer}/authorize", "token_endpoint": f"{self.issuer}/token",
+                    "jwks_uri": f"{self.issuer}/jwks"}
 
         @app.get("/jwks")
         async def jwks():
@@ -91,6 +91,11 @@ class MockIdp:
                 return JSONResponse({"error": "invalid_grant", "error_description": "secret detail that must never reach users"}, status_code=400)
             c["used"] = True
             return {"id_token": self.mint(c["nonce"]), "access_token": "google-access-token-never-stored", "token_type": "Bearer"}
+
+        @app.post("/__identity")  # test control only: which Google account "is signed in" at the provider
+        async def set_identity(request: Request):
+            self.identity = {"email_verified": True, **await request.json()}
+            return {"ok": True}
 
         return app
 

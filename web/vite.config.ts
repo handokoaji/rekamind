@@ -7,5 +7,5 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: { proxy: { "/api": process.env.REKAMIND_API ?? "http://127.0.0.1:8787" } },
   build: { sourcemap: false, chunkSizeWarningLimit: 400 },
-  test: { environment: "jsdom", globals: true, setupFiles: ["./src/test-setup.ts"], css: false, exclude: ["e2e/**", "node_modules/**"] },
+  test: { environment: "jsdom", globals: true, setupFiles: ["./src/test-setup.ts"], css: false, exclude: ["e2e/**", "e2e-auth/**", "node_modules/**"] },
 });

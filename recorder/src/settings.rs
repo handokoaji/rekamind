@@ -10,6 +10,12 @@ use serde::{Deserialize, Serialize};
 use crate::controller::Config;
 use crate::local_backend::LocalBackend;
 
+/// A fresh secret for each launch of the app: it lives in memory here and in the backend's environment,
+/// and nowhere else.
+pub fn new_local_token() -> String {
+    crate::login::random_urlsafe(32)
+}
+
 /// Origins the bundled UI is served from (Linux/macOS vs Windows webviews). A local backend must
 /// allow them or the UI's own requests would be blocked by CORS.
 pub const UI_ORIGINS: &str = "tauri://localhost,http://tauri.localhost,https://tauri.localhost";
@@ -98,21 +104,26 @@ impl Settings {
         }
     }
 
-    pub fn to_config(&self) -> Config {
+    /// `token` is the credential for the chosen server: the per-launch secret for a local backend,
+    /// or the signed-in user's token for a remote one.
+    pub fn to_config(&self, token: Option<&str>) -> Config {
         Config {
             server: Some(self.server_url()).filter(|s| !s.is_empty()),
-            token: None,
+            token: token.map(str::to_owned),
             language: self.language.clone(),
             local_user_name: Some(self.local_user_name.clone()).filter(|s| !s.is_empty()),
             auto_process: self.auto_process,
         }
     }
 
-    pub fn local_backend(&self) -> Option<Arc<LocalBackend>> {
+    pub fn local_backend(&self, token: &str) -> Option<Arc<LocalBackend>> {
         if self.mode != "local" {
             return None;
         }
         let env = vec![
+            // Single user, no Google login, loopback only, and every request must carry this secret.
+            ("REKAMIND_AUTH".to_string(), "local_token".to_string()),
+            ("REKAMIND_LOCAL_TOKEN".to_string(), token.to_string()),
             ("REKAMIND_HOST".to_string(), "127.0.0.1".to_string()),
             ("REKAMIND_PORT".to_string(), self.local_port.to_string()),
             ("REKAMIND_CORS_ORIGINS".to_string(), UI_ORIGINS.to_string()),

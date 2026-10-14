@@ -19,7 +19,8 @@ export interface DesktopSettings {
   mode: "local" | "remote"; server: string; local_program: string; local_args: string[]; local_port: number;
   language: "id" | "en"; local_user_name: string; auto_process: boolean; hotkey: string;
 }
-export interface SettingsView { settings: DesktopSettings; server_url: string; recordings_dir: string; hotkey_error: string | null }
+export interface SettingsView { settings: DesktopSettings; server_url: string; auth_token: string | null; recordings_dir: string; hotkey_error: string | null }
+export interface LoginResult { email: string; token: string; remembered: boolean }
 
 const PHASES: Phase[] = ["idle", "recording", "uploading", "done", "needs_attention"];
 const KINDS: SourceKind[] = ["recording", "reconnecting", "unavailable", "failed"];

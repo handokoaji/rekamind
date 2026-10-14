@@ -20,6 +20,9 @@ serde = { version = "1", features = ["derive"] }
 lexopt = "0.3"
 ctrlc = "3"
 getrandom = "0.3"
+sha2 = "0.10"
+base64 = "0.22"
+webbrowser = "1"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

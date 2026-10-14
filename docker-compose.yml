@@ -1,9 +1,9 @@
 # Rekamind backend. Works as a Portainer stack (Stacks -> Add stack -> paste, or
 # "Repository" pointing at this repo) and with plain `docker compose up -d`.
 #
-# SECURITY: the API has no authentication yet. The port is therefore published on
-# loopback only. To reach it from other machines, put a reverse proxy with auth in
-# front (or wait for the auth milestone) -- do not just change this to 0.0.0.0.
+# AUTH: sign-in is Google only, with YOUR OWN OAuth client (see docs/AUTH.md). The server refuses
+# to start without REKAMIND_GOOGLE_CLIENT_ID / _SECRET / REKAMIND_PUBLIC_URL. The port is published on
+# loopback; put an HTTPS reverse proxy in front for other machines (public URL must be https).
 services:
   rekamind:
     build:
@@ -14,6 +14,14 @@ services:
     ports:
       - "127.0.0.1:${REKAMIND_PORT:-8787}:8787"
     environment:
+      REKAMIND_AUTH: ${REKAMIND_AUTH:-google}
+      REKAMIND_PUBLIC_URL: ${REKAMIND_PUBLIC_URL:?set REKAMIND_PUBLIC_URL, e.g. https://rekamind.example.com}
+      REKAMIND_GOOGLE_CLIENT_ID: ${REKAMIND_GOOGLE_CLIENT_ID:?create a Google OAuth client, see docs/AUTH.md}
+      REKAMIND_GOOGLE_CLIENT_SECRET: ${REKAMIND_GOOGLE_CLIENT_SECRET:?create a Google OAuth client, see docs/AUTH.md}
+      REKAMIND_SUPERADMINS: ${REKAMIND_SUPERADMINS:?set at least one super admin email}
+      REKAMIND_SIGNUP: ${REKAMIND_SIGNUP:-allowlist}
+      REKAMIND_ALLOWED_EMAILS: ${REKAMIND_ALLOWED_EMAILS:-}
+      REKAMIND_ALLOWED_DOMAINS: ${REKAMIND_ALLOWED_DOMAINS:-}
       REKAMIND_ENGINES: ${REKAMIND_ENGINES:-none}
       # Leave empty for SQLite in the volume. For a shared server use e.g.
       # postgresql+asyncpg://rekamind:secret@db:5432/rekamind

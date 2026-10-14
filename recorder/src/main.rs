@@ -18,6 +18,7 @@ PEMAKAIAN
   rekamind-rec record  [opsi]        Rekam sampai Ctrl+C (atau --duration)
   rekamind-rec upload  FOLDER [opsi] Unggah rekaman yang sudah ada ke server
   rekamind-rec recover FOLDER        Perbaiki rekaman yang terhenti mendadak
+  rekamind-rec login --server URL    Masuk dengan Google lewat browser (alat bantu; aplikasi desktop menyimpan token di penyimpanan aman OS)
 
 OPSI record
   --out FOLDER        Folder induk rekaman (bawaan: ./rekamind-recordings)
@@ -29,11 +30,15 @@ OPSI record
 
 OPSI record/upload (kirim ke server setelah selesai)
   --server URL        Alamat backend, mis. http://127.0.0.1:8787
-  --token TOKEN       Token akses (bila server memintanya)
+  --token TOKEN       Token akses (bila server memintanya; hasil `login --print-token`)
   --title JUDUL       Judul rapat
   --name NAMA         Nama Anda (untuk mic)
   --lang id|en        Bahasa rekaman (bawaan: id)
   --process           Langsung proses setelah diunggah
+
+OPSI login
+  --no-browser        Cetak alamat login saja, jangan buka browser
+  --print-token       Cetak token ke stdout (untuk skrip/CI; perlakukan seperti kata sandi)
 
 Rekaman selalu disimpan di disk lebih dulu; kegagalan unggah tidak menghilangkan rekaman.
 ";
@@ -53,6 +58,8 @@ struct Opts {
     name: Option<String>,
     lang: Option<String>,
     process: bool,
+    no_browser: bool,
+    print_token: bool,
 }
 
 fn parse(args: Vec<String>) -> Result<(String, Opts), lexopt::Error> {
@@ -76,6 +83,8 @@ fn parse(args: Vec<String>) -> Result<(String, Opts), lexopt::Error> {
             Long("name") => o.name = Some(p.value()?.string()?),
             Long("lang") => o.lang = Some(p.value()?.string()?),
             Long("process") => o.process = true,
+            Long("no-browser") => o.no_browser = true,
+            Long("print-token") => o.print_token = true,
             Short('h') | Long("help") => return Ok(("help".into(), o)),
             _ => return Err(a.unexpected()),
         }
@@ -242,6 +251,43 @@ fn main() -> ExitCode {
     };
     match cmd.as_str() {
         "record" => record(o),
+        "login" => {
+            let Some(server) = o.server.clone() else {
+                eprintln!("Sebutkan --server.\n\n{HELP}");
+                return ExitCode::from(1);
+            };
+            let pending = match rekamind_recorder::login::PendingLogin::begin(&server) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("Tidak bisa membuka port lokal untuk login: {e}");
+                    return ExitCode::from(1);
+                }
+            };
+            eprintln!("Buka alamat ini di browser untuk masuk:\n  {}", pending.url);
+            if !o.no_browser {
+                let _ = webbrowser::open(&pending.url);
+            }
+            let code = match pending.wait_for_code(Duration::from_secs(300)) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("{e}");
+                    return ExitCode::from(2);
+                }
+            };
+            match Client::new(&server, None).desktop_token(&code, &pending.verifier) {
+                Ok(t) => {
+                    eprintln!("Berhasil masuk sebagai {}", t.email);
+                    if o.print_token {
+                        println!("{}", t.access_token);
+                    }
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("Login gagal: {e}");
+                    ExitCode::from(2)
+                }
+            }
+        }
         "recover" => {
             let Some(dir) = o.dir else {
                 eprintln!("Sebutkan folder rekaman.\n\n{HELP}");

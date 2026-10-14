@@ -30,6 +30,15 @@ serde_json = "1"
 # SIGTERM/SIGHUP (logout, `kill`) must close the WAV files properly, not just Ctrl+C.
 ctrlc = { version = "3", features = ["termination"] }
 rekamind-recorder = { path = "../../recorder" }
+webbrowser = "1"
+
+# The login token is as sensitive as a password: it lives in the OS credential store, never a file.
+[target.'cfg(windows)'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["linux-native"] }
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
 
 [profile.release]
 opt-level = "s"
