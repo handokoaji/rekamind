@@ -39,6 +39,18 @@ def match_participant(name: str | None, participants: list[Participant]) -> Part
     return first[0] if len(first) == 1 else None
 
 
+FIRST_PERSON = {"saya", "aku", "gue", "gua", "gw", "i", "me", "myself"}
+_TOLERANCE_MS = 2000
+
+
+def speaker_at(rows: list, ms: int) -> Participant | None:
+    """Who was talking at `ms`. No guess when nobody was: a wrong PIC is worse than an empty one."""
+    for seg, _source, p in rows:
+        if seg.start_ms - _TOLERANCE_MS <= ms <= seg.end_ms + _TOLERANCE_MS:
+            return p
+    return None
+
+
 def _fmt(ms: int) -> str:
     s = ms // 1000
     return f"{s // 60:02d}:{s % 60:02d}" if s < 3600 else f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}"
@@ -122,6 +134,8 @@ async def run_process_job(
                       minutes=[m.model_dump() for m in result.minutes]))
         for t in dedupe_tasks(result.tasks):
             who = match_participant(t.assignee, participants)
+            if who is None and t.assignee and t.assignee.strip().lower() in FIRST_PERSON and t.evidence_start_ms is not None:
+                who = speaker_at(rows, t.evidence_start_ms)  # "Saya kirim laporan" -> whoever said it
             resolved = resolve_deadline(t.deadline_text, meeting_day)
             s.add(Task(
                 meeting_id=job.meeting_id, title=t.title, description=t.description,

@@ -1,0 +1,70 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+/* Semantic tokens. Components never use raw colours, so light/dark and any future
+   re-theme is a change in this one block. Contrast pairs were chosen for WCAG AA. */
+:root {
+  --bg: #f6f7f9;
+  --card: #ffffff;
+  --border: #e3e6eb;
+  --fg: #101828;
+  --muted: #5b6577;
+  --primary: #4338ca;
+  --primary-fg: #ffffff;
+  --primary-soft: #eef0ff;
+  --success: #067647;
+  --success-soft: #e7f6ee;
+  --warning: #93370d;
+  --warning-soft: #fef3e2;
+  --danger: #b42318;
+  --danger-soft: #fdecea;
+  --info: #175cd3;
+  --info-soft: #e8f1fe;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b0f17;
+    --card: #131a26;
+    --border: #243044;
+    --fg: #eef1f6;
+    --muted: #9aa5b8;
+    --primary: #8b93ff;
+    --primary-fg: #0b0f17;
+    --primary-soft: #1d2342;
+    --success: #4cd08a;
+    --success-soft: #10291d;
+    --warning: #f5b160;
+    --warning-soft: #33230f;
+    --danger: #ff8a80;
+    --danger-soft: #3a1714;
+    --info: #7db3ff;
+    --info-soft: #14243f;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --color-bg: var(--bg);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-primary-fg: var(--primary-fg);
+  --color-primary-soft: var(--primary-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+}
+
+html { background: var(--bg); }
+body { @apply bg-bg font-sans text-fg antialiased; font-feature-settings: "cv11", "ss01"; }
+:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 6px; }
+@media (prefers-reduced-motion: reduce) { * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }

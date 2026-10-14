@@ -1,0 +1,44 @@
+name: v2 CI
+
+on:
+  push:
+    branches: ["v2/**"]
+  pull_request:
+    paths: ["server/**", "web/**", "docker-compose.yml", ".github/workflows/v2-ci.yml"]
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: server/pyproject.toml }
+      - run: pip install -e "server[dev,postgres]" ruff
+      - run: ruff check server
+      - run: pytest server -q
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: web/package-lock.json }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e "server[dev]"
+      - run: npm ci
+        working-directory: web
+      - run: npx tsc -b --noEmit && npx vitest run && npm run build
+        working-directory: web
+      - run: npx playwright install --with-deps chromium
+        working-directory: web
+      # Real backend (fake engines) serving the real production build.
+      - run: npx playwright test
+        working-directory: web
+        env: { REKAMIND_PYTHON: python }
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose build

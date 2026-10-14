@@ -234,3 +234,25 @@ async def test_finishing_the_task_review_completes_the_meeting_and_undoing_reope
     assert (await client.get(f"/api/meetings/{mid}")).json()["status"] == "done"
     await client.patch(f"/api/tasks/{tasks[1]['id']}", json={"status": "suggested"})
     assert (await client.get(f"/api/meetings/{mid}")).json()["status"] == "review"
+
+
+async def test_first_person_assignee_resolves_to_the_speaker_who_said_it(client):
+    """"Saya kirim laporan" at 00:20 was said on the mic channel -> the local user."""
+    mid, _ = await _processed_meeting(client)
+    d = (await client.get(f"/api/meetings/{mid}")).json()
+    me = next(p for p in d["participants"] if p["label"] == "ME")
+    report = next(t for t in d["tasks"] if t["title"] == "Kirim laporan")
+    assert report["assignee_participant_id"] == me["id"]
+
+
+async def test_first_person_is_not_guessed_when_nobody_was_speaking_then(client):
+    from wavs import WAV
+
+    m = (await client.post("/api/meetings", json={"title": "speaker only"})).json()
+    await client.put(f"/api/meetings/{m['id']}/audio/speaker", content=WAV)  # no mic channel at all
+    await client.post(f"/api/meetings/{m['id']}/finish")
+    await client.post(f"/api/meetings/{m['id']}/process")
+    a = client.app
+    await Worker(a.state.sf, a.state.storage, a.state.engines).run_once()
+    report = next(t for t in (await client.get(f"/api/meetings/{m['id']}")).json()["tasks"] if t["title"] == "Kirim laporan")
+    assert report["assignee_participant_id"] is None  # 00:20 is outside every speaker segment

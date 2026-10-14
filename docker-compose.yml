@@ -6,7 +6,9 @@
 # front (or wait for the auth milestone) -- do not just change this to 0.0.0.0.
 services:
   rekamind:
-    build: ./server
+    build:
+      context: .
+      dockerfile: server/Dockerfile
     image: rekamind-server:local
     restart: unless-stopped
     ports:

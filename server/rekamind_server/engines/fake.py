@@ -31,7 +31,8 @@ class FakeExtractor:
                               estimate_minutes=120, priority="high", evidence_start_ms=5000,
                               evidence_quote="Budi tolong siapkan draft kontrak besok.", confidence=0.9),
                 ExtractedTask(title="Siapkan draft kontrak", assignee="budi", deadline_text="besok"),  # duplicate
-                ExtractedTask(title="Kirim laporan", assignee="Saya", deadline_text="Jumat depan", confidence=0.6),
+                ExtractedTask(title="Kirim laporan", assignee="Saya", deadline_text="Jumat depan", confidence=0.6,
+                              evidence_start_ms=20000, evidence_quote="Saya kirim laporan Jumat depan."),
             ],
         )
 

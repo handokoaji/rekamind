@@ -14,3 +14,10 @@ dist/
 build/
 packaging/ffmpeg/
 packaging/Output/
+
+# v2 web
+web/e2e-shots/
+web/*.tsbuildinfo
+web/dist/
+web/node_modules/
+web/test-results/

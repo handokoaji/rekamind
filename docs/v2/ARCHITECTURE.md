@@ -38,6 +38,19 @@ Keputusan penting:
 - Tangani pencabutan headset / pergantian perangkat default tanpa menghentikan rekaman.
 - Target CPU/RAM saat merekam: **diukur, bukan diasumsikan** (target awal: <2% CPU, <60 MB — belum terbukti).
 
+## Pengembangan
+
+```bash
+# backend (SQLite, engine tiruan)
+pip install -e "server[dev]" && REKAMIND_ENGINES=fake python -m rekamind_server     # :8787
+# UI dengan hot reload, proxy /api ke backend di atas
+cd web && npm ci && npm run dev
+# tes
+pytest server -q                  # backend
+cd web && npx vitest run          # unit UI
+cd web && npx playwright test     # E2E: backend asli + build produksi (perlu: npx playwright install chromium)
+```
+
 ## Menjalankan backend
 
 ```bash
@@ -46,19 +59,20 @@ docker compose up -d --build        # atau tempel docker-compose.yml sebagai sta
 - Default: SQLite di volume `rekamind-data`; port hanya di `127.0.0.1`.
 - **Belum ada autentikasi.** Jangan buka ke jaringan tanpa reverse proxy ber-auth. Auth dikerjakan setelah MVP.
 - GPU di Docker (NVIDIA Container Toolkit) ditambahkan bersamaan dengan engine nyata. AMD/Vulkan di dalam container lebih rumit dan belum dievaluasi.
-- Image sudah di-build dan dijalankan di sandbox (non-root, data bertahan setelah restart). Pembangunan di sandbox memakai CA proxy sementara; build normal tidak memerlukannya. Status healthcheck "healthy" belum teramati.
+- Image (backend + UI) sudah dibangun dan dijalankan di sandbox: non-root, healthcheck `healthy`, UI tersaji, 5 tes E2E lolos terhadap container, memori idle ±72 MiB. Dua catatan jujur: sandbox memakai CA proxy sementara (build normal tidak memerlukannya) dan tahap Node pada Dockerfile tidak bisa dibangun di sana karena Docker Hub membatasi penarikan image `node` (429); langkahnya (`npm ci && npm run build`) diuji terpisah di salinan bersih.
 
 ## Status
 
 | Fase | Isi | Status |
 |---|---|---|
-| 0 | Benchmark engine pada rekaman Indonesia nyata | **Menunggu rekaman contoh** |
-| 1 | Inti backend: model, antrean job, pipeline, API, task terstruktur, Docker | Selesai; 49 tes lolos di SQLite, alur yang sama diuji di Postgres 16 dan di container |
-| 1b | Engine: faster-whisper, pyannote, LLM OpenAI-compatible, bench | Ditulis; **model/GPU belum teruji** (hanya stub). S3 dan Alembic belum |
-| 2 | SPA React (riwayat, detail, review task, pengaturan) | Belum |
-| 3 | Shell Tauri + perekam Rust + installer | Belum |
-| 4 | Mode remote: worker GPU, unggah presigned URL, autentikasi | Belum |
-| 5 | Integrasi task manager (webhook dulu, API Anda menyusul) | Belum |
+| 0 | Benchmark engine pada rekaman Indonesia nyata | Alat siap (`python -m rekamind_server.bench`); **menunggu dijalankan di PC Anda** |
+| 1 | Inti backend: model, antrean job, pipeline, API, task terstruktur | Selesai (72 tes) |
+| 1b | Engine: faster-whisper, pyannote, LLM OpenAI-compatible | Ditulis; **model/GPU belum teruji** (hanya stub) |
+| 1c | Penyimpanan S3 (MinIO/SeaweedFS/AWS), Alembic | Selesai. S3 diuji ke server S3 tiruan di socket (moto); **MinIO/SeaweedFS asli belum** |
+| 2 | SPA React (daftar rapat, detail, review task, transkrip, pembicara, pengaturan) | Selesai: 15 tes unit, 5 tes E2E, axe WCAG AA bersih (terang/gelap), tanpa scroll horizontal di 375 px |
+| 3 | Shell Tauri + perekam Rust + installer | **Belum** |
+| 4 | Mode remote: worker GPU, unggah presigned URL, autentikasi | **Belum** |
+| 5 | Integrasi task manager (webhook dulu, API Anda menyusul) | **Belum** (ekspor JSON `rekamind.tasks/v1` sudah ada di UI) |
 
 ## Usulan fitur tambahan
 
@@ -90,7 +104,6 @@ Diurutkan menurut nilai/biaya. Yang bertanda ⚠ punya risiko yang perlu keputus
 
 - Akurasi ASR/diarisasi bahasa Indonesia belum diukur; pilihan model masih hipotesis sampai Fase 0.
 - Dukungan GPU AMD/Intel lewat Vulkan belum diuji; jalur NVIDIA adalah satu-satunya yang terbukti di proyek ini.
-- Alembic (migrasi skema) belum dipasang; sekarang `create_all`. Wajib sebelum rilis pertama.
 - Tanpa autentikasi, backend hanya aman di loopback.
 
 ## Pengujian: apa yang sudah dibuktikan
@@ -98,3 +111,24 @@ Diurutkan menurut nilai/biaya. Yang bertanda ⚠ punya risiko yang perlu keputus
 Dibuktikan di sandbox (Linux, tanpa GPU): 49 tes unit/API; alur penuh lewat HTTP dengan worker bawaan; Postgres 16 sungguhan (klaim job bersamaan: 1 pemenang dari 6); container Docker non-root dengan data bertahan setelah restart; lint ruff bersih.
 
 Ditunda ke akhir (butuh PC/GPU): kecepatan dan akurasi model nyata (`python -m rekamind_server.bench`), faster-whisper/pyannote asli, perekam Rust di Windows (CPU/RAM saat merekam), installer, latensi end-to-end.
+
+## Autentikasi (rencana, belum dikerjakan)
+
+Sumber: `openapi.json` "UGM ID 2.0" yang Anda berikan. Server asli tidak bisa dijangkau dari sandbox, jadi **semua di bawah ini belum diuji terhadap server sungguhan**.
+
+Yang dipakai: OAuth 2.0 murni. Tidak memakai OIDC (discovery, `id_token`, `/userinfo`) maupun PKCE, sesuai arahan Anda.
+
+| Kebutuhan | Endpoint / grant dari dokumen |
+|---|---|
+| Validasi token | `POST /oauth/introspect` (Basic auth client; RFC 7662). Hanya client penerbit token yang boleh mengintrospeksinya |
+| Identitas | Respons introspeksi: `sub` (username), `data.email`, `data.unit_id`, `scope`, `exp` |
+| Profil | `GET /api/me` (scope `user.read`) |
+| Cabut sesi | `POST /oauth/revoke` |
+| Worker GPU → API | `client_credentials` |
+
+Pola yang disarankan: **backend Rekamind menjadi confidential client (BFF)**. Browser/aplikasi desktop tidak pernah memegang `client_secret`; backend yang menukar kode, memvalidasi token lewat introspeksi (cache ≤60 dtk), dan memberi sesi miliknya sendiri. Ini juga memenuhi aturan introspeksi di atas.
+
+Ganjalan yang perlu Anda putuskan:
+1. Dokumen menyatakan `/oauth/authorize` **mewajibkan** `code_challenge` (PKCE), sedangkan PKCE belum bisa dipakai. Selama itu, alur Authorization Code kemungkinan tidak dapat dipakai.
+2. Tersisa grant `password` (kredensial LDAP dikirim ke backend kita). Itu jalan pintas yang menempatkan kata sandi UGM pengguna di aplikasi kita dan dihapus dari OAuth 2.1; saya hanya akan memakainya bila Anda menyetujuinya secara eksplisit.
+3. Perlu: `client_id`/`client_secret`, redirect URI terdaftar, scope yang diizinkan, dan akses ke server dev (`oauth.dev.ugm.ac.id`) untuk pengujian.

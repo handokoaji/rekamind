@@ -1,0 +1,17 @@
+.git
+.github
+.venv
+app
+tests
+docs
+packaging
+recordings
+**/node_modules
+**/__pycache__
+**/*.egg-info
+**/.pytest_cache
+web/dist
+web/e2e
+web/e2e-shots
+web/test-results
+server/tests
