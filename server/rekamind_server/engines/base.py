@@ -5,7 +5,7 @@ of these, so the pipeline never knows which hardware it is running on."""
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Protocol
+from typing import Callable, Protocol
 
 from ..schemas import ExtractionResult
 
@@ -52,3 +52,6 @@ class Engines:
     extractor: Extractor
     # Human-readable, shown by /api/capabilities so the UI can say what will run where.
     description: dict[str, str] = field(default_factory=dict)
+    # Frees GPU/RAM held by loaded models. The worker calls it when the queue drains, so a
+    # laptop does not keep a multi-GB model resident while the user is just browsing.
+    release: Callable[[], None] | None = None

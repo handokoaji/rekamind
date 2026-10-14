@@ -40,6 +40,12 @@ class Worker:
 
     async def run_forever(self) -> None:
         await jobs.recover_abandoned(self._sf)
+        worked = False
         while True:
-            if not await self.run_once():
+            if await self.run_once():
+                worked = True
+            else:
+                if worked and self._engines.release:
+                    await asyncio.to_thread(self._engines.release)
+                    worked = False
                 await asyncio.sleep(self._poll)

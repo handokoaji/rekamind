@@ -18,6 +18,18 @@ class Settings(BaseSettings):
     # "fake" = deterministic stub engines for UI development. Real engines (cuda, vulkan,
     # openvino, remote) are added behind the same Engines contract; "none" refuses to process.
     engines: str = "none"
+    # ASR
+    whisper_model: str = "large-v3"
+    whisper_device: str = "auto"  # auto | cuda | cpu
+    whisper_compute_type: str = "auto"
+    glossary: str = ""  # comma/newline separated names and jargon, fed to Whisper as a prompt
+    # Diarization: none | pyannote
+    diarizer: str = "none"
+    hf_token: str = ""
+    # Summaries / tasks: any OpenAI-compatible endpoint (Groq, OpenAI, Ollama, vLLM)
+    llm_base_url: str = "https://api.groq.com/openai/v1"
+    llm_api_key: str = ""
+    llm_model: str = "openai/gpt-oss-120b"
 
     @property
     def effective_database_url(self) -> str:

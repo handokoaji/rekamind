@@ -36,7 +36,7 @@ async def claim_next(sf: async_sessionmaker[AsyncSession]) -> Job | None:
             res = await s.execute(
                 update(Job)
                 .where(Job.id == job_id, Job.status == "queued")
-                .values(status="running", claimed_at=datetime.now(timezone.utc))
+                .values(status="running", claimed_at=datetime.now(timezone.utc), attempts=Job.attempts + 1)
             )
             await s.commit()
             if res.rowcount == 1:
@@ -64,10 +64,22 @@ async def finish(sf: async_sessionmaker[AsyncSession], job_id: str, error: str |
         await s.commit()
 
 
+MAX_ATTEMPTS = 3
+
+
 async def recover_abandoned(sf: async_sessionmaker[AsyncSession]) -> int:
     """At startup, a job still 'running' means the process died mid-job.
-    Requeue it instead of leaving the meeting stuck forever."""
+    Requeue it instead of leaving the meeting stuck forever -- but a job that has
+    already killed the process MAX_ATTEMPTS times (native crash on bad audio, OOM)
+    is failed, otherwise it would crash-loop the worker indefinitely."""
     async with sf() as s:
+        poisoned = (await s.execute(select(Job).where(Job.status == "running", Job.attempts >= MAX_ATTEMPTS))).scalars().all()
+        for j in poisoned:
+            j.status, j.finished_at = "failed", datetime.now(timezone.utc)
+            j.error = f"Pemrosesan berhenti tiba-tiba {j.attempts}x (kemungkinan file audio bermasalah atau memori habis)"
+            m = await s.get(Meeting, j.meeting_id)
+            if m:
+                m.status, m.error = "failed", j.error
         res = await s.execute(update(Job).where(Job.status == "running").values(status="queued", stage=None, progress=0))
         await s.commit()
         return res.rowcount

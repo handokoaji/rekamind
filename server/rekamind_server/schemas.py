@@ -3,13 +3,26 @@
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+import re
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # ---- LLM extraction contract -------------------------------------------------
 # `ExtractionResult.model_json_schema()` is what a structured-output LLM call is
 # constrained to, so malformed JSON is rejected at the provider instead of being
 # discovered later in a KeyError.
+
+_CLOCK = re.compile(r"\[?(?:(\d+):)?(\d{1,2}):(\d{2})\]?")
+
+
+def parse_clock(text: str | None) -> int | None:
+    """'05:30' or '1:02:03' (optionally in brackets) -> milliseconds."""
+    if not text or not (m := _CLOCK.fullmatch(text.strip())):
+        return None
+    h, mi, se = int(m[1] or 0), int(m[2]), int(m[3])
+    return ((h * 60 + mi) * 60 + se) * 1000
+
 
 class ExtractedTask(BaseModel):
     title: str = Field(min_length=3, max_length=200, description="Imperative, one line")
@@ -18,14 +31,28 @@ class ExtractedTask(BaseModel):
     deadline_text: str | None = Field(default=None, description="Deadline phrase exactly as spoken, e.g. 'Jumat depan'")
     estimate_minutes: int | None = Field(default=None, ge=1, le=60 * 24 * 90)
     priority: Literal["low", "medium", "high"] = "medium"
-    evidence_start_ms: int | None = Field(default=None, ge=0, description="Where in the transcript this was said")
+    evidence_time: str | None = Field(default=None, description="Timestamp copied from the transcript, e.g. '05:30'")
+    evidence_start_ms: int | None = Field(default=None, ge=0)
     evidence_quote: str = Field(default="", max_length=500)
     confidence: float = Field(default=0.5, ge=0, le=1)
 
+    @model_validator(mode="after")
+    def _time_to_ms(self):
+        if self.evidence_start_ms is None:
+            self.evidence_start_ms = parse_clock(self.evidence_time)
+        return self
+
 
 class MinutePoint(BaseModel):
-    start_ms: int = Field(ge=0)
+    time: str | None = Field(default=None, description="Timestamp from the transcript, e.g. '05:30'")
+    start_ms: int = Field(default=0, ge=0)
     point: str
+
+    @model_validator(mode="after")
+    def _time_to_ms(self):
+        if not self.start_ms and (ms := parse_clock(self.time)) is not None:
+            self.start_ms = ms
+        return self
 
 
 class ExtractionResult(BaseModel):

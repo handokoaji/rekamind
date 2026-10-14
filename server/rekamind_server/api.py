@@ -12,20 +12,12 @@ from . import __version__, jobs
 from .config import Settings
 from .db import init_db, make_engine, make_session_factory
 from .engines.base import Engines
+from .engines.registry import build_engines
 from .models import Job, Meeting, Participant, Task
 from .schemas import (JobOut, MeetingCreate, MeetingDetail, MeetingSummaryOut, ParticipantOut, ParticipantPatch,
                       TaskOut, TaskPatch)
 from .storage import LocalStorage, Storage
 from .worker import Worker
-
-
-def build_engines(name: str) -> Engines | None:
-    if name == "fake":
-        from .engines.fake import fake_engines
-        return fake_engines()
-    if name == "none":
-        return None
-    raise ValueError(f"engine '{name}' belum diimplementasikan")
 
 
 def create_app(settings: Settings | None = None, *, engines: Engines | None = None) -> FastAPI:
@@ -38,7 +30,7 @@ def create_app(settings: Settings | None = None, *, engines: Engines | None = No
         await init_db(engine)
         app.state.sf = make_session_factory(engine)
         app.state.storage = LocalStorage(settings.data_dir)
-        app.state.engines = engines if engines is not None else build_engines(settings.engines)
+        app.state.engines = engines if engines is not None else build_engines(settings)
         task = None
         if settings.worker_inprocess and app.state.engines:
             worker = Worker(app.state.sf, app.state.storage, app.state.engines, settings.worker_poll_seconds)

@@ -118,6 +118,7 @@ class Job(Base):
     status: Mapped[str] = mapped_column(default="queued")  # queued | running | done | failed
     stage: Mapped[str | None] = mapped_column(default=None)
     progress: Mapped[int] = mapped_column(default=0)  # 0..100
+    attempts: Mapped[int] = mapped_column(default=0)
     error: Mapped[str | None] = mapped_column(Text, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
