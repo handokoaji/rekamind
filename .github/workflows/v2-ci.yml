@@ -37,6 +37,27 @@ jobs:
         working-directory: web
         env: { REKAMIND_PYTHON: python }
 
+  recorder:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults: { run: { working-directory: recorder } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: recorder }
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      # On Windows this also exercises the real GetProcessTimes/WASAPI-backend compile (MSVC).
+      - run: cargo test --no-fail-fast
+      - run: cargo build --release
+      # Download this on a real Windows PC and run:  rekamind-rec.exe record --stats
+      - uses: actions/upload-artifact@v4
+        if: matrix.os == 'windows-latest'
+        with: { name: rekamind-rec-windows, path: recorder/target/release/rekamind-rec.exe }
+
   image:
     runs-on: ubuntu-latest
     steps:

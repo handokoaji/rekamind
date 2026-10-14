@@ -1,0 +1,45 @@
+[package]
+name = "rekamind-recorder"
+version = "0.0.1"
+edition = "2021"
+description = "Lightweight meeting audio recorder: mic + system audio to 16 kHz mono WAV, nothing else"
+license = "MIT"
+
+[lib]
+name = "rekamind_recorder"
+path = "src/lib.rs"
+
+[[bin]]
+name = "rekamind-rec"
+path = "src/main.rs"
+
+[dependencies]
+ureq = { version = "3", default-features = false, features = ["json"] }
+serde_json = "1"
+lexopt = "0.3"
+ctrlc = "3"
+getrandom = "0.3"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+ureq = { version = "3", default-features = false, features = ["json", "rustls"] }
+
+[target.'cfg(windows)'.dependencies]
+# Windows TLS via SChannel: no C toolchain, smaller binary, honours the OS certificate store.
+ureq = { version = "3", default-features = false, features = ["json", "native-tls"] }
+wasapi = "0.22"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_System_ProcessStatus"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+# Size and wake-ups are the product here: a recorder that is heavy defeats its purpose.
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.test]
+opt-level = 2

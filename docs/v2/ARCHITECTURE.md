@@ -31,12 +31,30 @@ Keputusan penting:
 - **Task** punya bukti (timestamp + kutipan), skor confidence, dan status `suggested → confirmed | rejected`. Tanggal deadline dihitung deterministik dari frasa (`deadlines.py`), bukan oleh LLM; frasa yang samar ditandai `approximate`.
 - Tidak ada sinkronisasi DB dua arah di v1: satu rapat hidup di satu backend.
 
-## Perekam Rust (belum dibuat)
+## Perekam Rust (`recorder/`)
 
-- Capture: crate `wasapi` (loopback + mic, event-driven). Linux: monitor source PulseAudio/PipeWire — **perlu diverifikasi** crate mana yang paling andal.
-- Resample ke 16 kHz mono 16-bit, tulis per-sumber (`mic`, `speaker`) dalam potongan beberapa menit supaya crash hanya kehilangan beberapa detik terakhir.
-- Tangani pencabutan headset / pergantian perangkat default tanpa menghentikan rekaman.
-- Target CPU/RAM saat merekam: **diukur, bukan diasumsikan** (target awal: <2% CPU, <60 MB — belum terbukti).
+Selama rapat hanya ada satu pekerjaan: menyalin audio ke disk. Tanpa ASR, VAD, diarisasi, atau jaringan.
+
+| Aspek | Keputusan |
+|---|---|
+| Windows | WASAPI mode shared. Mikrofon = perangkat capture default; audio komputer = perangkat *render* default dibuka sebagai loopback. Windows sendiri mengonversi ke 16 kHz mono 16-bit (`autoconvert`), jadi jalur normal tidak melakukan DSP sama sekali |
+| Cadangan Windows | Bila driver menolak, pakai format perangkat + resampler sendiri (windowed-sinc, tabel kernel; diukur 0,61% satu core pada build release) |
+| Linux | Subproses `parec` (PulseAudio / PipeWire-pulse): tanpa header ALSA/libpulse, server suara yang me-resample |
+| Polling, bukan event | Bangun ±10×/dtk per sumber (bukan ±100×) |
+| Timeline | Loopback **tidak mengirim data saat komputer hening**. Tanpa penanganan, file speaker lebih pendek dan urutan transkrip kacau. Pengisi hening berbasis jam dinding menjaga kedua file satu garis waktu; saat Stop keduanya disamakan panjangnya |
+| Tahan crash | Header WAV diperbarui tiap 2 dtk, penanda `session.json`, perintah `recover`; paling banyak ±2 dtk terakhir yang hilang |
+| Perangkat berganti | Headset dicabut / perangkat default berganti → buka ulang otomatis; sumber yang gagal tidak menghentikan sumber lain |
+| Tidak pernah kehilangan rekaman | Disimpan ke disk dulu; unggah gagal → kode keluar 2, rekaman aman, dan pesan menunjukkan perintah `upload` untuk mengulang |
+| Ukuran | Biner release 1,7 MB (Linux), `opt-level=s`, LTO, `panic=abort` |
+
+```bash
+rekamind-rec record --server http://127.0.0.1:8787 --title "Rapat vendor" --name Andi --process --stats
+rekamind-rec upload  <folder> --server ...      # unggah ulang rekaman yang tersimpan
+rekamind-rec recover <folder>                   # perbaiki rekaman yang terhenti mendadak
+rekamind-rec record --synthetic --duration 5    # nada uji tanpa perangkat audio
+```
+
+**Mengukur "ringan" di PC Anda:** CI membangun `rekamind-rec.exe` (artifact `rekamind-rec-windows`). Jalankan `record --stats` selama rapat sungguhan; di akhir ia mencetak CPU rata-rata dan memori puncaknya sendiri. Angka sintetis di Linux (0,67% CPU, 3,7 MB) **bukan** biaya WASAPI; itu hanya dasar overhead penulisan file.
 
 ## Pengembangan
 
@@ -70,7 +88,8 @@ docker compose up -d --build        # atau tempel docker-compose.yml sebagai sta
 | 1b | Engine: faster-whisper, pyannote, LLM OpenAI-compatible | Ditulis; **model/GPU belum teruji** (hanya stub) |
 | 1c | Penyimpanan S3 (MinIO/SeaweedFS/AWS), Alembic | Selesai. S3 diuji ke server S3 tiruan di socket (moto); **MinIO/SeaweedFS asli belum** |
 | 2 | SPA React (daftar rapat, detail, review task, transkrip, pembicara, pengaturan) | Selesai: 15 tes unit, 5 tes E2E, axe WCAG AA bersih (terang/gelap), tanpa scroll horizontal di 375 px |
-| 3 | Shell Tauri + perekam Rust + installer | **Belum** |
+| 3a | Perekam Rust (`recorder/`): library + CLI `rekamind-rec` | Selesai di sisi kode: 33 tes lolos di Linux; kode Windows (WASAPI) ter-compile terhadap API aslinya tetapi **belum pernah dijalankan**. Lihat "Perekam Rust" |
+| 3b | Shell Tauri (UI di atas library perekam) + installer | **Belum** |
 | 4 | Mode remote: worker GPU, unggah presigned URL, autentikasi | **Belum** |
 | 5 | Integrasi task manager (webhook dulu, API Anda menyusul) | **Belum** (ekspor JSON `rekamind.tasks/v1` sudah ada di UI) |
 

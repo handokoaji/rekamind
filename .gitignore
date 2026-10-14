@@ -21,3 +21,4 @@ web/*.tsbuildinfo
 web/dist/
 web/node_modules/
 web/test-results/
+recorder/target/
