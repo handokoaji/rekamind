@@ -126,7 +126,8 @@ docker compose up -d --build        # atau tempel docker-compose.yml sebagai sta
 | 3a | Perekam Rust (`recorder/`): library + CLI `rekamind-rec` | Selesai di sisi kode: 33 tes lolos di Linux; kode Windows (WASAPI) ter-compile terhadap API aslinya tetapi **belum pernah dijalankan**. Lihat "Perekam Rust" |
 | 3b | Shell Tauri: jendela, tray, pintasan global, notifikasi, backend lokal on-demand | Selesai dan **dijalankan sungguhan di Linux** (WebKitGTK + X11): hotkey, rekam, unggah, SIGTERM. **Belum dijalankan di Windows** (WebView2, tray, NSIS) |
 | 3c | Backend lokal terbundel di installer (sidecar) | **Belum**: mode lokal masih butuh Python + backend terpasang terpisah |
-| 4 | Mode remote: worker GPU, unggah presigned URL, autentikasi | **Belum** |
+| 4a | Autentikasi: login Google (OIDC+PKCE), user hanya melihat miliknya, super admin, login desktop | Selesai: 141 tes server, 46 tes unit web, 8 E2E auth (termasuk CLI Rust lintas proses), 79 tes Rust. **Google asli dan Credential Manager Windows belum dicoba** (lihat `docs/AUTH.md`) |
+| 4b | Mode remote: worker GPU dengan kredensial layanan, unggah presigned URL | **Belum** |
 | 5 | Integrasi task manager (webhook dulu, API Anda menyusul) | **Belum** (ekspor JSON `rekamind.tasks/v1` sudah ada di UI) |
 
 ## Usulan fitur tambahan
