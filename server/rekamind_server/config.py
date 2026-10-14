@@ -15,6 +15,16 @@ class Settings(BaseSettings):
     worker_inprocess: bool = True
     worker_poll_seconds: float = 1.0
     language: str = "id"
+    # Audio storage: "local" (under data_dir) or "s3" (MinIO, SeaweedFS, AWS...)
+    storage: str = "local"
+    s3_endpoint_url: str = ""
+    s3_bucket: str = "rekamind"
+    s3_access_key: str = ""
+    s3_secret_key: str = ""
+    s3_region: str = "us-east-1"
+    s3_prefix: str = ""
+    s3_path_style: bool = True  # MinIO and SeaweedFS need path-style addressing
+    s3_create_bucket: bool = True
     # "fake" = deterministic stub engines for UI development. Real engines (cuda, vulkan,
     # openvino, remote) are added behind the same Engines contract; "none" refuses to process.
     engines: str = "none"

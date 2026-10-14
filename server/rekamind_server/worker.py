@@ -36,6 +36,8 @@ class Worker:
                 if m:
                     m.status, m.error = "failed", str(exc)
                     await s.commit()
+        finally:
+            self._storage.release_local(job.meeting_id)
         return True
 
     async def run_forever(self) -> None:

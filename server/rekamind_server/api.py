@@ -24,8 +24,22 @@ from .schemas import (
     TaskOut,
     TaskPatch,
 )
-from .storage import LocalStorage, Storage
+from .storage import LocalStorage, S3Storage, Storage
 from .worker import Worker
+
+
+def build_storage(settings: Settings) -> Storage:
+    if settings.storage == "local":
+        return LocalStorage(settings.data_dir)
+    if settings.storage == "s3":
+        if not (settings.s3_access_key and settings.s3_secret_key):
+            raise ValueError("REKAMIND_S3_ACCESS_KEY dan REKAMIND_S3_SECRET_KEY wajib diisi untuk storage s3")
+        return S3Storage(
+            endpoint_url=settings.s3_endpoint_url, bucket=settings.s3_bucket, access_key=settings.s3_access_key,
+            secret_key=settings.s3_secret_key, region=settings.s3_region, prefix=settings.s3_prefix,
+            cache_dir=settings.data_dir / "cache", path_style=settings.s3_path_style,
+        )
+    raise ValueError(f"REKAMIND_STORAGE='{settings.storage}' tidak dikenal (local | s3)")
 
 
 def create_app(settings: Settings | None = None, *, engines: Engines | None = None) -> FastAPI:
@@ -37,7 +51,10 @@ def create_app(settings: Settings | None = None, *, engines: Engines | None = No
         engine = make_engine(settings.effective_database_url)
         await init_db(engine)
         app.state.sf = make_session_factory(engine)
-        app.state.storage = LocalStorage(settings.data_dir)
+        storage = build_storage(settings)
+        if isinstance(storage, S3Storage) and settings.s3_create_bucket:
+            await asyncio.to_thread(storage.ensure_bucket)
+        app.state.storage = storage
         app.state.engines = engines if engines is not None else build_engines(settings)
         task = None
         if settings.worker_inprocess and app.state.engines:

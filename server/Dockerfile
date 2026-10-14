@@ -5,7 +5,7 @@ ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 REKAMIND_DATA_DIR=/data
 WORKDIR /app
 COPY pyproject.toml ./
 COPY rekamind_server ./rekamind_server
-RUN pip install ".[postgres]" \
+RUN pip install ".[postgres,s3]" \
  && useradd --system --uid 10001 rekamind \
  && mkdir /data && chown rekamind /data
 

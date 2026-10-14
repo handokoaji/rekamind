@@ -16,6 +16,12 @@ services:
       # Leave empty for SQLite in the volume. For a shared server use e.g.
       # postgresql+asyncpg://rekamind:secret@db:5432/rekamind
       REKAMIND_DATABASE_URL: ${REKAMIND_DATABASE_URL:-}
+      # Audio storage: local volume by default; any S3-protocol store (MinIO, SeaweedFS, AWS) otherwise.
+      REKAMIND_STORAGE: ${REKAMIND_STORAGE:-local}
+      REKAMIND_S3_ENDPOINT_URL: ${REKAMIND_S3_ENDPOINT_URL:-}
+      REKAMIND_S3_BUCKET: ${REKAMIND_S3_BUCKET:-rekamind}
+      REKAMIND_S3_ACCESS_KEY: ${REKAMIND_S3_ACCESS_KEY:-}
+      REKAMIND_S3_SECRET_KEY: ${REKAMIND_S3_SECRET_KEY:-}
     volumes:
       - rekamind-data:/data
 

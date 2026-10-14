@@ -66,7 +66,7 @@ async def run_process_job(
             raise RuntimeError("meeting no longer exists")
         language, title, started_at, local_name = meeting.language, meeting.title, meeting.started_at, meeting.local_user_name
 
-    mic, spk = storage.audio_path(job.meeting_id, "mic"), storage.audio_path(job.meeting_id, "speaker")
+    mic, spk = await storage.audio_path(job.meeting_id, "mic"), await storage.audio_path(job.meeting_id, "speaker")
     if not mic and not spk:
         raise RuntimeError("tidak ada file audio untuk diproses")
 
