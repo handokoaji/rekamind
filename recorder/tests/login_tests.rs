@@ -178,5 +178,14 @@ fn a_local_backend_is_started_single_user_with_a_secret_and_remote_has_none() {
         s.to_config(Some(&token)).token.as_deref(),
         Some(token.as_str())
     );
-    assert!(s.local_backend(&token).is_some());
+    let d = std::path::Path::new("/d");
+    let env = rekamind_recorder::settings::BackendEnv {
+        token: &token,
+        data_dir: d,
+        engines_ready: false,
+        llm_api_key: None,
+        hf_token: None,
+        bundled: None,
+    };
+    assert!(s.local_backend(&env).is_some());
 }

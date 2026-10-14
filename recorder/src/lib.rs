@@ -6,6 +6,7 @@
 pub mod api;
 pub mod backend;
 pub mod controller;
+pub mod engines;
 pub mod local_backend;
 pub mod login;
 pub mod meter;

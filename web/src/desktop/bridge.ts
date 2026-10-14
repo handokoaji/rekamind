@@ -1,4 +1,4 @@
-import type { DesktopSettings, LoginResult, SettingsView, UiState } from "./types";
+import type { DesktopSettings, EngineCheck, EngineState, LoginResult, SettingsView, UiState } from "./types";
 
 /** True only inside the Tauri shell. In a normal browser every desktop feature stays hidden. */
 export const isDesktop = (): boolean => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -17,10 +17,10 @@ async function invoke<T>(cmd: string, args?: Args): Promise<T> {
 }
 
 /** Subscribe to "something changed" pushes from the shell. Best effort: polling covers a failure. */
-export async function onChanged(fn: () => void): Promise<() => void> {
+export async function onChanged(fn: () => void, event = "recorder://changed"): Promise<() => void> {
   try {
     const { listen } = await import("@tauri-apps/api/event");
-    return await listen("recorder://changed", fn);
+    return await listen(event, fn);
   } catch {
     return () => undefined;
   }
@@ -36,6 +36,13 @@ export const desktop = {
   settings: () => invoke<SettingsView>("settings_get"),
   saveSettings: (settings: DesktopSettings) => invoke<SettingsView>("settings_set", { settings }),
   ensureBackend: () => invoke<void>("backend_ensure"),
+  engines: () => invoke<EngineState>("engines_status"),
+  checkEngines: () => invoke<EngineCheck>("engines_check"),
+  installEngines: (kind: "cpu" | "cuda", diarize: boolean) => invoke<void>("engines_install", { kind, diarize }),
+  warmupModel: () => invoke<void>("engines_warmup"),
+  cancelEngines: () => invoke<void>("engines_cancel"),
+  /** undefined leaves a secret alone; "" removes it. */
+  setSecrets: (s: { llmApiKey?: string; hfToken?: string }) => invoke<SettingsView>("secrets_set", { llmApiKey: s.llmApiKey, hfToken: s.hfToken }),
   login: () => invoke<LoginResult>("auth_login"),
   logout: () => invoke<void>("auth_logout"),
 };

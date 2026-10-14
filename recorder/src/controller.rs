@@ -446,7 +446,12 @@ impl Controller {
                 move |d| sleeper(d),
             );
             match res {
-                Ok(id) => {
+                Ok(up) => {
+                    let id = up.id;
+                    let mut warnings = warnings;
+                    if let Some(why) = up.not_processed {
+                        warnings.push(format!("Terunggah, tetapi belum diproses: {why}. Atur mesin di Pengaturan, lalu tekan Proses pada rapat ini."));
+                    }
                     let _ = fs::write(
                         dir.join(UPLOADED_FILE),
                         format!("{{\"meeting_id\":\"{id}\"}}"),

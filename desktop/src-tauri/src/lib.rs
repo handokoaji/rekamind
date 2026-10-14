@@ -1,7 +1,9 @@
 //! Rekamind desktop shell. All real logic lives in `rekamind-recorder` (tested without a GUI);
 //! this file only wires it to the window, tray, global shortcut and notifications.
 
+use std::collections::VecDeque;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -9,9 +11,10 @@ use rekamind_recorder::backend::synthetic::{Script, SyntheticBackend};
 use rekamind_recorder::backend::{default_backend, Backend};
 use rekamind_recorder::controller::{Controller, Phase, UiState};
 use rekamind_recorder::api::Client;
-use rekamind_recorder::local_backend::Watcher;
+use rekamind_recorder::engines::EngineTool;
+use rekamind_recorder::local_backend::{LocalBackend, Watcher};
 use rekamind_recorder::login::{PendingLogin, TokenStore};
-use rekamind_recorder::settings::{new_local_token, Settings};
+use rekamind_recorder::settings::{new_local_token, BackendEnv, Settings};
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -40,9 +43,51 @@ struct Shared {
     store: Arc<dyn TokenStore>,
     /// Signed-in user's token for a remote server (None until they sign in).
     user_token: Mutex<Option<String>>,
+    /// Backend data (SQLite, models, engine pack, logs) lives here, apart from the recordings.
+    data_dir: PathBuf,
+    /// The backend shipped inside the installer (None in a development checkout).
+    bundled: Option<PathBuf>,
+    /// Secrets for the local backend, kept in the OS credential store and mirrored here.
+    llm_key: Mutex<Option<String>>,
+    hf_token: Mutex<Option<String>>,
+    /// The one long-running engine job (install / model download) and what it has printed so far,
+    /// so a window opened mid-install sees the progress instead of an empty page.
+    engine_job: Mutex<EngineJob>,
+    engine_cancel: AtomicBool,
+}
+
+#[derive(Default, Clone, serde::Serialize)]
+struct EngineJob {
+    /// "install cpu", "warmup", ... while running.
+    running: Option<String>,
+    log: VecDeque<String>,
+    /// Outcome of the last finished job: None = no job yet, Some(None) = ok, Some(Some(msg)) = failed.
+    last_error: Option<Option<String>>,
 }
 
 impl Shared {
+    fn env<R>(&self, f: impl FnOnce(&BackendEnv) -> R) -> R {
+        let llm = self.llm_key.lock().unwrap().clone();
+        let hf = self.hf_token.lock().unwrap().clone();
+        let env = BackendEnv {
+            token: &self.local_token,
+            data_dir: &self.data_dir,
+            engines_ready: self.data_dir.join("engine-pack").join("installed.json").is_file(),
+            llm_api_key: llm.as_deref(),
+            hf_token: hf.as_deref(),
+            bundled: self.bundled.as_deref(),
+        };
+        f(&env)
+    }
+
+    fn make_backend(&self, s: &Settings) -> Option<Arc<LocalBackend>> {
+        self.env(|e| s.local_backend(e))
+    }
+
+    fn engine_tool(&self, s: &Settings) -> EngineTool {
+        self.env(|e| s.engine_tool(e))
+    }
+
     /// The credential for whichever server is selected.
     fn credential(&self, s: &Settings) -> Option<String> {
         if s.mode == "local" {
@@ -55,23 +100,25 @@ impl Shared {
 
 /// The login token in the operating system's credential store (Windows Credential Manager, ...).
 /// If the store is unavailable the token simply is not remembered: the user signs in again next launch.
-struct KeyringStore;
+struct KeyringStore {
+    user: &'static str,
+}
 
 impl KeyringStore {
-    fn entry() -> Result<keyring::Entry, String> {
-        keyring::Entry::new("id.rekamind.desktop", "login-token").map_err(|e| e.to_string())
+    fn entry(&self) -> Result<keyring::Entry, String> {
+        keyring::Entry::new("id.rekamind.desktop", self.user).map_err(|e| e.to_string())
     }
 }
 
 impl TokenStore for KeyringStore {
     fn load(&self) -> Option<String> {
-        Self::entry().ok()?.get_password().ok()
+        self.entry().ok()?.get_password().ok()
     }
     fn save(&self, token: &str) -> Result<(), String> {
-        Self::entry()?.set_password(token).map_err(|e| e.to_string())
+        self.entry()?.set_password(token).map_err(|e| e.to_string())
     }
     fn clear(&self) {
-        if let Ok(e) = Self::entry() {
+        if let Ok(e) = self.entry() {
             let _ = e.delete_credential();
         }
     }
@@ -232,11 +279,17 @@ struct SettingsView {
     auth_token: Option<String>,
     recordings_dir: String,
     hotkey_error: Option<String>,
+    /// Secrets are never sent to the UI, only whether they are set.
+    has_llm_key: bool,
+    has_hf_token: bool,
+    /// True when this build carries its own backend (the installer); false in a development checkout.
+    bundled_backend: bool,
+    backend_dir: String,
 }
 
 fn view(sh: &Shared) -> SettingsView {
     let s = sh.settings.lock().unwrap().clone();
-    SettingsView { server_url: s.server_url(), auth_token: sh.credential(&s), settings: s, recordings_dir: sh.recordings.to_string_lossy().into_owned(), hotkey_error: sh.hotkey_error.lock().unwrap().clone() }
+    SettingsView { server_url: s.server_url(), auth_token: sh.credential(&s), settings: s, recordings_dir: sh.recordings.to_string_lossy().into_owned(), hotkey_error: sh.hotkey_error.lock().unwrap().clone(), has_llm_key: sh.llm_key.lock().unwrap().is_some(), has_hf_token: sh.hf_token.lock().unwrap().is_some(), bundled_backend: sh.bundled.is_some(), backend_dir: sh.data_dir.to_string_lossy().into_owned() }
 }
 
 #[tauri::command]
@@ -257,7 +310,7 @@ fn settings_set(app: AppHandle, sh: State<'_, Shared>, settings: Settings) -> Re
         old.stop();
     }
     sh.ctl.set_config(settings.to_config(sh.credential(&settings).as_deref()));
-    sh.ctl.set_local_backend(settings.local_backend(&sh.local_token));
+    sh.ctl.set_local_backend(sh.make_backend(&settings));
     *sh.settings.lock().unwrap() = settings.clone();
     restart_watcher(&sh);
     if settings.hotkey != old_hotkey {
@@ -322,6 +375,136 @@ async fn auth_logout(app: AppHandle, sh: State<'_, Shared>) -> Result<(), String
     Ok(())
 }
 
+// ----------------------------------------------------------------------------- engines
+
+/// Where the installer put the backend: `<resources>/backend/rekamind-backend[.exe]`. `REKAMIND_BACKEND_BIN`
+/// overrides it (used to test a freshly frozen build without installing it).
+fn bundled_backend(app: &AppHandle) -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("REKAMIND_BACKEND_BIN") {
+        let p = PathBuf::from(p);
+        return p.is_file().then_some(p);
+    }
+    let exe = if cfg!(windows) { "rekamind-backend.exe" } else { "rekamind-backend" };
+    let p = app.path().resource_dir().ok()?.join("backend").join(exe);
+    p.is_file().then_some(p)
+}
+
+#[derive(serde::Serialize)]
+struct EngineState {
+    /// The `status` document from the backend program (pack_dir, asr, diarize, kind).
+    pack: serde_json::Value,
+    job: EngineJob,
+}
+
+#[tauri::command]
+async fn engines_status(sh: State<'_, Shared>) -> Result<EngineState, String> {
+    let tool = sh.engine_tool(&sh.settings.lock().unwrap().clone());
+    let pack = tauri::async_runtime::spawn_blocking(move || tool.status()).await.map_err(|e| e.to_string())??;
+    Ok(EngineState { pack, job: sh.engine_job.lock().unwrap().clone() })
+}
+
+/// Really imports the engines and reports GPU visibility; run after an install and from "Uji mesin".
+#[tauri::command]
+async fn engines_check(sh: State<'_, Shared>) -> Result<serde_json::Value, String> {
+    let tool = sh.engine_tool(&sh.settings.lock().unwrap().clone());
+    tauri::async_runtime::spawn_blocking(move || tool.check()).await.map_err(|e| e.to_string())?
+}
+
+fn start_engine_job(app: AppHandle, label: String, args: Vec<String>) -> Result<(), String> {
+    let sh = app.state::<Shared>();
+    if sh.ctl.is_recording() {
+        return Err("Selesaikan rekaman dulu: pemasangan memakai banyak CPU dan jaringan.".into());
+    }
+    {
+        let mut job = sh.engine_job.lock().unwrap();
+        if job.running.is_some() {
+            return Err("Masih ada pemasangan yang berjalan.".into());
+        }
+        *job = EngineJob { running: Some(label), log: VecDeque::new(), last_error: None };
+    }
+    sh.engine_cancel.store(false, Ordering::SeqCst);
+    // The backend must not hold files of the pack while it is being replaced.
+    if let Some(lb) = sh.ctl.local_backend() {
+        lb.stop();
+    }
+    let settings = sh.settings.lock().unwrap().clone();
+    let tool = sh.engine_tool(&settings);
+    std::thread::spawn(move || {
+        let sh = app.state::<Shared>();
+        let argv: Vec<&str> = args.iter().map(String::as_str).collect();
+        let res = tool.run_streaming(&argv, &sh.engine_cancel, &mut |line| {
+            let mut job = sh.engine_job.lock().unwrap();
+            job.log.push_back(line.to_string());
+            while job.log.len() > 300 {
+                job.log.pop_front();
+            }
+            drop(job);
+            let _ = app.emit("engines://line", line);
+        });
+        {
+            let mut job = sh.engine_job.lock().unwrap();
+            job.running = None;
+            job.last_error = Some(res.as_ref().err().cloned());
+        }
+        // A finished install changes what the backend may do (REKAMIND_ENGINES), so rebuild it.
+        let current = sh.settings.lock().unwrap().clone();
+        sh.ctl.set_local_backend(sh.make_backend(&current));
+        let _ = app.emit("engines://done", res.err());
+    });
+    Ok(())
+}
+
+#[tauri::command]
+fn engines_install(app: AppHandle, kind: String, diarize: bool) -> Result<(), String> {
+    if kind != "cpu" && kind != "cuda" {
+        return Err("Jenis pemasangan harus cpu atau cuda.".into());
+    }
+    let mut args = vec!["install".to_string(), kind.clone()];
+    if diarize {
+        args.push("--diarize".into());
+    }
+    start_engine_job(app, format!("install {kind}"), args)
+}
+
+/// Download the Whisper weights now instead of at the first meeting.
+#[tauri::command]
+fn engines_warmup(app: AppHandle) -> Result<(), String> {
+    let model = app.state::<Shared>().settings.lock().unwrap().whisper_model.clone();
+    start_engine_job(app, "warmup".into(), vec!["warmup".into(), model])
+}
+
+#[tauri::command]
+fn engines_cancel(sh: State<'_, Shared>) {
+    sh.engine_cancel.store(true, Ordering::SeqCst);
+}
+
+/// `None` leaves a secret as it is; an empty string removes it.
+#[tauri::command]
+fn secrets_set(sh: State<'_, Shared>, llm_api_key: Option<String>, hf_token: Option<String>) -> Result<SettingsView, String> {
+    if sh.ctl.is_recording() {
+        return Err("Hentikan rekaman dulu sebelum mengubah pengaturan.".into());
+    }
+    for (value, user, slot) in [(llm_api_key, "llm-api-key", &sh.llm_key), (hf_token, "hf-token", &sh.hf_token)] {
+        let Some(v) = value else { continue };
+        let v = v.trim().to_string();
+        let store = KeyringStore { user };
+        if v.is_empty() {
+            store.clear();
+            *slot.lock().unwrap() = None;
+        } else {
+            // Still usable for this run if the OS store refuses it; the UI is told via `has_*` either way.
+            let _ = store.save(&v);
+            *slot.lock().unwrap() = Some(v);
+        }
+    }
+    if let Some(old) = sh.ctl.local_backend() {
+        old.stop();
+    }
+    let current = sh.settings.lock().unwrap().clone();
+    sh.ctl.set_local_backend(sh.make_backend(&current));
+    Ok(view(&sh))
+}
+
 // ----------------------------------------------------------------------------- app
 
 pub fn run() {
@@ -339,17 +522,16 @@ pub fn run() {
         )
         .setup(|app| {
             let config_dir = app.path().app_config_dir()?;
-            let recordings = app.path().app_data_dir()?.join("recordings");
+            let recordings = app.path().app_local_data_dir()?.join("recordings");
             std::fs::create_dir_all(&recordings)?;
             let settings_path = config_dir.join("settings.json");
             let settings = Settings::load(&settings_path);
 
             let local_token = new_local_token();
-            let store: Arc<dyn TokenStore> = Arc::new(KeyringStore);
+            let store: Arc<dyn TokenStore> = Arc::new(KeyringStore { user: "login-token" });
             let user_token = store.load();
             let credential = if settings.mode == "local" { Some(local_token.clone()) } else { user_token.clone() };
             let ctl = Arc::new(Controller::new(recordings.clone(), settings.to_config(credential.as_deref()), backend_factory));
-            ctl.set_local_backend(settings.local_backend(&local_token));
             let handle = app.handle().clone();
             ctl.set_observer(move || on_change(&handle));
 
@@ -365,6 +547,9 @@ pub fn run() {
             });
 
             let hotkey = settings.hotkey.clone();
+            let data_dir = app.path().app_local_data_dir()?.join("backend");
+            std::fs::create_dir_all(&data_dir)?;
+            let bundled = bundled_backend(app.handle());
             app.manage(Shared {
                 ctl,
                 settings: Mutex::new(settings),
@@ -378,8 +563,16 @@ pub fn run() {
                 local_token,
                 store,
                 user_token: Mutex::new(user_token),
+                data_dir,
+                bundled,
+                llm_key: Mutex::new(KeyringStore { user: "llm-api-key" }.load()),
+                hf_token: Mutex::new(KeyringStore { user: "hf-token" }.load()),
+                engine_job: Mutex::new(EngineJob::default()),
+                engine_cancel: AtomicBool::new(false),
             });
             let sh = app.state::<Shared>();
+            let current = sh.settings.lock().unwrap().clone();
+            sh.ctl.set_local_backend(sh.make_backend(&current));
             restart_watcher(&sh);
             register_hotkey(app.handle(), &hotkey);
 
@@ -452,6 +645,12 @@ pub fn run() {
             backend_ensure,
             auth_login,
             auth_logout,
+            engines_status,
+            engines_check,
+            engines_install,
+            engines_warmup,
+            engines_cancel,
+            secrets_set,
         ])
         .build(tauri::generate_context!())
         .expect("gagal membangun aplikasi Rekamind");

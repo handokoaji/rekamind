@@ -4,6 +4,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { isDesktop } from "../desktop/bridge";
+import { EngineSetupBanner } from "../desktop/EngineSetupBanner";
 import { RecordCard } from "../desktop/RecordCard";
 import { StatusBadge } from "../components/StatusBadge";
 import { Button } from "../components/ui/Button";
@@ -118,6 +119,7 @@ export function MeetingsPage() {
       </div>
 
       {isDesktop() && <RecordCard />}
+      {isDesktop() && <EngineSetupBanner ready={caps.data?.processing_ready} />}
 
       {canAdmin && (
         <div role="group" aria-label="Cakupan rapat" className="flex w-fit gap-1 rounded-lg border border-border bg-card p-1">

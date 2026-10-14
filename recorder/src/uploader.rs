@@ -40,6 +40,14 @@ impl<F: FnMut(u64)> Read for Counting<'_, F> {
 
 const RETRIES: u32 = 3;
 
+/// The meeting exists on the server with all its audio. Processing is a separate, optional step that
+/// can fail for reasons the recording does not care about (engines not installed yet, no API key).
+pub struct Uploaded {
+    pub id: String,
+    /// Why the automatic "process" request was refused, if it was. The upload itself still succeeded.
+    pub not_processed: Option<String>,
+}
+
 /// Create the meeting, upload every file, finish, optionally process. Returns the meeting id.
 /// `sleep` is injectable so tests don't wait out the backoff.
 pub fn upload_meeting(
@@ -48,7 +56,7 @@ pub fn upload_meeting(
     meta: &Meta,
     mut progress: impl FnMut(Progress),
     sleep: impl Fn(Duration),
-) -> Result<String, String> {
+) -> Result<Uploaded, String> {
     let total: u64 = files
         .iter()
         .map(|(_, p)| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
@@ -113,18 +121,20 @@ pub fn upload_meeting(
         fraction: 0.98,
     });
     client.finish(&id).map_err(|e| e.to_string())?;
+    let mut not_processed = None;
     if meta.process {
         progress(Progress {
             step: "memulai pemrosesan",
             fraction: 0.99,
         });
-        client.process(&id).map_err(|e| e.to_string())?;
+        // The audio is safely on the server at this point; failing here must not look like a failed upload.
+        not_processed = client.process(&id).err().map(|e| e.to_string());
     }
     progress(Progress {
         step: "selesai",
         fraction: 1.0,
     });
-    Ok(id)
+    Ok(Uploaded { id, not_processed })
 }
 
 fn open(path: &Path) -> Result<File, String> {

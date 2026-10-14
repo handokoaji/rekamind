@@ -126,7 +126,7 @@ fn upload(dir: &Path, files: &[(Source, PathBuf)], o: &Opts) -> Result<(), Strin
         process: o.process,
     };
     let mut last_step = "";
-    let id = uploader::upload_meeting(
+    let up = uploader::upload_meeting(
         &client,
         files,
         &meta,
@@ -138,10 +138,14 @@ fn upload(dir: &Path, files: &[(Source, PathBuf)], o: &Opts) -> Result<(), Strin
         },
         std::thread::sleep,
     )?;
-    eprintln!(
-        "Selesai diunggah. ID rapat: {id}{}",
-        if o.process { " (sedang diproses)" } else { "" }
-    );
+    let id = &up.id;
+    match &up.not_processed {
+        Some(why) => eprintln!("Selesai diunggah. ID rapat: {id}\nTetapi belum diproses: {why}"),
+        None => eprintln!(
+            "Selesai diunggah. ID rapat: {id}{}",
+            if o.process { " (sedang diproses)" } else { "" }
+        ),
+    }
     Ok(())
 }
 

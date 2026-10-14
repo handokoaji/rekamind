@@ -13,12 +13,33 @@ use std::time::{Duration, Instant};
 
 use crate::api::Client;
 
+/// A console program started by a GUI app must not flash a console window on Windows.
+pub(crate) fn hide_window(cmd: &mut Command) -> &mut Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    cmd
+}
+
+/// The last few lines of a log, for an error message that says *why* instead of just "it stopped".
+pub(crate) fn log_tail(path: &std::path::Path, lines: usize) -> String {
+    let text = std::fs::read(path)
+        .map(|b| String::from_utf8_lossy(&b[b.len().saturating_sub(8192)..]).into_owned())
+        .unwrap_or_default();
+    let all: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+    all[all.len().saturating_sub(lines)..].join("\n")
+}
+
 pub struct LocalBackend {
     program: String,
     args: Vec<String>,
     env: Vec<(String, String)>,
     url: String,
     token: Option<String>,
+    /// Where the backend's output goes (None: discarded). Also quoted in start-up errors.
+    log: Option<std::path::PathBuf>,
     /// Only a process *we* started is ours to stop; an already-running backend is left alone.
     child: Mutex<Option<Child>>,
     idle_since: Mutex<Option<Instant>>,
@@ -37,8 +58,32 @@ impl LocalBackend {
             env,
             url: url.into(),
             token: None,
+            log: None,
             child: Mutex::new(None),
             idle_since: Mutex::new(None),
+        }
+    }
+
+    /// Append the backend's stdout/stderr to this file.
+    pub fn with_log(mut self, path: impl Into<std::path::PathBuf>) -> Self {
+        self.log = Some(path.into());
+        self
+    }
+
+    fn output(&self) -> (Stdio, Stdio) {
+        let file = self.log.as_ref().and_then(|p| {
+            if let Some(d) = p.parent() {
+                let _ = std::fs::create_dir_all(d);
+            }
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(p)
+                .ok()
+        });
+        match file.and_then(|f| f.try_clone().ok().map(|g| (f, g))) {
+            Some((a, b)) => (Stdio::from(a), Stdio::from(b)),
+            None => (Stdio::null(), Stdio::null()),
         }
     }
 
@@ -74,19 +119,19 @@ impl LocalBackend {
                 }
             }
             if guard.is_none() {
-                let child = Command::new(&self.program)
-                    .args(&self.args)
+                let (out, err) = self.output();
+                let mut cmd = Command::new(&self.program);
+                cmd.args(&self.args)
                     .envs(self.env.iter().cloned())
                     .stdin(Stdio::null())
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .spawn()
-                    .map_err(|e| {
-                        format!(
-                            "tidak bisa menyalakan mesin pemrosesan lokal (`{}`): {e}",
-                            self.program
-                        )
-                    })?;
+                    .stdout(out)
+                    .stderr(err);
+                let child = hide_window(&mut cmd).spawn().map_err(|e| {
+                    format!(
+                        "tidak bisa menyalakan mesin pemrosesan lokal (`{}`): {e}",
+                        self.program
+                    )
+                })?;
                 *guard = Some(child);
             }
         }
@@ -106,8 +151,18 @@ impl LocalBackend {
                 status
             };
             if let Some(status) = exited {
+                let why = self
+                    .log
+                    .as_deref()
+                    .map(|p| log_tail(p, 6))
+                    .unwrap_or_default();
                 return Err(format!(
-                    "mesin pemrosesan lokal berhenti saat dinyalakan ({status})"
+                    "mesin pemrosesan lokal berhenti saat dinyalakan ({status}){}",
+                    if why.is_empty() {
+                        String::new()
+                    } else {
+                        format!(":\n{why}")
+                    }
                 ));
             }
             thread::sleep(Duration::from_millis(200));

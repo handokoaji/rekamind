@@ -7,8 +7,8 @@ import { join } from "node:path";
 const states = JSON.parse(readFileSync(join(import.meta.dirname, "../../desktop/contract/ui-state.json"), "utf8"));
 
 /** Pretends to be the Tauri shell: same invoke() protocol, state taken from the Rust golden file. */
-async function asDesktop(page: Page, phase: string) {
-  await page.addInitScript(({ states, phase }) => {
+async function asDesktop(page: Page, phase: string, mode = "remote") {
+  await page.addInitScript(({ states, phase, mode }) => {
     const w = window as unknown as Record<string, unknown> & { __calls: string[]; __phase: string };
     w.__calls = [];
     w.__phase = phase;
@@ -24,13 +24,19 @@ async function asDesktop(page: Page, phase: string) {
           case "recorder_stop": w.__phase = "uploading"; return;
           case "recorder_dismiss": w.__phase = "idle"; return;
           case "settings_get":
-            return { settings: { mode: "remote", server: location.origin, local_program: "python", local_args: ["-m", "rekamind_server"], local_port: 8787, language: "id", local_user_name: "Andi", auto_process: true, hotkey: "CmdOrCtrl+Alt+R" }, server_url: location.origin, recordings_dir: "/home/andi/.local/share/rekamind/recordings", hotkey_error: null };
+            return { settings: { mode, server: location.origin, local_program: "auto", local_args: [], local_port: 8787, language: "id", local_user_name: "Andi", auto_process: true, hotkey: "CmdOrCtrl+Alt+R",
+              whisper_model: "large-v3", whisper_device: "auto", diarizer: "none", llm_base_url: "https://api.groq.com/openai/v1", llm_model: "openai/gpt-oss-120b", glossary: "" },
+              server_url: location.origin, auth_token: null, recordings_dir: "/home/andi/.local/share/rekamind/recordings", hotkey_error: null,
+              has_llm_key: true, has_hf_token: false, bundled_backend: true, backend_dir: "/home/andi/.local/share/rekamind/backend" };
+          case "engines_status":
+            return { pack: { pack_dir: "/home/andi/.local/share/rekamind/backend/engine-pack", asr: true, diarize: false, kind: "cpu", python: "3.13" }, job: { running: null, log: ["Successfully installed faster-whisper-1.2.1"], last_error: null } };
+          case "engines_check": return { ok: true, error: null, cuda_devices: 0, faster_whisper: "1.2.1" };
           default: return; // backend_ensure, recorder_retry, recorder_discard...
         }
       },
     };
     w.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => undefined };
-  }, { states, phase });
+  }, { states, phase, mode });
 }
 
 async function settled(page: Page) {
@@ -87,3 +93,17 @@ test("a normal browser never shows desktop-only controls", async ({ page }) => {
   await expect(page.getByRole("region", { name: "Perekam" })).toHaveCount(0);
   await expect(page.getByText(/aplikasi desktop/)).toBeVisible(); // the browser is told where recording lives
 });
+
+for (const scheme of ["light", "dark"] as const) {
+  test(`desktop settings with the local engine panel are WCAG AA clean (${scheme})`, async ({ page }) => {
+    await asDesktop(page, "idle", "local");
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.goto("/pengaturan");
+    await expect(page.getByRole("heading", { name: "Mesin transkripsi" })).toBeVisible();
+    await expect(page.getByText(/Terpasang · CPU/)).toBeVisible();
+    await expect(page.getByLabel("Kunci API ringkasan")).toHaveAttribute("type", "password");
+    const res = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze();
+    expect(res.violations.map((v) => `${v.id}: ${v.nodes[0]?.target.join(" ")}`)).toEqual([]);
+    await page.screenshot({ path: `e2e-shots/desktop-settings-${scheme}.png`, fullPage: true });
+  });
+}

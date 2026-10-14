@@ -422,3 +422,37 @@ fn an_expired_login_keeps_the_recording_and_says_how_to_continue() {
         "the audio is still on disk, ready to upload after signing in again"
     );
 }
+
+#[test]
+fn a_refused_process_request_is_a_warning_not_a_failed_upload() {
+    // Found by running the installed app on a fresh machine: engines not installed yet -> the server
+    // answers 503 to "process", and the UI used to say the recording was NOT uploaded (it was).
+    let m = start(|req: &mock_server::Req| {
+        if req.path == "/api/meetings/abc123/process" {
+            (
+                503,
+                r#"{"detail":"Mesin pemrosesan belum dikonfigurasi di backend ini"}"#.into(),
+            )
+        } else {
+            backend_ok(req)
+        }
+    });
+    let d = tempfile::tempdir().unwrap();
+    let c = ctl(d.path(), Some(&m.url));
+    record_a_bit(&c, "Rapat pertama");
+    let s = wait_for(&c, "upload to finish", |s| s.phase == Phase::Done);
+    let last = s.last.unwrap();
+    assert_eq!(last.meeting_id.as_deref(), Some("abc123"));
+    assert!(last.error.is_none(), "{:?}", last.error);
+    assert!(
+        last.warnings
+            .iter()
+            .any(|w| w.contains("belum diproses") && w.contains("belum dikonfigurasi")),
+        "{:?}",
+        last.warnings
+    );
+    assert!(
+        s.pending.is_empty(),
+        "the recording is uploaded, so it is no longer pending"
+    );
+}

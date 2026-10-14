@@ -2,12 +2,13 @@
 //! config and the on-demand local backend. No GUI types here, so it is all unit-tested.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
 use crate::controller::Config;
+use crate::engines::EngineTool;
 use crate::local_backend::LocalBackend;
 
 /// A fresh secret for each launch of the app: it lives in memory here and in the backend's environment,
@@ -34,6 +35,36 @@ pub struct Settings {
     pub auto_process: bool,
     /// Global shortcut that starts/stops recording from any app.
     pub hotkey: String,
+    // --- processing (used by the local backend only) ---
+    /// A faster-whisper model name (large-v3, medium, small...) or a folder.
+    pub whisper_model: String,
+    /// auto | cuda | cpu
+    pub whisper_device: String,
+    /// none (one "speaker" per source) | pyannote (needs the diarize pack and a Hugging Face token)
+    pub diarizer: String,
+    /// Any OpenAI-compatible endpoint that writes the summary and the tasks.
+    pub llm_base_url: String,
+    pub llm_model: String,
+    /// Names and jargon fed to Whisper as a prompt.
+    pub glossary: String,
+}
+
+/// What the backend needs from the app each time it starts. Secrets live in the OS credential
+/// store and only ever travel as environment variables of the child process.
+pub struct BackendEnv<'a> {
+    pub token: &'a str,
+    pub data_dir: &'a Path,
+    pub engines_ready: bool,
+    pub llm_api_key: Option<&'a str>,
+    pub hf_token: Option<&'a str>,
+    /// The backend shipped inside the installer, if this build has one.
+    pub bundled: Option<&'a Path>,
+}
+
+impl BackendEnv<'_> {
+    pub fn pack_dir(&self) -> PathBuf {
+        self.data_dir.join("engine-pack")
+    }
 }
 
 impl Default for Settings {
@@ -41,13 +72,20 @@ impl Default for Settings {
         Self {
             mode: "local".into(),
             server: String::new(),
-            local_program: "python".into(),
-            local_args: vec!["-m".into(), "rekamind_server".into()],
+            // "auto": the backend bundled with the installer, else `python -m rekamind_server`.
+            local_program: "auto".into(),
+            local_args: Vec::new(),
             local_port: 8787,
             language: "id".into(),
             local_user_name: String::new(),
             auto_process: true,
             hotkey: "CmdOrCtrl+Alt+R".into(),
+            whisper_model: "large-v3".into(),
+            whisper_device: "auto".into(),
+            diarizer: "none".into(),
+            llm_base_url: "https://api.groq.com/openai/v1".into(),
+            llm_model: "openai/gpt-oss-120b".into(),
+            glossary: String::new(),
         }
     }
 }
@@ -85,6 +123,27 @@ impl Settings {
             }
             _ => return Err("Mode harus 'local' atau 'remote'.".into()),
         }
+        if !["auto", "cuda", "cpu"].contains(&self.whisper_device.as_str()) {
+            return Err("Perangkat Whisper harus auto, cuda, atau cpu.".into());
+        }
+        if !["none", "pyannote"].contains(&self.diarizer.as_str()) {
+            return Err("Pemisah pembicara harus 'none' atau 'pyannote'.".into());
+        }
+        self.whisper_model = self.whisper_model.trim().to_string();
+        if self.whisper_model.is_empty() || self.whisper_model.chars().count() > 200 {
+            return Err("Nama model Whisper tidak valid.".into());
+        }
+        self.llm_model = self.llm_model.trim().to_string();
+        if self.llm_model.is_empty() || self.llm_model.chars().count() > 200 {
+            return Err("Nama model ringkasan tidak valid.".into());
+        }
+        let base = self.llm_base_url.trim().trim_end_matches('/').to_string();
+        let ok_scheme = base.starts_with("http://") || base.starts_with("https://");
+        if !ok_scheme || base.contains(char::is_whitespace) || base.contains('@') {
+            return Err("Alamat layanan ringkasan harus diawali http:// atau https://".into());
+        }
+        self.llm_base_url = base;
+        self.glossary = self.glossary.chars().take(2000).collect();
         if !["id", "en"].contains(&self.language.as_str()) {
             return Err("Bahasa tidak dikenal.".into());
         }
@@ -116,27 +175,103 @@ impl Settings {
         }
     }
 
-    pub fn local_backend(&self, token: &str) -> Option<Arc<LocalBackend>> {
-        if self.mode != "local" {
-            return None;
+    /// What to run: (program, args for the backend, args that select the `engines` command).
+    pub fn launch(&self, bundled: Option<&Path>) -> (String, Vec<String>, Vec<String>) {
+        let python_engines = vec!["-m".to_string(), "rekamind_server.enginepack".to_string()];
+        if self.local_program == "auto" {
+            return match bundled {
+                Some(p) => (
+                    p.to_string_lossy().into_owned(),
+                    vec![],
+                    vec!["engines".into()],
+                ),
+                None => (
+                    "python".into(),
+                    vec!["-m".into(), "rekamind_server".into()],
+                    python_engines,
+                ),
+            };
         }
-        let env = vec![
+        (
+            self.local_program.clone(),
+            self.local_args.clone(),
+            python_engines,
+        )
+    }
+
+    /// Environment for the child process (backend and engine tool alike).
+    pub fn backend_env(&self, e: &BackendEnv) -> Vec<(String, String)> {
+        let mut env = vec![
             // Single user, no Google login, loopback only, and every request must carry this secret.
             ("REKAMIND_AUTH".to_string(), "local_token".to_string()),
-            ("REKAMIND_LOCAL_TOKEN".to_string(), token.to_string()),
+            ("REKAMIND_LOCAL_TOKEN".to_string(), e.token.to_string()),
             ("REKAMIND_HOST".to_string(), "127.0.0.1".to_string()),
             ("REKAMIND_PORT".to_string(), self.local_port.to_string()),
             ("REKAMIND_CORS_ORIGINS".to_string(), UI_ORIGINS.to_string()),
+            (
+                "REKAMIND_DATA_DIR".to_string(),
+                e.data_dir.to_string_lossy().into_owned(),
+            ),
+            (
+                "REKAMIND_ENGINE_PACK".to_string(),
+                e.pack_dir().to_string_lossy().into_owned(),
+            ),
+            // Model weights live with the app's data, not in a hidden per-user cache.
+            (
+                "HF_HOME".to_string(),
+                e.data_dir.join("models").to_string_lossy().into_owned(),
+            ),
+            (
+                "REKAMIND_ENGINES".to_string(),
+                if e.engines_ready { "local" } else { "none" }.to_string(),
+            ),
+            ("REKAMIND_LANGUAGE".to_string(), self.language.clone()),
+            (
+                "REKAMIND_WHISPER_MODEL".to_string(),
+                self.whisper_model.clone(),
+            ),
+            (
+                "REKAMIND_WHISPER_DEVICE".to_string(),
+                self.whisper_device.clone(),
+            ),
+            ("REKAMIND_DIARIZER".to_string(), self.diarizer.clone()),
+            (
+                "REKAMIND_LLM_BASE_URL".to_string(),
+                self.llm_base_url.clone(),
+            ),
+            ("REKAMIND_LLM_MODEL".to_string(), self.llm_model.clone()),
+            ("REKAMIND_GLOSSARY".to_string(), self.glossary.clone()),
         ];
+        if let Some(k) = e.llm_api_key.filter(|k| !k.is_empty()) {
+            env.push(("REKAMIND_LLM_API_KEY".into(), k.to_string()));
+        }
+        if let Some(t) = e.hf_token.filter(|t| !t.is_empty()) {
+            env.push(("REKAMIND_HF_TOKEN".into(), t.to_string()));
+        }
+        env
+    }
+
+    /// The on-demand local backend, or None when a remote server is selected.
+    pub fn local_backend(&self, e: &BackendEnv) -> Option<Arc<LocalBackend>> {
+        if self.mode != "local" {
+            return None;
+        }
+        let (program, args, _) = self.launch(e.bundled);
         Some(Arc::new(
-            LocalBackend::new(
-                self.local_program.clone(),
-                self.local_args.clone(),
-                env,
-                self.server_url(),
-            )
-            .with_token(token),
+            LocalBackend::new(program, args, self.backend_env(e), self.server_url())
+                .with_token(e.token)
+                .with_log(e.data_dir.join("logs").join("backend.log")),
         ))
+    }
+
+    /// The same program, asked to manage the engine pack. Works in either mode (the pack is local).
+    pub fn engine_tool(&self, e: &BackendEnv) -> EngineTool {
+        let (program, _, prefix) = self.launch(e.bundled);
+        EngineTool {
+            program,
+            prefix,
+            env: self.backend_env(e),
+        }
     }
 
     /// Missing or unreadable file -> defaults; a corrupt file must never stop the app from opening.

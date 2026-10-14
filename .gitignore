@@ -27,3 +27,7 @@ recorder/target/
 desktop/node_modules/
 desktop/src-tauri/target/
 desktop/src-tauri/gen/
+
+# bundled backend (built by scripts/build_desktop.py)
+desktop/src-tauri/resources/
+server/build/
