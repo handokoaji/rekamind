@@ -3,12 +3,12 @@ import {
   ArrowLeft, Check, ClipboardCopy, Download, FileText, HelpCircle, ListChecks, Pencil, Play, RotateCcw, ShieldAlert,
   ShieldCheck, Undo2, Users, X,
 } from "lucide-react";
-import { useWindowVirtualizer } from "@tanstack/react-virtual";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { usePlayer } from "../components/Player";
 import { StatusBadge } from "../components/StatusBadge";
+import { VirtualList } from "../components/VirtualList";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
@@ -121,13 +121,15 @@ function TaskCard({ t, m, onPatch }: { t: Task; m: MeetingDetail; onPatch: (patc
 function CompactTask({ t, m, action }: { t: Task; m: MeetingDetail; action: React.ReactNode }) {
   const who = assigneeName(t, m.participants);
   return (
-    <li className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-border bg-card px-4 py-3">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-border bg-card px-4 py-3">
       <span className="min-w-0 flex-1 basis-56 font-medium">{t.title}</span>
       <span className="text-sm text-muted">{[who && `PIC: ${who}`, t.deadline].filter(Boolean).join(" · ")}</span>
       {action}
-    </li>
+    </div>
   );
 }
+
+const VIRTUALIZE_TASKS_AFTER = 40;
 
 function TasksTab({ m }: { m: MeetingDetail }) {
   const patch = usePatchTask(m.id);
@@ -149,7 +151,9 @@ function TasksTab({ m }: { m: MeetingDetail }) {
               <p className="text-sm text-muted">Task ini disarankan AI. Periksa PIC dan tenggatnya sebelum dikonfirmasi.</p></div>
             {sure.length > 0 && <Button onClick={() => sure.forEach((t) => run(t.id, { status: "confirmed" }))}><Check className="size-4" aria-hidden /> Konfirmasi {sure.length} yang yakin</Button>}
           </div>
-          {suggested.map((t) => <TaskCard key={t.id} t={t} m={m} onPatch={(p) => run(t.id, p)} />)}
+          {suggested.length > VIRTUALIZE_TASKS_AFTER
+            ? <VirtualList items={suggested} gap={16} estimate={190} label={`Task untuk ditinjau, ${suggested.length}`} render={(t) => <TaskCard t={t} m={m} onPatch={(p) => run(t.id, p)} />} />
+            : suggested.map((t) => <TaskCard key={t.id} t={t} m={m} onPatch={(p) => run(t.id, p)} />)}
         </section>)}
 
       {confirmed.length > 0 && (
@@ -163,15 +167,19 @@ function TasksTab({ m }: { m: MeetingDetail }) {
                 <Download className="size-3.5" aria-hidden /> Unduh JSON</Button>
             </div>
           </div>
-          <ul className="flex flex-col gap-2">{confirmed.map((t) => (
-            <CompactTask key={t.id} t={t} m={m} action={<Button size="sm" variant="ghost" onClick={() => run(t.id, { status: "suggested" })}><Undo2 className="size-3.5" aria-hidden /> Batalkan</Button>} />))}</ul>
+          {(() => {
+            const action = (t: Task) => <Button size="sm" variant="ghost" onClick={() => run(t.id, { status: "suggested" })}><Undo2 className="size-3.5" aria-hidden /> Batalkan</Button>;
+            return confirmed.length > VIRTUALIZE_TASKS_AFTER
+              ? <VirtualList items={confirmed} gap={8} estimate={72} label={`Task dikonfirmasi, ${confirmed.length}`} render={(t) => <CompactTask t={t} m={m} action={action(t)} />} />
+              : <ul className="flex flex-col gap-2">{confirmed.map((t) => <li key={t.id}><CompactTask t={t} m={m} action={action(t)} /></li>)}</ul>;
+          })()}
         </section>)}
 
       {rejected.length > 0 && (
         <details className="group">
           <summary className="cursor-pointer text-sm font-medium text-muted hover:text-fg">Ditolak ({rejected.length})</summary>
           <ul className="mt-3 flex flex-col gap-2">{rejected.map((t) => (
-            <CompactTask key={t.id} t={t} m={m} action={<Button size="sm" variant="ghost" onClick={() => run(t.id, { status: "suggested" })}><Undo2 className="size-3.5" aria-hidden /> Kembalikan</Button>} />))}</ul>
+            <li key={t.id}><CompactTask t={t} m={m} action={<Button size="sm" variant="ghost" onClick={() => run(t.id, { status: "suggested" })}><Undo2 className="size-3.5" aria-hidden /> Kembalikan</Button>} /></li>))}</ul>
         </details>)}
     </div>
   );
@@ -228,19 +236,7 @@ function TranscriptTab({ m }: { m: MeetingDetail }) {
 const VIRTUALIZE_AFTER = 150;
 
 function VirtualTranscript<G>({ groups, row }: { groups: G[]; row: (g: G) => ReactNode }) {
-  const listRef = useRef<HTMLOListElement>(null);
-  const [margin, setMargin] = useState(0);
-  useLayoutEffect(() => { setMargin(listRef.current?.offsetTop ?? 0); }, []);
-  const v = useWindowVirtualizer({ count: groups.length, estimateSize: () => 110, overscan: 8, scrollMargin: margin, gap: 20 });
-  return (
-    <ol ref={listRef} className="relative" style={{ height: v.getTotalSize() }} aria-label={`Transkrip, ${groups.length} bagian`}>
-      {v.getVirtualItems().map((it) => (
-        <li key={it.key} data-index={it.index} ref={v.measureElement} aria-setsize={groups.length} aria-posinset={it.index + 1}
-          className="absolute left-0 top-0 flex w-full gap-3" style={{ transform: `translateY(${it.start - v.options.scrollMargin}px)` }}>
-          {row(groups[it.index]!)}
-        </li>))}
-    </ol>
-  );
+  return <VirtualList as="ol" items={groups} gap={20} estimate={110} label={`Transkrip, ${groups.length} bagian`} itemClassName="flex gap-3" render={row} />;
 }
 
 // ---------------------------------------------------------------- Pembicara

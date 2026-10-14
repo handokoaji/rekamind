@@ -1,22 +1,19 @@
 import { expect, test } from "@playwright/test";
-const BASE = "http://127.0.0.1:18998";
-test("virtual transcript works", async ({ page }) => {
+const BASE = process.env.LOAD_BASE ?? "http://127.0.0.1:18998";
+test("virtual task list is interactive", async ({ page }) => {
   const list = await (await page.request.get(`${BASE}/api/meetings`)).json();
-  const all = await Promise.all(list.map(async (m: { id: string }) => (await page.request.get(`${BASE}/api/meetings/${m.id}`)).json()));
-  const t = all.sort((a: { segments: unknown[] }, b: { segments: unknown[] }) => b.segments.length - a.segments.length)[0];
-  await page.goto(`${BASE}/rapat/${t.id}`);
-  await page.getByRole("tab", { name: /^Transkrip/ }).click();
-  await page.waitForTimeout(300);
-  await page.screenshot({ path: "e2e-shots/vt-top.png" });
-  await page.mouse.move(600, 500); await page.mouse.wheel(0, 40000); await page.waitForTimeout(400);
-  console.log("scrollY after wheel", await page.evaluate(() => window.scrollY));
-  await page.screenshot({ path: "e2e-shots/vt-mid.png" });
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); await page.waitForTimeout(800);
-  console.log("scrollY at end", await page.evaluate(() => window.scrollY), await page.evaluate(() => document.body.scrollHeight));
-  const last = t.segments[t.segments.length - 1].text.slice(0, 20);
-  await expect(page.getByText(last).last()).toBeVisible();
-  await page.screenshot({ path: "e2e-shots/vt-end.png" });
-  const first = page.getByRole("button", { name: /Putar dari/ }).first();
-  await first.click();
-  await expect(page.getByRole("region", { name: /pemutar|Pemutar/i }).or(page.locator("audio"))).toBeAttached();
+  await page.goto(`${BASE}/rapat/${list[0].id}`);
+  await page.getByRole("tab", { name: /^Task/ }).click();
+  const confirm = page.getByRole("button", { name: /Konfirmasi/ }).first();
+  await expect(confirm).toBeVisible();
+  const before = await page.getByRole("heading", { name: /Perlu ditinjau \((\d+)\)/ }).textContent();
+  await confirm.click();
+  await expect(page.getByRole("heading", { name: /Perlu ditinjau/ })).not.toHaveText(before!);
+  for (const y of [1200, 8000, 30000, 60000]) {
+    await page.evaluate((v) => window.scrollTo(0, v), y); await page.waitForTimeout(500);
+    const rows = await page.locator("li[data-index]").evaluateAll((els) => els.filter((e) => { const r = e.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight; }).length);
+    console.log(`scroll ${y}: visible rows ${rows}`);
+    expect(rows).toBeGreaterThan(2);
+  }
+  await page.screenshot({ path: "e2e-shots/vt-tasks.png" });
 });
