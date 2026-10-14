@@ -379,11 +379,15 @@ fn ui_state_json_matches_the_golden_contract_file() {
         },
         "done": UiState {
             phase: Phase::Done, title: Some("Rapat vendor".into()), elapsed_secs: 0.0, sources: vec![], upload: None, pending: vec![],
-            last: Some(Outcome { title: "Rapat vendor".into(), dir: "/rec/rapat-1".into(), meeting_id: Some("abc123".into()), error: None, warnings: vec![] }),
+            last: Some(Outcome { title: "Rapat vendor".into(), dir: "/rec/rapat-1".into(), meeting_id: Some("abc123".into()), error: None, warnings: vec![], not_processed: None }),
+        },
+        "done_not_processed": UiState {
+            phase: Phase::Done, title: Some("Rapat vendor".into()), elapsed_secs: 0.0, sources: vec![], upload: None, pending: vec![],
+            last: Some(Outcome { title: "Rapat vendor".into(), dir: "/rec/rapat-1".into(), meeting_id: Some("abc123".into()), error: None, warnings: vec![], not_processed: Some("Mesin pemrosesan belum dikonfigurasi di backend ini (HTTP 503)".into()) }),
         },
         "needs_attention": UiState {
             phase: Phase::NeedsAttention, title: Some("Rapat vendor".into()), elapsed_secs: 0.0, sources: vec![], upload: None, pending: vec![pending],
-            last: Some(Outcome { title: "Rapat vendor".into(), dir: "/rec/rapat-1".into(), meeting_id: None, error: Some("server tidak terjangkau".into()), warnings: vec!["Mikrofon: tidak ada mikrofon yang aktif".into()] }),
+            last: Some(Outcome { title: "Rapat vendor".into(), dir: "/rec/rapat-1".into(), meeting_id: None, error: Some("server tidak terjangkau".into()), warnings: vec!["Mikrofon: tidak ada mikrofon yang aktif".into()], not_processed: None }),
         },
     });
     let path =
@@ -445,11 +449,11 @@ fn a_refused_process_request_is_a_warning_not_a_failed_upload() {
     assert_eq!(last.meeting_id.as_deref(), Some("abc123"));
     assert!(last.error.is_none(), "{:?}", last.error);
     assert!(
-        last.warnings
-            .iter()
-            .any(|w| w.contains("belum diproses") && w.contains("belum dikonfigurasi")),
+        last.not_processed
+            .as_deref()
+            .is_some_and(|w| w.contains("belum dikonfigurasi")),
         "{:?}",
-        last.warnings
+        last.not_processed
     );
     assert!(
         s.pending.is_empty(),

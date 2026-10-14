@@ -108,7 +108,7 @@ impl LocalBackend {
     /// Make sure a backend is answering at `url`, starting one if needed.
     pub fn ensure(&self, timeout: Duration) -> Result<(), String> {
         if self.is_healthy() {
-            return Ok(());
+            return self.verify_ours();
         }
         {
             let mut guard = self.child.lock().unwrap();
@@ -139,7 +139,7 @@ impl LocalBackend {
         while Instant::now() < deadline {
             if self.is_healthy() {
                 *self.idle_since.lock().unwrap() = None;
-                return Ok(());
+                return self.verify_ours();
             }
             // One lock scope: holding the guard while locking again would deadlock (Mutex is not reentrant).
             let exited = {
@@ -172,6 +172,23 @@ impl LocalBackend {
             "mesin pemrosesan lokal tidak siap setelah {} detik",
             timeout.as_secs()
         ))
+    }
+
+    /// Something answers on our port. If we did not start it, check that it honours our secret: a
+    /// leftover backend from an earlier run (different secret) would otherwise make every request
+    /// fail with a confusing "invalid token".
+    fn verify_ours(&self) -> Result<(), String> {
+        if self.token.is_none() || self.owns_process() {
+            return Ok(());
+        }
+        match self.client().accepts_credential() {
+            Ok(false) => Err(format!(
+                "Port {} sudah dipakai program lain (kemungkinan sisa Rekamind sebelumnya). \
+                 Tutup program itu atau ubah port di Pengaturan → Lanjutan, lalu coba lagi.",
+                self.url.rsplit(':').next().unwrap_or("?")
+            )),
+            _ => Ok(()),
+        }
     }
 
     pub fn stop(&self) {

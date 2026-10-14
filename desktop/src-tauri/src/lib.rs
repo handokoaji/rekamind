@@ -27,6 +27,9 @@ const TRAY_RECORDING: &[u8] = include_bytes!("../icons/tray-recording.png");
 /// A local backend nobody is using for this long is shut down (frees RAM and the GPU).
 const BACKEND_IDLE_AFTER: Duration = Duration::from_secs(10 * 60);
 
+/// Prefix the UI recognises: the local backend is intentionally off while engines are being installed.
+const ENGINE_BUSY: &str = "Pemasangan mesin sedang berjalan. Layanan lokal menyala lagi setelah selesai.";
+
 struct Shared {
     ctl: Arc<Controller>,
     settings: Mutex<Settings>,
@@ -323,6 +326,11 @@ fn settings_set(app: AppHandle, sh: State<'_, Shared>, settings: Settings) -> Re
 /// on demand), so the UI asks for it here and shows progress while it comes up.
 #[tauri::command]
 async fn backend_ensure(sh: State<'_, Shared>) -> Result<(), String> {
+    // The backend was stopped on purpose so the engine pack can be replaced; bringing it back now would
+    // hold files the installer needs. It is restarted when the job ends.
+    if sh.engine_job.lock().unwrap().running.is_some() {
+        return Err(ENGINE_BUSY.into());
+    }
     let ctl = sh.ctl.clone();
     tauri::async_runtime::spawn_blocking(move || ctl.ensure_backend(Duration::from_secs(90))).await.map_err(|e| e.to_string())?
 }

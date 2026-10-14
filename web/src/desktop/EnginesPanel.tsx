@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
+import { useBackendReady } from "./backend";
 import { desktop } from "./bridge";
 import type { EngineCheck, EngineState } from "./types";
 
@@ -17,6 +18,9 @@ export function EnginesPanel({ recording, whisperModel }: { recording: boolean; 
   const [check, setCheck] = useState<EngineCheck | null>(null);
   const [lines, setLines] = useState<string[]>([]);
   const logRef = useRef<HTMLPreElement>(null);
+  const { retry } = useBackendReady();
+  const retryRef = useRef(retry);
+  retryRef.current = retry;
 
   const refresh = useCallback(() => {
     desktop.engines().then((s) => { setState(s); setLines(s.job.log.slice(-12)); setError(null); }).catch((e: Error) => setError(e.message));
@@ -30,6 +34,7 @@ export function EnginesPanel({ recording, whisperModel }: { recording: boolean; 
       listen<string>("engines://line", (e) => setLines((p) => [...p.slice(-11), e.payload])),
       listen<string | null>("engines://done", (e) => {
         refresh();
+        retryRef.current(); // the local backend was stopped for the install; bring it back
         if (e.payload) toast.error(`Pemasangan gagal: ${e.payload}`); else { toast.success("Pemasangan selesai."); void desktop.checkEngines().then(setCheck).catch(() => undefined); }
       }),
     ])).then(([a, b]) => { off2 = () => { a(); b(); }; if (dead) off2(); }).catch(() => undefined);

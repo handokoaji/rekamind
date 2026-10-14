@@ -33,9 +33,12 @@ def test_status_reads_the_marker_written_by_a_finished_install(tmp_path):
 def test_pip_arguments_differ_by_hardware_and_never_touch_the_system_site(tmp_path):
     cpu = enginepack.pip_args("cpu", tmp_path, False)
     cuda = enginepack.pip_args("cuda", tmp_path, True, ["numpy==2.5.4"])
+    assert "--no-warn-conflicts" in cpu  # no alarming conflict noise from the frozen app's own metadata
     assert "--target" in cpu and str(tmp_path) in cpu and "--only-binary=:all:" in cpu
-    assert "https://download.pytorch.org/whl/cpu" in cpu and not any(a.startswith("nvidia") for a in cpu)
-    assert "https://download.pytorch.org/whl/cu126" in cuda
+    assert not any(a.startswith("nvidia") for a in cpu)
+    assert "--extra-index-url" not in cpu  # speech-only install never touches the torch index
+    assert "https://download.pytorch.org/whl/cu126" in cuda  # diarization needs torch, from the matching index
+    assert "https://download.pytorch.org/whl/cpu" in enginepack.pip_args("cpu", tmp_path, True)
     assert any(a.startswith("nvidia-cudnn") for a in cuda) and any(a.startswith("pyannote") for a in cuda)
     assert "numpy==2.5.4" in cuda  # keeps the pack consistent with what the frozen backend carries
     assert not any(a.startswith("pyannote") for a in cpu)

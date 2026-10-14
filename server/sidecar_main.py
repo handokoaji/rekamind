@@ -27,6 +27,9 @@ def run() -> int:
     if len(sys.argv) > 1 and sys.argv[1] == "engines":
         return enginepack.main(sys.argv[2:])
     enginepack.activate()  # engines are imported lazily, after this
+    from rekamind_server import parentwatch
+
+    parentwatch.watch_from_env()  # die with the desktop app instead of lingering after a crash
     import uvicorn
 
     from rekamind_server.api import create_app

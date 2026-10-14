@@ -116,6 +116,18 @@ impl Client {
         self.post("/../auth/logout", None).map(|_| ())
     }
 
+    /// Does the server accept our credential? `Ok(false)` means "answers, but not for us": a foreign
+    /// or stale process. Anything that is not a clear 401 counts as accepted (we only want to catch
+    /// the stranger on our port, not to second-guess a working server).
+    pub fn accepts_credential(&self) -> Result<bool, ApiError> {
+        let mut req = self.agent.get(format!("{}/api/capabilities", self.base));
+        if let Some(a) = self.auth() {
+            req = req.header("authorization", a);
+        }
+        let resp = req.call().map_err(err)?;
+        Ok(resp.status().as_u16() != 401)
+    }
+
     pub fn health(&self) -> Result<(), ApiError> {
         let resp = self
             .agent

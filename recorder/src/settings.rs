@@ -208,6 +208,11 @@ impl Settings {
             ("REKAMIND_HOST".to_string(), "127.0.0.1".to_string()),
             ("REKAMIND_PORT".to_string(), self.local_port.to_string()),
             ("REKAMIND_CORS_ORIGINS".to_string(), UI_ORIGINS.to_string()),
+            // The backend exits by itself if this app dies without cleaning up (crash, kill -9).
+            (
+                "REKAMIND_PARENT_PID".to_string(),
+                std::process::id().to_string(),
+            ),
             (
                 "REKAMIND_DATA_DIR".to_string(),
                 e.data_dir.to_string_lossy().into_owned(),

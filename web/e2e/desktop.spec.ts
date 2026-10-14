@@ -45,7 +45,7 @@ async function settled(page: Page) {
 }
 
 for (const scheme of ["light", "dark"] as const) {
-  for (const phase of ["idle", "recording", "uploading", "done", "needs_attention"]) {
+  for (const phase of ["idle", "recording", "uploading", "done", "done_not_processed", "needs_attention"]) {
     test(`desktop recorder UI is WCAG AA clean: ${phase} (${scheme})`, async ({ page }) => {
       await asDesktop(page, phase);
       await page.emulateMedia({ colorScheme: scheme });

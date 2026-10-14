@@ -29,7 +29,8 @@ function ServerStatus() {
   useEffect(() => {
     if (isError && quiet && !recording && backend.status === "ready") backend.retry();
   }, [isError, quiet, recording, backend]);
-  if (!isError || (quiet && (recording || backend.status === "starting"))) return null; // connected is the normal state: say nothing
+  const installing = !!backend.error?.startsWith("Pemasangan mesin");
+  if (!isError || (quiet && (recording || installing || backend.status === "starting"))) return null; // connected is the normal state: say nothing
   return (
     <button onClick={() => void refetch()} disabled={isFetching}
       className="flex items-center gap-2 rounded-full bg-danger-soft px-3 py-1 text-xs font-medium text-danger">

@@ -28,7 +28,7 @@ beforeEach(() => { Object.values(bridge).forEach((f) => f.mockReset().mockResolv
 
 describe("contract with the Rust side", () => {
   it("every state the Rust golden file contains satisfies the TypeScript contract", () => {
-    expect(Object.keys(contract).sort()).toEqual(["done", "idle", "needs_attention", "recording", "uploading"]);
+    expect(Object.keys(contract).sort()).toEqual(["done", "done_not_processed", "idle", "needs_attention", "recording", "uploading"]);
     for (const [name, s] of Object.entries(contract)) expect(isUiState(s), name).toBe(true);
   });
   it("rejects shapes that drifted", () => {
@@ -46,6 +46,17 @@ describe("RecordCard", () => {
     await userEvent.type(await screen.findByLabelText("Rekam rapat sekarang"), "Rapat vendor");
     await userEvent.click(screen.getByRole("button", { name: /Mulai merekam/ }));
     expect(bridge.start).toHaveBeenCalledWith("Rapat vendor");
+  });
+
+  it("done: says 'being processed' only when it really is; otherwise says why not and what to do", async () => {
+    const { unmount } = show(contract.done!);
+    expect(await screen.findByText(/terunggah dan sedang diproses/)).toBeInTheDocument();
+    unmount();
+    show(contract.done_not_processed!);
+    expect(await screen.findByText(/terunggah\./)).toBeInTheDocument();
+    expect(screen.queryByText(/sedang diproses/)).toBeNull();
+    expect(screen.getByText(/Belum diproses: Mesin pemrosesan belum dikonfigurasi/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Buka rapat" })).toBeInTheDocument();
   });
 
   it("idle: reminds the user to tell participants they are being recorded", async () => {

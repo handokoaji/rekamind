@@ -5,6 +5,23 @@
       "dir": "/rec/rapat-1",
       "error": null,
       "meeting_id": "abc123",
+      "not_processed": null,
+      "title": "Rapat vendor",
+      "warnings": []
+    },
+    "pending": [],
+    "phase": "done",
+    "sources": [],
+    "title": "Rapat vendor",
+    "upload": null
+  },
+  "done_not_processed": {
+    "elapsed_secs": 0.0,
+    "last": {
+      "dir": "/rec/rapat-1",
+      "error": null,
+      "meeting_id": "abc123",
+      "not_processed": "Mesin pemrosesan belum dikonfigurasi di backend ini (HTTP 503)",
       "title": "Rapat vendor",
       "warnings": []
     },
@@ -29,6 +46,7 @@
       "dir": "/rec/rapat-1",
       "error": "server tidak terjangkau",
       "meeting_id": null,
+      "not_processed": null,
       "title": "Rapat vendor",
       "warnings": [
         "Mikrofon: tidak ada mikrofon yang aktif"

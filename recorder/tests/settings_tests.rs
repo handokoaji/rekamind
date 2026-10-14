@@ -227,6 +227,11 @@ fn the_backend_environment_carries_the_secret_the_pack_and_processing_choices() 
     assert_eq!(get(&v, "REKAMIND_LOCAL_TOKEN"), Some("t0k"));
     assert_eq!(get(&v, "REKAMIND_HOST"), Some("127.0.0.1"));
     assert_eq!(get(&v, "REKAMIND_ENGINES"), Some("local"));
+    assert_eq!(
+        get(&v, "REKAMIND_PARENT_PID"),
+        Some(std::process::id().to_string().as_str()),
+        "the backend must be able to notice when the app dies"
+    );
     assert_eq!(get(&v, "REKAMIND_WHISPER_MODEL"), Some("medium"));
     assert_eq!(get(&v, "REKAMIND_DIARIZER"), Some("pyannote"));
     assert_eq!(get(&v, "REKAMIND_LLM_API_KEY"), Some("gsk_x"));

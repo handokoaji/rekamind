@@ -8,7 +8,7 @@ export interface SourceView {
   source: SourceId; label: string; level: number; state: SourceKind; message: string | null; seconds: number;
 }
 export interface UploadView { step: string; fraction: number }
-export interface Outcome { title: string; dir: string; meeting_id: string | null; error: string | null; warnings: string[] }
+export interface Outcome { title: string; dir: string; meeting_id: string | null; error: string | null; warnings: string[]; not_processed: string | null }
 export interface Pending { dir: string; title: string; created_unix: number; crashed: boolean }
 export interface UiState {
   phase: Phase; title: string | null; elapsed_secs: number; sources: SourceView[];
@@ -46,7 +46,7 @@ export function isUiState(x: unknown): x is UiState {
   };
   const outcome = (s: unknown) => {
     const v = s as Record<string, unknown>;
-    return !!v && isStr(v.title) && isStr(v.dir) && nullOr(isStr)(v.meeting_id) && nullOr(isStr)(v.error) && Array.isArray(v.warnings) && v.warnings.every(isStr);
+    return !!v && isStr(v.title) && isStr(v.dir) && nullOr(isStr)(v.meeting_id) && nullOr(isStr)(v.error) && Array.isArray(v.warnings) && v.warnings.every(isStr) && nullOr(isStr)(v.not_processed);
   };
   const upload = (s: unknown) => { const v = s as Record<string, unknown>; return !!v && isStr(v.step) && isNum(v.fraction); };
   const pending = (s: unknown) => { const v = s as Record<string, unknown>; return !!v && isStr(v.dir) && isStr(v.title) && isNum(v.created_unix) && typeof v.crashed === "boolean"; };

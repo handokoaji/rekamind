@@ -124,7 +124,11 @@ export function RecordCard() {
 
         {state.phase === "done" && state.last && (
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="flex items-center gap-2 font-medium"><CheckCircle2 className="size-5 text-success" aria-hidden /> “{state.last.title}” terunggah{state.last.meeting_id ? " dan sedang diproses" : ""}.</p>
+            <div className="flex flex-col gap-1">
+              <p className="flex items-center gap-2 font-medium"><CheckCircle2 className="size-5 text-success" aria-hidden /> “{state.last.title}” terunggah{state.last.meeting_id && !state.last.not_processed ? " dan sedang diproses" : ""}.</p>
+              {state.last.not_processed && <p className="pl-7 text-sm text-warning">Belum diproses: {state.last.not_processed}. Atur mesin di Pengaturan, lalu tekan Proses pada rapat ini.</p>}
+              {state.last.warnings.length > 0 && <ul className="list-disc pl-12 text-sm text-warning">{state.last.warnings.map((w) => <li key={w}>{w}</li>)}</ul>}
+            </div>
             <div className="flex gap-2">
               {state.last.meeting_id && <Link to={`/rapat/${state.last.meeting_id}`}><Button variant="primary">Buka rapat</Button></Link>}
               <Button variant="ghost" onClick={() => void dismiss()}>Tutup</Button>

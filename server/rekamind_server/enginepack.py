@@ -116,7 +116,12 @@ def pip_args(kind: str, pack: Path, with_diarize: bool, pins: list[str] | None =
         pkgs += PACKAGES["diarize"]
     # torch comes from the hardware-specific index; everything else still resolves from PyPI.
     return ["install", "--target", str(pack), "--upgrade", "--only-binary=:all:", "--disable-pip-version-check",
-            "--no-input", "--progress-bar", "off", "--root-user-action=ignore", "--extra-index-url", TORCH_INDEX[kind],
+            "--no-input", "--progress-bar", "off", "--root-user-action=ignore",
+            # pip also inspects the frozen app's own metadata and would print scary, irrelevant "ERROR:" conflicts.
+            "--no-warn-conflicts",
+            # Only pyannote needs torch. faster-whisper (ctranslate2) does not, and querying the extra index
+            # for every package would slow the install and fail wherever download.pytorch.org is blocked.
+            *(["--extra-index-url", TORCH_INDEX[kind]] if with_diarize else []),
             *pkgs, *(pins or [])]
 
 

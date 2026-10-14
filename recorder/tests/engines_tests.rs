@@ -130,3 +130,55 @@ fn a_backend_that_dies_at_startup_explains_why_from_its_log() {
     assert!(e.contains("libfoo.so missing"), "{e}");
     assert!(std::fs::read_to_string(&log).unwrap().contains("libfoo"));
 }
+
+#[test]
+fn a_stranger_already_on_our_port_is_reported_instead_of_failing_every_request() {
+    // Found on the installed app: a backend left over from an earlier run (other secret) was healthy,
+    // so it was "used", and the UI then showed "Token lokal tidak valid" for everything.
+    let d = tempfile::tempdir().unwrap();
+    let port = {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        l.local_addr().unwrap().port()
+    };
+    let script = d.path().join("stranger.py");
+    std::fs::write(
+        &script,
+        format!(
+            r#"
+import http.server, json
+class H(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a): pass
+    def do_GET(self):
+        if self.path == "/api/health": code, body = 200, {{"status": "ok"}}
+        else: code, body = 401, {{"detail": "Token lokal tidak valid."}}
+        b = json.dumps(body).encode(); self.send_response(code)
+        self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+http.server.HTTPServer(("127.0.0.1", {port}), H).serve_forever()
+"#
+        ),
+    )
+    .unwrap();
+    let mut stranger = std::process::Command::new("python3")
+        .arg(&script)
+        .spawn()
+        .unwrap();
+    let url = format!("http://127.0.0.1:{port}");
+    let t = Instant::now();
+    while Instant::now() - t < Duration::from_secs(10)
+        && !LocalBackend::new("x", vec![], vec![], url.clone()).is_healthy()
+    {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let lb = LocalBackend::new("never-started", vec![], vec![], url).with_token("ours");
+    let e = lb.ensure(Duration::from_secs(5)).unwrap_err();
+    assert!(
+        e.contains(&format!("Port {port}")) && e.contains("dipakai program lain"),
+        "{e}"
+    );
+    assert!(
+        !lb.owns_process(),
+        "we must not claim, or kill, a process we did not start"
+    );
+    let _ = stranger.kill();
+    let _ = stranger.wait();
+}

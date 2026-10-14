@@ -81,6 +81,8 @@ pub struct Outcome {
     pub meeting_id: Option<String>,
     pub error: Option<String>,
     pub warnings: Vec<String>,
+    /// Uploaded fine, but the server refused to start processing (engines not installed, no API key...).
+    pub not_processed: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -322,13 +324,14 @@ impl Controller {
                 meeting_id: None,
                 error: Some("Tidak ada audio yang terekam.".into()),
                 warnings: fin.warnings,
+                not_processed: None,
             });
             return;
         }
         let cfg = self.config();
         if cfg.server.is_none() {
             self.inner.lock().unwrap().last = Some(Outcome {
-                title, dir, meeting_id: None, warnings: fin.warnings,
+                title, dir, meeting_id: None, warnings: fin.warnings, not_processed: None,
                 error: Some("Alamat server belum diatur. Rekaman tersimpan di komputer ini dan bisa diunggah nanti.".into()),
             });
             return;
@@ -389,6 +392,7 @@ impl Controller {
                     dir: dir.to_string_lossy().into_owned(),
                     meeting_id: None,
                     warnings,
+                    not_processed: None,
                     error: Some(format!(
                         "{e}. Rekaman aman di komputer ini; coba lagi nanti."
                     )),
@@ -448,10 +452,6 @@ impl Controller {
             match res {
                 Ok(up) => {
                     let id = up.id;
-                    let mut warnings = warnings;
-                    if let Some(why) = up.not_processed {
-                        warnings.push(format!("Terunggah, tetapi belum diproses: {why}. Atur mesin di Pengaturan, lalu tekan Proses pada rapat ini."));
-                    }
                     let _ = fs::write(
                         dir.join(UPLOADED_FILE),
                         format!("{{\"meeting_id\":\"{id}\"}}"),
@@ -462,6 +462,7 @@ impl Controller {
                         meeting_id: Some(id),
                         error: None,
                         warnings,
+                        not_processed: up.not_processed,
                     });
                 }
                 Err(e) => fail(&inner, title, &dir, warnings, e),
