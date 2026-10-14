@@ -18,6 +18,9 @@
   --warning-soft: #fef3e2;
   --danger: #b42318;
   --danger-soft: #fdecea;
+  /* Solid red for buttons that carry white text: --danger is tuned as a TEXT colour per theme. */
+  --danger-solid: #b42318;
+  --danger-solid-fg: #ffffff;
   --info: #175cd3;
   --info-soft: #e8f1fe;
   color-scheme: light;
@@ -38,6 +41,8 @@
     --warning-soft: #33230f;
     --danger: #ff8a80;
     --danger-soft: #3a1714;
+    --danger-solid: #c0261b;
+    --danger-solid-fg: #ffffff;
     --info: #7db3ff;
     --info-soft: #14243f;
     color-scheme: dark;
@@ -60,6 +65,8 @@
   --color-warning-soft: var(--warning-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
+  --color-danger-solid: var(--danger-solid);
+  --color-danger-solid-fg: var(--danger-solid-fg);
   --color-info: var(--info);
   --color-info-soft: var(--info-soft);
 }

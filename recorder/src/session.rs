@@ -153,8 +153,19 @@ impl Session {
                 c.stop();
             }
         }
-        // Both files end at the same moment: pad any source that fell behind the wall clock.
-        let target = (duration.as_secs_f64() * SAMPLE_RATE as f64) as u64;
+        // Both files end at the same moment. The capture threads are joined by now, so every source's
+        // length is final: pad each one up to the longest (or the wall clock, if that is longer).
+        // Measuring only the wall clock would leave a source that wrote one last chunk after it
+        // was taken longer than the others -- off by up to a chunk, which misaligns the two channels.
+        let wall = (duration.as_secs_f64() * SAMPLE_RATE as f64) as u64;
+        let target = self
+            .running
+            .iter()
+            .filter(|r| !matches!(r.ctx.state(), SourceState::Unavailable(_)))
+            .map(|r| r.ctx.samples())
+            .max()
+            .unwrap_or(0)
+            .max(wall);
         let mut files = Vec::new();
         for r in &self.running {
             let have = r.ctx.samples();

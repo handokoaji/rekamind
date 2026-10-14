@@ -5,12 +5,16 @@
 
 pub mod api;
 pub mod backend;
+pub mod controller;
+pub mod local_backend;
 pub mod meter;
 pub mod resample;
 pub mod session;
+pub mod settings;
 pub mod sink;
 pub mod stats;
 pub mod timeline;
+pub mod uploader;
 pub mod wav;
 
 /// Everything downstream (Whisper, pyannote, the browser player) wants this rate.

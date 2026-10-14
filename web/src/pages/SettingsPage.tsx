@@ -3,6 +3,8 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
+import { isDesktop } from "../desktop/bridge";
+import { DesktopSettings } from "../desktop/DesktopSettings";
 import { Field, Input } from "../components/ui/Field";
 import { useCapabilities, useHealth } from "../hooks/queries";
 import { getBackendUrl, normalizeBackendUrl, setBackendUrl } from "../lib/api";
@@ -35,7 +37,7 @@ export function SettingsPage() {
   return (
     <div className="flex max-w-2xl flex-col gap-6">
       <h1 className="text-2xl font-semibold tracking-tight">Pengaturan</h1>
-      <Card className="flex flex-col gap-4 p-6">
+      {isDesktop() ? <DesktopSettings /> : <Card className="flex flex-col gap-4 p-6">
         <div className="flex items-center gap-2"><Server className="size-4 text-primary" aria-hidden /><h2 className="font-semibold">Server pemrosesan</h2></div>
         <p className="text-sm text-muted">Kosongkan untuk memakai server di komputer ini. Isi alamat jika pemrosesan dilakukan di server GPU terpisah.</p>
         <Field label="Alamat server" hint="Contoh: https://rekamind.kantor.id" error={invalid ? "Alamat harus diawali http:// atau https://" : undefined}>
@@ -46,7 +48,7 @@ export function SettingsPage() {
           <Button variant="primary" onClick={save} disabled={invalid || normalized === getBackendUrl()}>Simpan</Button>
         </div>
         <p className="text-xs text-muted">Catatan: login pengguna belum aktif. Jangan arahkan ke server yang terbuka ke internet.</p>
-      </Card>
+      </Card>}
 
       <Card className="flex flex-col gap-3 p-6">
         <h2 className="font-semibold">Status server</h2>

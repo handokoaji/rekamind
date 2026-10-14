@@ -78,8 +78,10 @@ impl Backend for SyntheticBackend {
         let flag = stop.clone();
         let thread = thread::spawn(move || {
             let chunk = (SAMPLE_RATE / 50) as usize; // 20 ms
-            let total = (SAMPLE_RATE as u64 * script.active_ms / 1000) as usize;
-            let skip = (SAMPLE_RATE as u64 * script.silent_gap_ms / 1000) as usize;
+                                                     // saturating: "run forever" scripts pass a huge active_ms
+            let total = (SAMPLE_RATE as u64).saturating_mul(script.active_ms) / 1000;
+            let total = usize::try_from(total).unwrap_or(usize::MAX);
+            let skip = ((SAMPLE_RATE as u64).saturating_mul(script.silent_gap_ms) / 1000) as usize;
             let started = Instant::now();
             let mut n = 0usize;
             let mut buf = vec![0i16; chunk];

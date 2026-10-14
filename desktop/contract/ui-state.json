@@ -1,0 +1,95 @@
+{
+  "done": {
+    "elapsed_secs": 0.0,
+    "last": {
+      "dir": "/rec/rapat-1",
+      "error": null,
+      "meeting_id": "abc123",
+      "title": "Rapat vendor",
+      "warnings": []
+    },
+    "pending": [],
+    "phase": "done",
+    "sources": [],
+    "title": "Rapat vendor",
+    "upload": null
+  },
+  "idle": {
+    "elapsed_secs": 0.0,
+    "last": null,
+    "pending": [],
+    "phase": "idle",
+    "sources": [],
+    "title": null,
+    "upload": null
+  },
+  "needs_attention": {
+    "elapsed_secs": 0.0,
+    "last": {
+      "dir": "/rec/rapat-1",
+      "error": "server tidak terjangkau",
+      "meeting_id": null,
+      "title": "Rapat vendor",
+      "warnings": [
+        "Mikrofon: tidak ada mikrofon yang aktif"
+      ]
+    },
+    "pending": [
+      {
+        "crashed": true,
+        "created_unix": 1790000000,
+        "dir": "/rec/rapat-1",
+        "title": "Rapat vendor"
+      }
+    ],
+    "phase": "needs_attention",
+    "sources": [],
+    "title": "Rapat vendor",
+    "upload": null
+  },
+  "recording": {
+    "elapsed_secs": 12.5,
+    "last": null,
+    "pending": [
+      {
+        "crashed": true,
+        "created_unix": 1790000000,
+        "dir": "/rec/rapat-1",
+        "title": "Rapat vendor"
+      }
+    ],
+    "phase": "recording",
+    "sources": [
+      {
+        "label": "Mikrofon",
+        "level": 0.4000000059604645,
+        "message": null,
+        "seconds": 12.5,
+        "source": "mic",
+        "state": "recording"
+      },
+      {
+        "label": "Audio komputer",
+        "level": 0.0,
+        "message": "Perangkat terputus, mencoba tersambung lagi…",
+        "seconds": 12.5,
+        "source": "speaker",
+        "state": "reconnecting"
+      }
+    ],
+    "title": "Rapat vendor",
+    "upload": null
+  },
+  "uploading": {
+    "elapsed_secs": 0.0,
+    "last": null,
+    "pending": [],
+    "phase": "uploading",
+    "sources": [],
+    "title": "Rapat vendor",
+    "upload": {
+      "fraction": 0.41999998688697815,
+      "step": "mengunggah mikrofon"
+    }
+  }
+}

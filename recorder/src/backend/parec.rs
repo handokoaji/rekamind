@@ -74,14 +74,40 @@ impl Backend for ParecBackend {
             Source::Mic => "@DEFAULT_SOURCE@",
             Source::Speaker => "@DEFAULT_MONITOR@",
         };
-        let mut child = Command::new(&self.command)
-            .args(["--raw", "--format=s16le", "--rate=16000", "--channels=1", "--latency-msec=200", "--client-name=rekamind"])
-            .arg(format!("--device={device}"))
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .stdin(Stdio::null())
-            .spawn()
-            .map_err(|e| format!("tidak bisa menjalankan `{}` ({e}). Pasang pulseaudio-utils (atau pipewire-pulse).", self.command))?;
+        let spawn = || {
+            Command::new(&self.command)
+                .args([
+                    "--raw",
+                    "--format=s16le",
+                    "--rate=16000",
+                    "--channels=1",
+                    "--latency-msec=200",
+                    "--client-name=rekamind",
+                ])
+                .arg(format!("--device={device}"))
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .stdin(Stdio::null())
+                .spawn()
+        };
+        // ETXTBSY: the executable is momentarily open for writing (just installed, or another thread
+        // forked while it was being written). It clears within milliseconds, so try again briefly.
+        let mut attempt = 0;
+        let mut child = loop {
+            match spawn() {
+                Err(e) if e.raw_os_error() == Some(libc::ETXTBSY) && attempt < 10 => {
+                    attempt += 1;
+                    thread::sleep(std::time::Duration::from_millis(20));
+                }
+                other => break other,
+            }
+        }
+        .map_err(|e| {
+            format!(
+                "tidak bisa menjalankan `{}` ({e}). Pasang pulseaudio-utils (atau pipewire-pulse).",
+                self.command
+            )
+        })?;
         let mut stdout = child.stdout.take().ok_or("stdout parec tidak tersedia")?;
         let fd = stdout.as_raw_fd();
         let child = Arc::new(std::sync::Mutex::new(child));

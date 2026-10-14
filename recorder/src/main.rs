@@ -8,6 +8,7 @@ use rekamind_recorder::api::Client;
 use rekamind_recorder::backend::synthetic::{Script, SyntheticBackend};
 use rekamind_recorder::session::{self, Finished, Session};
 use rekamind_recorder::sink::SourceState;
+use rekamind_recorder::uploader::{self, Meta};
 use rekamind_recorder::{stats, Source};
 
 const HELP: &str = "\
@@ -105,47 +106,29 @@ fn new_dir(root: &Path) -> PathBuf {
 fn upload(dir: &Path, files: &[(Source, PathBuf)], o: &Opts) -> Result<(), String> {
     let server = o.server.as_deref().ok_or("--server diperlukan")?;
     let client = Client::new(server, o.token.clone());
-    client.health().map_err(|e| e.to_string())?;
-    let title = o.title.clone().unwrap_or_else(|| {
-        dir.file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "Rapat".into())
-    });
-    let id = client
-        .create_meeting(&title, o.lang.as_deref().unwrap_or("id"), o.name.as_deref())
-        .map_err(|e| e.to_string())?;
-    for (source, path) in files {
-        let mut last = String::new();
-        for attempt in 0..3 {
-            if attempt > 0 {
-                std::thread::sleep(Duration::from_secs(2 << attempt));
+    let meta = Meta {
+        title: o.title.clone().unwrap_or_else(|| {
+            dir.file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "Rapat".into())
+        }),
+        language: o.lang.clone().unwrap_or_else(|| "id".into()),
+        local_user_name: o.name.clone(),
+        process: o.process,
+    };
+    let mut last_step = "";
+    let id = uploader::upload_meeting(
+        &client,
+        files,
+        &meta,
+        |p| {
+            if p.step != last_step {
+                last_step = p.step;
+                eprintln!("  {}", p.step);
             }
-            eprintln!(
-                "  mengunggah {} ({}){}",
-                source.label(),
-                path.display(),
-                if attempt > 0 {
-                    format!(" percobaan {}", attempt + 1)
-                } else {
-                    String::new()
-                }
-            );
-            match client.upload(&id, *source, path) {
-                Ok(()) => {
-                    last.clear();
-                    break;
-                }
-                Err(e) => last = e.to_string(),
-            }
-        }
-        if !last.is_empty() {
-            return Err(format!("unggahan {} gagal: {last}", source.label()));
-        }
-    }
-    client.finish(&id).map_err(|e| e.to_string())?;
-    if o.process {
-        client.process(&id).map_err(|e| e.to_string())?;
-    }
+        },
+        std::thread::sleep,
+    )?;
     eprintln!(
         "Selesai diunggah. ID rapat: {id}{}",
         if o.process { " (sedang diproses)" } else { "" }
@@ -188,7 +171,7 @@ fn record(o: Opts) -> ExitCode {
     let backend: Box<dyn rekamind_recorder::backend::Backend> = if o.synthetic {
         let s = Script {
             realtime: true,
-            active_ms: u64::MAX / 4,
+            active_ms: u64::MAX,
             ..Script::default()
         };
         Box::new(SyntheticBackend::new(

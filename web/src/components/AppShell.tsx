@@ -1,9 +1,15 @@
 import { CheckSquare, FileAudio, Settings, WifiOff } from "lucide-react";
-import { Suspense } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { Suspense, useEffect } from "react";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useHealth } from "../hooks/queries";
 import { cn } from "../lib/cn";
-import { Spinner } from "./ui/Feedback";
+import { useBackendReady } from "../desktop/backend";
+import { isDesktop } from "../desktop/bridge";
+import { RecorderBar } from "../desktop/RecorderBar";
+import { useDesktopRecording } from "../desktop/useRecorder";
+import { ErrorState, Spinner } from "./ui/Feedback";
+import { Button } from "./ui/Button";
+import { Card } from "./ui/Card";
 
 const nav = [
   { to: "/", label: "Rapat", icon: FileAudio, end: true },
@@ -13,12 +19,44 @@ const nav = [
 
 function ServerStatus() {
   const { isError, refetch, isFetching } = useHealth();
-  if (!isError) return null; // connected is the normal state: say nothing
+  const backend = useBackendReady();
+  const recording = useDesktopRecording();
+  // A local backend is switched off on purpose while recording and after idling: that is not an
+  // error. Bring it back quietly instead of showing a red alarm.
+  const quiet = isDesktop() && backend.mode === "local";
+  useEffect(() => {
+    if (isError && quiet && !recording && backend.status === "ready") backend.retry();
+  }, [isError, quiet, recording, backend]);
+  if (!isError || (quiet && (recording || backend.status === "starting"))) return null; // connected is the normal state: say nothing
   return (
     <button onClick={() => void refetch()} disabled={isFetching}
       className="flex items-center gap-2 rounded-full bg-danger-soft px-3 py-1 text-xs font-medium text-danger">
       <WifiOff className="size-3.5" aria-hidden /> Server tidak terjangkau · {isFetching ? "mencoba…" : "coba lagi"}
     </button>
+  );
+}
+
+/** Desktop + local mode: the processing service is started on demand, so show that, not an error. */
+function Content() {
+  const { status, error, retry, everReady } = useBackendReady();
+  const onSettings = useLocation().pathname === "/pengaturan";
+  const page = <Suspense fallback={<Spinner />}><Outlet /></Suspense>;
+  // After the first successful start, never replace the page (it holds the recorder card and the
+  // upload progress); a restart is just a quiet banner.
+  if (status === "ready" || onSettings || everReady) {
+    return (
+      <>
+        {status === "starting" && everReady && !onSettings && <p role="status" className="mb-4 flex items-center gap-2 text-sm text-muted"><span className="size-3 animate-spin rounded-full border-2 border-border border-t-primary" aria-hidden /> Menyalakan layanan pemrosesan lokal…</p>}
+        {page}
+      </>
+    );
+  }
+  if (status === "starting") return <Spinner label="Menyalakan layanan pemrosesan lokal…" />;
+  return (
+    <Card>
+      <ErrorState error={new Error(error ?? "Layanan lokal tidak bisa dinyalakan.")} onRetry={retry} />
+      <div className="flex justify-center pb-8"><Link to="/pengaturan"><Button>Buka pengaturan</Button></Link></div>
+    </Card>
   );
 }
 
@@ -28,6 +66,7 @@ export function AppShell() {
       <a href="#utama" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-card focus:px-3 focus:py-2">
         Lewati ke konten
       </a>
+      {isDesktop() && <RecorderBar />}
       <header className="sticky top-0 z-20 border-b border-border bg-bg/85 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center gap-6 px-4 py-3">
           <NavLink to="/" className="flex items-center gap-2 font-semibold tracking-tight">
@@ -51,7 +90,7 @@ export function AppShell() {
       </header>
       <main id="utama" className="mx-auto max-w-5xl px-4 py-8">
         {/* The header stays put while a page chunk loads; only the content area shows progress. */}
-        <Suspense fallback={<Spinner />}><Outlet /></Suspense>
+        <Content />
       </main>
     </div>
   );

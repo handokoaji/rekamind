@@ -22,3 +22,8 @@ web/dist/
 web/node_modules/
 web/test-results/
 recorder/target/
+
+# desktop
+desktop/node_modules/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/

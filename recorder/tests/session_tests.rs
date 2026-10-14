@@ -257,3 +257,61 @@ fn pacer_inserts_silence_only_for_real_gaps() {
     assert_eq!(p.gap(at(1200)), 0);
     assert_eq!(p.expected(at(2000)), 32000);
 }
+
+#[test]
+fn a_run_forever_script_does_not_overflow() {
+    // The desktop shell and the CLI pass an enormous active_ms to mean "until stopped".
+    let d = tempfile::tempdir().unwrap();
+    let forever = Script {
+        active_ms: u64::MAX,
+        realtime: true,
+        ..Default::default()
+    };
+    let s = Session::start(
+        &SyntheticBackend::new(forever.clone(), forever),
+        d.path(),
+        &both(),
+    )
+    .unwrap();
+    wait_ms(300);
+    let st = s.status();
+    assert!(
+        st.sources
+            .iter()
+            .all(|x| x.state == SourceState::Recording && x.level > 0.05),
+        "{:?}",
+        st.sources
+    );
+    s.stop();
+}
+
+#[test]
+fn real_time_sources_end_with_exactly_equal_length_every_time() {
+    // Real devices keep delivering for a moment after Stop is requested. Regression: that left the
+    // sources up to one chunk (20 ms) apart, i.e. the two channels no longer shared a timeline.
+    for round in 0..8 {
+        let d = tempfile::tempdir().unwrap();
+        let live = Script {
+            active_ms: 60_000,
+            realtime: true,
+            ..Default::default()
+        };
+        let s = Session::start(
+            &SyntheticBackend::new(live.clone(), Script { hz: 700.0, ..live }),
+            d.path(),
+            &both(),
+        )
+        .unwrap();
+        wait_ms(180 + round * 13); // stop at a different phase of the 20 ms chunk cycle each time
+        s.stop();
+        let (m, k) = (
+            read_wav(&d.path().join("mic.wav")),
+            read_wav(&d.path().join("speaker.wav")),
+        );
+        assert_eq!(m.samples.len(), k.samples.len(), "round {round}");
+        assert!(
+            peak(&m.samples) > 5000 && peak(&k.samples) > 5000,
+            "round {round}: real tones, not padding"
+        );
+    }
+}

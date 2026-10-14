@@ -4,6 +4,10 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AppShell } from "./components/AppShell";
 import { PlayerProvider } from "./components/Player";
+import { BackendProvider } from "./desktop/backend";
+import { isDesktop } from "./desktop/bridge";
+import { DesktopSync } from "./desktop/DesktopSync";
+import { RecorderProvider } from "./desktop/useRecorder";
 import { MeetingsPage } from "./pages/MeetingsPage";
 import { NotFound } from "./pages/NotFound";
 
@@ -14,10 +18,16 @@ const SettingsPage = lazy(() => import("./pages/SettingsPage").then((m) => ({ de
 
 const client = new QueryClient({ defaultOptions: { queries: { staleTime: 5_000, retry: 1, refetchOnWindowFocus: true } } });
 
+/** Desktop-only providers; a plain browser never loads or runs any of it. */
+function Desktop({ children }: { children: React.ReactNode }) {
+  return isDesktop() ? <BackendProvider><RecorderProvider><DesktopSync />{children}</RecorderProvider></BackendProvider> : <>{children}</>;
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={client}>
       <BrowserRouter>
+        <Desktop>
         <PlayerProvider>
           <Routes>
             <Route element={<AppShell />}>
@@ -29,6 +39,7 @@ export default function App() {
             </Route>
           </Routes>
         </PlayerProvider>
+        </Desktop>
       </BrowserRouter>
       <Toaster position="bottom-right" closeButton toastOptions={{ style: { fontFamily: "inherit" } }} />
     </QueryClientProvider>

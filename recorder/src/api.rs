@@ -37,6 +37,10 @@ impl Client {
     pub fn new(base: &str, token: Option<String>) -> Self {
         let builder = ureq::Agent::config_builder()
             .timeout_connect(Some(Duration::from_secs(10)))
+            // ~6 requests per recording: connection reuse buys nothing, and a pooled connection the
+            // server has since closed (uvicorn drops idle ones after ~5 s) fails with "Peer disconnected".
+            .max_idle_connections(0)
+            .max_idle_connections_per_host(0)
             .http_status_as_error(false); // read the server's own message instead of a bare code
         #[cfg(windows)]
         let builder = builder.tls_config(
@@ -91,6 +95,19 @@ impl Client {
         Self::read(resp).map(|_| ())
     }
 
+    /// Is anything still queued or being processed? (Used to decide when a local backend may be shut down.)
+    pub fn has_active_jobs(&self) -> Result<bool, ApiError> {
+        let mut req = self
+            .agent
+            .get(format!("{}/api/meetings?limit=200", self.base));
+        if let Some(a) = self.auth() {
+            req = req.header("authorization", a);
+        }
+        let v = Self::read(req.call().map_err(err)?)?;
+        Ok(v.as_array()
+            .is_some_and(|ms| ms.iter().any(|m| !m.get("job").is_none_or(Value::is_null))))
+    }
+
     pub fn create_meeting(
         &self,
         title: &str,
@@ -113,7 +130,19 @@ impl Client {
         let len = std::fs::metadata(path)
             .map_err(|e| ApiError(format!("{}: {e}", path.display())))?
             .len();
-        let file = File::open(path).map_err(|e| ApiError(format!("{}: {e}", path.display())))?;
+        let mut file =
+            File::open(path).map_err(|e| ApiError(format!("{}: {e}", path.display())))?;
+        self.upload_reader(&mut file, len, meeting_id, source)
+    }
+
+    /// Stream `len` bytes from `reader`. Streamed, never buffered: a two-hour recording is not held in memory.
+    pub fn upload_reader(
+        &self,
+        reader: &mut dyn std::io::Read,
+        len: u64,
+        meeting_id: &str,
+        source: Source,
+    ) -> Result<(), ApiError> {
         let mut req = self
             .agent
             .put(format!(
@@ -126,8 +155,7 @@ impl Client {
         if let Some(a) = self.auth() {
             req = req.header("authorization", a);
         }
-        // Streamed from disk: a two-hour recording is never held in memory.
-        let resp = req.send(file).map_err(err)?;
+        let resp = req.send(ureq::SendBody::from_reader(reader)).map_err(err)?;
         Self::read(resp).map(|_| ())
     }
 

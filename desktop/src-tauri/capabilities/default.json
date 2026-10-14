@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "What the bundled UI may do. Only the local main window; no remote content is ever granted IPC.",
+  "windows": ["main"],
+  "permissions": ["core:default", "core:event:default", "core:window:allow-show", "core:window:allow-set-focus", "notification:default"]
+}

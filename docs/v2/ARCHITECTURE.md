@@ -56,6 +56,29 @@ rekamind-rec record --synthetic --duration 5    # nada uji tanpa perangkat audio
 
 **Mengukur "ringan" di PC Anda:** CI membangun `rekamind-rec.exe` (artifact `rekamind-rec-windows`). Jalankan `record --stats` selama rapat sungguhan; di akhir ia mencetak CPU rata-rata dan memori puncaknya sendiri. Angka sintetis di Linux (0,67% CPU, 3,7 MB) **bukan** biaya WASAPI; itu hanya dasar overhead penulisan file.
 
+## Aplikasi desktop (`desktop/`, Tauri 2)
+
+Cangkangnya sengaja tipis: seluruh logika ada di `recorder/` (`controller`, `settings`, `local_backend`, `uploader`) dan diuji tanpa GUI. Lapisan Tauri hanya meneruskan perintah dan menampilkan `UiState`.
+
+| Aspek | Keputusan |
+|---|---|
+| UI | SPA yang sama dengan versi web, ditanam di aplikasi. Komponen perekam hanya tampil di dalam Tauri; klien Tauri dimuat malas sehingga bundel browser tidak membayarnya |
+| Kontrak Rust↔UI | Satu berkas emas `desktop/contract/ui-state.json` dihasilkan oleh tes Rust dan dibaca oleh tes web. Perubahan di salah satu sisi menggagalkan tes, bukan aplikasi |
+| Keamanan | CSP ketat; hak IPC hanya untuk jendela `main` yang memuat aset lokal (tidak ada konten remote yang dapat memanggil IPC); URL server hanya http(s) |
+| Selama rapat | Tidak ada yang berat: backend lokal yang sedang menganggur dimatikan saat rekaman mulai, dan permintaan data dijeda (bukan gagal) sehingga UI tidak menampilkan galat palsu |
+| Setelah rapat | Backend lokal dinyalakan on-demand untuk unggah dan pemrosesan, lalu dimatikan setelah menganggur 10 menit (membebaskan RAM dan GPU) |
+| Indikator rekaman | Bilah merah di setiap halaman, ikon tray merah, judul jendela "● Merekam", notifikasi; kartu perekam menampilkan level mic dan audio komputer dan menyatakan sumber yang bermasalah dengan kata-kata |
+| Tidak mudah terhenti | Menutup jendela menyembunyikannya ke tray (bila tray ada); Stop memakai dialog konfirmasi; hotkey/tray berhenti langsung |
+| Penutupan | Keluar, logout, `SIGTERM`: file WAV ditutup dengan benar dan rekaman tetap ada sebagai "belum terunggah" |
+| Pemulihan | Rekaman yang tidak sempat terunggah, atau terhenti oleh crash, tampil di daftar "belum terunggah" dengan tombol Unggah dan Hapus (dengan konfirmasi) |
+| Tray tidak ada | Aplikasi tetap berjalan tanpa tray (diuji: sandbox tanpa D-Bus) |
+
+**Diverifikasi** (Linux, WebKitGTK di X11 virtual, backend Python asli): UI tampil di WebView; `Ctrl+Alt+R` global memulai/menghentikan rekaman; level mic/speaker bergerak; unggah ke backend yang dinyalakan on-demand; rapat baru muncul otomatis di daftar; `SIGTERM` saat merekam menghasilkan WAV valid.
+
+**Belum diverifikasi** (perlu Windows): WebView2 dan asal `http://tauri.localhost` untuk CORS, tray dan notifikasi Windows, pintasan global di Windows, WASAPI sungguhan, installer NSIS (CI membangunnya; belum pernah berjalan), perilaku saat sesi Windows berakhir.
+
+**Keterbatasan yang harus Anda tahu:** mode lokal memanggil `python -m rekamind_server` (dapat diubah di Pengaturan); belum ada backend terbundel di installer, jadi "instalasi mudah" baru terpenuhi untuk mode server terpisah (Docker). Membundelnya (PyInstaller/ONNX) adalah pekerjaan terpisah yang ukurannya bergantung pada hasil benchmark engine.
+
 ## Pengembangan
 
 ```bash
@@ -89,7 +112,8 @@ docker compose up -d --build        # atau tempel docker-compose.yml sebagai sta
 | 1c | Penyimpanan S3 (MinIO/SeaweedFS/AWS), Alembic | Selesai. S3 diuji ke server S3 tiruan di socket (moto); **MinIO/SeaweedFS asli belum** |
 | 2 | SPA React (daftar rapat, detail, review task, transkrip, pembicara, pengaturan) | Selesai: 15 tes unit, 5 tes E2E, axe WCAG AA bersih (terang/gelap), tanpa scroll horizontal di 375 px |
 | 3a | Perekam Rust (`recorder/`): library + CLI `rekamind-rec` | Selesai di sisi kode: 33 tes lolos di Linux; kode Windows (WASAPI) ter-compile terhadap API aslinya tetapi **belum pernah dijalankan**. Lihat "Perekam Rust" |
-| 3b | Shell Tauri (UI di atas library perekam) + installer | **Belum** |
+| 3b | Shell Tauri: jendela, tray, pintasan global, notifikasi, backend lokal on-demand | Selesai dan **dijalankan sungguhan di Linux** (WebKitGTK + X11): hotkey, rekam, unggah, SIGTERM. **Belum dijalankan di Windows** (WebView2, tray, NSIS) |
+| 3c | Backend lokal terbundel di installer (sidecar) | **Belum**: mode lokal masih butuh Python + backend terpasang terpisah |
 | 4 | Mode remote: worker GPU, unggah presigned URL, autentikasi | **Belum** |
 | 5 | Integrasi task manager (webhook dulu, API Anda menyusul) | **Belum** (ekspor JSON `rekamind.tasks/v1` sudah ada di UI) |
 

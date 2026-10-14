@@ -3,6 +3,8 @@ import { FileAudio, Monitor, Play, Plus, RotateCcw, Search, Trash2 } from "lucid
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
+import { isDesktop } from "../desktop/bridge";
+import { RecordCard } from "../desktop/RecordCard";
 import { StatusBadge } from "../components/StatusBadge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
@@ -111,6 +113,8 @@ export function MeetingsPage() {
         <Button variant="primary" onClick={() => setUpload(true)}><Plus className="size-4" aria-hidden /> Rapat baru</Button>
       </div>
 
+      {isDesktop() && <RecordCard />}
+
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-60 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
@@ -143,7 +147,7 @@ export function MeetingsPage() {
             <EmptyState icon={<FileAudio className="size-6" />} title="Belum ada rapat"
               action={<Button variant="primary" onClick={() => setUpload(true)}><Plus className="size-4" aria-hidden /> Unggah rekaman</Button>}>
               Unggah rekaman rapat dan Rekamind akan membuat transkrip per pembicara, ringkasan, serta daftar task lengkap dengan PIC dan tenggat.
-              <span className="mt-3 flex items-center justify-center gap-1.5 text-xs"><Monitor className="size-3.5" aria-hidden /> Merekam langsung tersedia di aplikasi desktop.</span>
+              {!isDesktop() && <span className="mt-3 flex items-center justify-center gap-1.5 text-xs"><Monitor className="size-3.5" aria-hidden /> Merekam langsung tersedia di aplikasi desktop.</span>}
             </EmptyState>
           )}
         </Card>
