@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, useEffect, type ReactNode } from "react";
 import { api, ApiError, onUnauthorized, setAuthToken } from "../lib/api";
+import { useBackendReady } from "../desktop/backend";
 import { desktop, isDesktop } from "../desktop/bridge";
 import type { Me } from "../lib/types";
 
@@ -25,11 +26,17 @@ export type AuthState = { status: "loading" } | { status: "signed-out" } | { sta
  *  (a session that expired while the page was open) just re-asks it. */
 export function useAuthState(): AuthState {
   const qc = useQueryClient();
-  const q = useQuery({ queryKey: ["me"], queryFn: api.me, retry: false, staleTime: 60_000, refetchOnWindowFocus: true });
+  // In the desktop app the shell decides which server (and which credential) to use, and a local
+  // backend starts on demand: asking before it is up would be a spurious "cannot connect".
+  const backend = useBackendReady();
+  const up = backend.status === "ready" || backend.everReady;
+  const q = useQuery({ queryKey: ["me"], queryFn: api.me, enabled: up, retry: false, staleTime: 60_000, refetchOnWindowFocus: true });
   useEffect(() => onUnauthorized(() => { void qc.invalidateQueries({ queryKey: ["me"] }); }), [qc]);
-  if (q.isPending) return { status: "loading" };
+  if (backend.status === "error" && !backend.everReady) return { status: "error", error: new Error(backend.error ?? "Tidak bisa menyalakan layanan.") };
+  if (!up || q.isPending) return { status: "loading" };
   if (q.error instanceof ApiError && q.error.status === 401) return { status: "signed-out" };
-  if (q.error) return { status: "error", error: q.error };
+  // A later refresh failing (backend stopped while idle, network blip) must not throw away a good session.
+  if (q.error && !q.data) return { status: "error", error: q.error };
   return { status: "ready", me: q.data! };
 }
 
