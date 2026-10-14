@@ -81,11 +81,11 @@ async def test_hostile_ids_never_reach_the_bucket_or_filesystem(s3_endpoint, tmp
 
 
 async def test_whole_pipeline_runs_on_s3_and_cleans_its_cache(s3_endpoint, tmp_path):
-    settings = Settings(data_dir=tmp_path, database_url="sqlite+aiosqlite:///:memory:", worker_inprocess=False,
+    settings = Settings(data_dir=tmp_path, database_url="sqlite+aiosqlite:///:memory:", worker_inprocess=False, auth="none",
                         storage="s3", s3_endpoint_url=s3_endpoint, s3_bucket="rk-e2e", s3_access_key="k", s3_secret_key="s")
     app = create_app(settings, engines=fake_engines())
     async with app.router.lifespan_context(app):  # also proves the bucket is auto-created
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://127.0.0.1") as c:
             m = (await c.post("/api/meetings", json={"title": "S3"})).json()
             for src in ("mic", "speaker"):
                 assert (await c.put(f"/api/meetings/{m['id']}/audio/{src}", content=WAV)).status_code == 201

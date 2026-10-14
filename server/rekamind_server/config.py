@@ -15,6 +15,31 @@ class Settings(BaseSettings):
     worker_inprocess: bool = True
     worker_poll_seconds: float = 1.0
     language: str = "id"
+
+    # --- Access control ----------------------------------------------------------------------
+    # google      : multi-user, "Sign in with Google" using YOUR OWN Google OAuth client (default)
+    # local_token : single user on this machine, a per-launch secret (used by the desktop app)
+    # none        : no authentication; loopback only (development and tests)
+    auth: str = "google"
+    host: str = "127.0.0.1"
+    port: int = 8787
+    insecure_no_auth: bool = False  # explicit opt-in to run `auth=none` on a non-loopback address
+    local_token: str = ""
+    # Public address users reach this server at, e.g. https://rekamind.kantor.id. Google redirects back here.
+    public_url: str = ""
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    # Where tokens are verified. Only ever changed to point tests at a fake identity provider.
+    oidc_issuer: str = "https://accounts.google.com"
+    # Comma-separated verified Google emails with full control of the server (bootstrapped on first login).
+    superadmins: str = ""
+    # Who else may sign in. "allowlist": the emails/domains below plus anyone a super admin invites.
+    # "open": any verified Google account (only sensible on a private network).
+    signup: str = "allowlist"
+    allowed_emails: str = ""
+    allowed_domains: str = ""
+    session_days: int = 14
+    desktop_session_days: int = 30
     max_upload_mb: int = 4096
     # Built SPA to serve at "/" (the Docker image sets this); empty = API only.
     web_dir: str = ""
@@ -46,6 +71,22 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://api.groq.com/openai/v1"
     llm_api_key: str = ""
     llm_model: str = "openai/gpt-oss-120b"
+
+    @staticmethod
+    def _csv(v: str) -> set[str]:
+        return {x.strip().lower() for x in v.replace("\n", ",").split(",") if x.strip()}
+
+    @property
+    def superadmin_emails(self) -> set[str]:
+        return self._csv(self.superadmins)
+
+    @property
+    def allowed_email_set(self) -> set[str]:
+        return self._csv(self.allowed_emails)
+
+    @property
+    def allowed_domain_set(self) -> set[str]:
+        return {d.lstrip("@") for d in self._csv(self.allowed_domains)}
 
     @property
     def effective_database_url(self) -> str:

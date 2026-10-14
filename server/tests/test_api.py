@@ -147,10 +147,10 @@ async def test_spa_is_served_with_history_fallback_but_api_404s_stay_json(tmp_pa
     (web / "assets").mkdir(parents=True)
     (web / "index.html").write_text("<html>SPA</html>")
     (web / "assets" / "a.js").write_text("1")
-    s = Settings(data_dir=tmp_path, database_url="sqlite+aiosqlite:///:memory:", worker_inprocess=False, web_dir=str(web))
+    s = Settings(data_dir=tmp_path, database_url="sqlite+aiosqlite:///:memory:", worker_inprocess=False, auth="none", web_dir=str(web))
     app = create_app(s)
     async with app.router.lifespan_context(app):
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://127.0.0.1") as c:
             assert (await c.get("/meetings/abc")).text == "<html>SPA</html>"  # refresh on a client route
             assert (await c.get("/assets/a.js")).text == "1"
             r = await c.get("/api/meetings/" + "f" * 32)
@@ -215,10 +215,10 @@ async def test_upload_over_the_size_cap_is_rejected_with_413(tmp_path):
     from rekamind_server.api import create_app
     from rekamind_server.config import Settings
 
-    s = Settings(data_dir=tmp_path, database_url="sqlite+aiosqlite:///:memory:", worker_inprocess=False, max_upload_mb=1)
+    s = Settings(data_dir=tmp_path, database_url="sqlite+aiosqlite:///:memory:", worker_inprocess=False, auth="none", max_upload_mb=1)
     app = create_app(s)
     async with app.router.lifespan_context(app):
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://127.0.0.1") as c:
             m = (await c.post("/api/meetings", json={"title": "x"})).json()
             r = await c.put(f"/api/meetings/{m['id']}/audio/mic", content=b"RIFF" + b"\0" * (2 * 1024 * 1024))
             assert r.status_code == 413

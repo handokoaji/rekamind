@@ -143,6 +143,7 @@ class MeetingSummaryOut(_ORM):
     started_at: datetime
     ended_at: datetime | None
     error: str | None
+    owner_email: str | None = None  # who it belongs to (matters to super admins looking at everyone's)
     job: JobBrief | None = None  # the in-flight processing job, if any
 
 

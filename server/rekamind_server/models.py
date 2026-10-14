@@ -27,11 +27,77 @@ def _new_id() -> str:
     return uuid.uuid4().hex
 
 
+class User(Base):
+    """A person. `sub` is Google's stable account id and the real identity; email is only a label
+    (addresses get renamed and recycled). A row with no `sub` is an invitation: the first Google
+    login with that verified email claims it."""
+
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(primary_key=True, default=_new_id)
+    sub: Mapped[str | None] = mapped_column(unique=True, default=None)
+    email: Mapped[str] = mapped_column(unique=True)  # always stored lower-case
+    name: Mapped[str | None] = mapped_column(default=None)
+    picture: Mapped[str | None] = mapped_column(default=None)
+    role: Mapped[str] = mapped_column(default="user")  # "user" | "superadmin"
+    disabled: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+
+
+class AuthSession(Base):
+    """A logged-in browser or desktop app. Only the SHA-256 of the token is stored, so a leaked
+    database does not leak usable sessions."""
+
+    __tablename__ = "auth_sessions"
+
+    id: Mapped[str] = mapped_column(primary_key=True, default=_new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(unique=True)
+    kind: Mapped[str] = mapped_column(default="web")  # "web" (cookie) | "desktop" (bearer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+
+
+class AuthFlow(Base):
+    """One in-progress Google login, from /auth/login to /auth/callback. Single use, short-lived,
+    and bound to the browser that started it (login-CSRF defence, since PKCE alone cannot tell)."""
+
+    __tablename__ = "auth_flows"
+
+    state: Mapped[str] = mapped_column(primary_key=True)
+    nonce: Mapped[str]
+    code_verifier: Mapped[str]
+    binding_hash: Mapped[str]
+    redirect_to: Mapped[str] = mapped_column(default="/")
+    desktop_port: Mapped[int | None] = mapped_column(default=None)
+    desktop_challenge: Mapped[str | None] = mapped_column(default=None)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used: Mapped[bool] = mapped_column(default=False)
+
+
+class LoginCode(Base):
+    """Hands a finished browser login to the desktop app on its loopback port. Single use, ~2
+    minutes, and redeemable only with the PKCE verifier the desktop generated."""
+
+    __tablename__ = "login_codes"
+
+    code_hash: Mapped[str] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    challenge: Mapped[str]
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used: Mapped[bool] = mapped_column(default=False)
+
+
 class Meeting(Base):
     __tablename__ = "meetings"
 
     id: Mapped[str] = mapped_column(primary_key=True, default=_new_id)
     title: Mapped[str]
+    # NULL only for rows that predate accounts; those are visible to super admins alone.
+    owner_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), index=True, default=None)
     language: Mapped[str] = mapped_column(default="id")
     # recording -> recorded -> queued -> processing -> review -> done, or failed
     status: Mapped[str] = mapped_column(default="recording")
@@ -42,6 +108,7 @@ class Meeting(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
+    owner: Mapped["User | None"] = relationship(lazy="joined")
     participants: Mapped[list["Participant"]] = relationship(back_populates="meeting", cascade="all, delete-orphan")
     segments: Mapped[list["Segment"]] = relationship(
         back_populates="meeting", cascade="all, delete-orphan", order_by="Segment.start_ms"
@@ -50,6 +117,14 @@ class Meeting(Base):
     summary: Mapped["Summary | None"] = relationship(
         back_populates="meeting", uselist=False, cascade="all, delete-orphan"
     )
+
+
+
+def _owner_email(self) -> str | None:
+    return self.owner.email if self.owner else None
+
+
+Meeting.owner_email = property(_owner_email)  # type: ignore[attr-defined]
 
 
 class Participant(Base):
