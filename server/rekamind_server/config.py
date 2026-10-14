@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     worker_inprocess: bool = True
     worker_poll_seconds: float = 1.0
     language: str = "id"
+    max_upload_mb: int = 4096
+    # Built SPA to serve at "/" (the Docker image sets this); empty = API only.
+    web_dir: str = ""
+    # Only needed when a UI is served from a different origin than the API (e.g. a desktop shell
+    # talking to a remote backend). Same-origin deployments leave this empty.
+    cors_origins: str = ""
     # Audio storage: "local" (under data_dir) or "s3" (MinIO, SeaweedFS, AWS...)
     storage: str = "local"
     s3_endpoint_url: str = ""

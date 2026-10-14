@@ -1,10 +1,12 @@
+from wavs import WAV
+
 from rekamind_server.worker import Worker
 
 
 async def _processed_meeting(client):
     m = (await client.post("/api/meetings", json={"title": "Sync", "local_user_name": "Andi"})).json()
     for src in ("mic", "speaker"):
-        r = await client.put(f"/api/meetings/{m['id']}/audio/{src}", content=b"RIFFfake")
+        r = await client.put(f"/api/meetings/{m['id']}/audio/{src}", content=WAV)
         assert r.status_code == 201
     assert (await client.post(f"/api/meetings/{m['id']}/finish")).status_code == 200
     r = await client.post(f"/api/meetings/{m['id']}/process")
@@ -103,3 +105,132 @@ async def test_deleted_meeting_disappears_from_list(client):
     assert (await client.delete(f"/api/meetings/{m['id']}")).status_code == 204
     assert (await client.get("/api/meetings")).json() == []
     assert (await client.get(f"/api/meetings/{m['id']}")).status_code == 404
+
+
+async def test_meeting_list_shows_job_progress_search_and_escapes_wildcards(client):
+    a = (await client.post("/api/meetings", json={"title": "Rapat 100% vendor"})).json()
+    await client.post("/api/meetings", json={"title": "Rapat internal"})
+    assert [m["title"] for m in (await client.get("/api/meetings", params={"q": "100%"})).json()] == ["Rapat 100% vendor"]
+    assert len((await client.get("/api/meetings", params={"q": "%"})).json()) == 1  # '%' is literal, not a wildcard
+    await client.put(f"/api/meetings/{a['id']}/audio/mic", content=WAV)
+    await client.post(f"/api/meetings/{a['id']}/finish")
+    await client.post(f"/api/meetings/{a['id']}/process")
+    row = next(m for m in (await client.get("/api/meetings")).json() if m["id"] == a["id"])
+    assert row["job"]["status"] == "queued"
+
+
+async def test_rename_restore_and_task_list_carries_meeting_title(client):
+    mid, _ = await _processed_meeting(client)
+    assert (await client.patch(f"/api/meetings/{mid}", json={"title": "Judul baru"})).json()["title"] == "Judul baru"
+    assert all(t["meeting_title"] == "Judul baru" for t in (await client.get("/api/tasks")).json())
+    await client.delete(f"/api/meetings/{mid}")
+    assert (await client.get("/api/tasks")).json() == []  # tasks of a deleted meeting are hidden too
+    assert (await client.post(f"/api/meetings/{mid}/restore")).status_code == 200
+    assert len((await client.get("/api/tasks")).json()) == 2
+
+
+async def test_audio_playback_supports_range_requests(client):
+    m = (await client.post("/api/meetings", json={"title": "x"})).json()
+    await client.put(f"/api/meetings/{m['id']}/audio/mic", content=WAV)
+    r = await client.get(f"/api/meetings/{m['id']}/audio/mic", headers={"Range": "bytes=2-5"})
+    assert r.status_code == 206 and r.content == WAV[2:6]
+    assert (await client.get(f"/api/meetings/{m['id']}/audio/speaker")).status_code == 404
+
+
+async def test_spa_is_served_with_history_fallback_but_api_404s_stay_json(tmp_path):
+    from httpx import ASGITransport, AsyncClient
+
+    from rekamind_server.api import create_app
+    from rekamind_server.config import Settings
+
+    web = tmp_path / "web"
+    (web / "assets").mkdir(parents=True)
+    (web / "index.html").write_text("<html>SPA</html>")
+    (web / "assets" / "a.js").write_text("1")
+    s = Settings(data_dir=tmp_path, database_url="sqlite+aiosqlite:///:memory:", worker_inprocess=False, web_dir=str(web))
+    app = create_app(s)
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+            assert (await c.get("/meetings/abc")).text == "<html>SPA</html>"  # refresh on a client route
+            assert (await c.get("/assets/a.js")).text == "1"
+            r = await c.get("/api/meetings/" + "f" * 32)
+            assert r.status_code == 404 and r.json()["detail"] == "Rapat tidak ditemukan"
+
+
+def _tone_wav(path, seconds=1.0, rate=44100, channels=2):
+    import wave
+
+    import numpy as np
+
+    t = np.arange(int(rate * seconds)) / rate
+    mono = (np.sin(2 * np.pi * 440 * t) * 12000).astype("<i2")
+    data = np.repeat(mono[:, None], channels, axis=1) if channels > 1 else mono
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(channels)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(data.tobytes())
+
+
+def _encode(src, dst, fmt):
+    import av
+
+    with av.open(str(src)) as i, av.open(str(dst), "w", format=fmt) as o:
+        codec = {"mp3": "libmp3lame", "ogg": "libvorbis"}[fmt]
+        out = o.add_stream(codec, rate=44100)
+        out.layout = "stereo"
+        for frame in i.decode(audio=0):
+            frame.pts = None
+            for p in out.encode(frame):
+                o.mux(p)
+        for p in out.encode(None):
+            o.mux(p)
+
+
+async def test_non_wav_uploads_are_normalised_to_16k_mono_wav(client, tmp_path):
+    import wave
+
+    src, mp3 = tmp_path / "t.wav", tmp_path / "t.mp3"
+    _tone_wav(src, seconds=2)
+    _encode(src, mp3, "mp3")
+    m = (await client.post("/api/meetings", json={"title": "x"})).json()
+    r = await client.put(f"/api/meetings/{m['id']}/audio/speaker", content=mp3.read_bytes())
+    assert r.status_code == 201
+    p = await client.app.state.storage.audio_path(m["id"], "speaker")
+    with wave.open(str(p)) as w:
+        assert (w.getnchannels(), w.getframerate()) == (1, 16000)
+        assert 1.8 < w.getnframes() / 16000 < 2.4  # duration preserved
+
+
+async def test_garbage_upload_gets_clear_415_and_leaves_no_temp_files(client):
+    m = (await client.post("/api/meetings", json={"title": "x"})).json()
+    r = await client.put(f"/api/meetings/{m['id']}/audio/mic", content=b"this is definitely not audio" * 50)
+    assert r.status_code == 415 and "Format audio" in r.json()["detail"]
+    assert list((client.app.state.storage._root / "tmp").glob("*")) == [] if hasattr(client.app.state.storage, "_root") else True
+
+
+async def test_upload_over_the_size_cap_is_rejected_with_413(tmp_path):
+    from httpx import ASGITransport, AsyncClient
+
+    from rekamind_server.api import create_app
+    from rekamind_server.config import Settings
+
+    s = Settings(data_dir=tmp_path, database_url="sqlite+aiosqlite:///:memory:", worker_inprocess=False, max_upload_mb=1)
+    app = create_app(s)
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+            m = (await c.post("/api/meetings", json={"title": "x"})).json()
+            r = await c.put(f"/api/meetings/{m['id']}/audio/mic", content=b"RIFF" + b"\0" * (2 * 1024 * 1024))
+            assert r.status_code == 413
+            assert list((tmp_path / "tmp").glob("*")) == []
+
+
+async def test_finishing_the_task_review_completes_the_meeting_and_undoing_reopens_it(client):
+    mid, _ = await _processed_meeting(client)
+    tasks = (await client.get(f"/api/meetings/{mid}")).json()["tasks"]
+    await client.patch(f"/api/tasks/{tasks[0]['id']}", json={"status": "confirmed"})
+    assert (await client.get(f"/api/meetings/{mid}")).json()["status"] == "review"  # one still pending
+    await client.patch(f"/api/tasks/{tasks[1]['id']}", json={"status": "rejected"})
+    assert (await client.get(f"/api/meetings/{mid}")).json()["status"] == "done"
+    await client.patch(f"/api/tasks/{tasks[1]['id']}", json={"status": "suggested"})
+    assert (await client.get(f"/api/meetings/{mid}")).json()["status"] == "review"

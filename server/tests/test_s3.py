@@ -2,6 +2,7 @@ import socket
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from wavs import WAV
 
 from rekamind_server.api import create_app
 from rekamind_server.config import Settings
@@ -87,7 +88,7 @@ async def test_whole_pipeline_runs_on_s3_and_cleans_its_cache(s3_endpoint, tmp_p
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
             m = (await c.post("/api/meetings", json={"title": "S3"})).json()
             for src in ("mic", "speaker"):
-                assert (await c.put(f"/api/meetings/{m['id']}/audio/{src}", content=b"RIFFx")).status_code == 201
+                assert (await c.put(f"/api/meetings/{m['id']}/audio/{src}", content=WAV)).status_code == 201
             await c.post(f"/api/meetings/{m['id']}/finish")
             await c.post(f"/api/meetings/{m['id']}/process")
             st = app.state

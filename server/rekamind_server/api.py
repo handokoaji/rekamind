@@ -1,28 +1,38 @@
 import asyncio
+import shutil
+import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from . import __version__, jobs
+from .audio import UnsupportedAudio, is_wav, to_wav_16k_mono
 from .config import Settings
 from .db import init_db, make_engine, make_session_factory
 from .engines.base import Engines
 from .engines.registry import build_engines
 from .models import Job, Meeting, Participant, Task
 from .schemas import (
+    JobBrief,
     JobOut,
     MeetingCreate,
     MeetingDetail,
+    MeetingPatch,
     MeetingSummaryOut,
     ParticipantOut,
     ParticipantPatch,
     TaskOut,
     TaskPatch,
+    TaskWithMeeting,
 )
 from .storage import LocalStorage, S3Storage, Storage
 from .worker import Worker
@@ -54,6 +64,8 @@ def create_app(settings: Settings | None = None, *, engines: Engines | None = No
         storage = build_storage(settings)
         if isinstance(storage, S3Storage) and settings.s3_create_bucket:
             await asyncio.to_thread(storage.ensure_bucket)
+        if isinstance(storage, S3Storage):
+            shutil.rmtree(settings.data_dir / "cache", ignore_errors=True)  # only ever a cache; crashes can strand copies
         app.state.storage = storage
         app.state.engines = engines if engines is not None else build_engines(settings)
         task = None
@@ -66,6 +78,9 @@ def create_app(settings: Settings | None = None, *, engines: Engines | None = No
         await engine.dispose()
 
     app = FastAPI(title="Rekamind", version=__version__, lifespan=lifespan)
+    origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+    if origins:
+        app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"])
 
     async def session(request: Request):
         async with request.app.state.sf() as s:
@@ -104,14 +119,46 @@ def create_app(settings: Settings | None = None, *, engines: Engines | None = No
         return m
 
     @app.get("/api/meetings", response_model=list[MeetingSummaryOut])
-    async def list_meetings(db: Db, limit: int = 50, offset: int = 0):
-        rows = await db.execute(select(Meeting).where(Meeting.deleted_at.is_(None))
-                                .order_by(Meeting.started_at.desc()).limit(min(limit, 200)).offset(offset))
-        return rows.scalars().all()
+    async def list_meetings(db: Db, limit: int = 50, offset: int = 0, q: str | None = None, status: str | None = None):
+        query = select(Meeting).where(Meeting.deleted_at.is_(None))
+        if q:
+            escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            query = query.where(Meeting.title.ilike(f"%{escaped}%", escape="\\"))
+        if status:
+            query = query.where(Meeting.status == status)
+        rows = (await db.execute(query.order_by(Meeting.started_at.desc()).limit(min(limit, 200)).offset(offset))).scalars().all()
+        active = (await db.execute(select(Job).where(Job.meeting_id.in_([m.id for m in rows]), Job.status.in_(jobs.ACTIVE))
+                                   .order_by(Job.created_at))).scalars().all() if rows else []
+        by_meeting = {j.meeting_id: JobBrief.model_validate(j) for j in active}
+        return [MeetingSummaryOut.model_validate(m).model_copy(update={"job": by_meeting.get(m.id)}) for m in rows]
 
     @app.get("/api/meetings/{meeting_id}", response_model=MeetingDetail)
     async def get_meeting(meeting_id: str, db: Db):
         return await _meeting(db, meeting_id)
+
+    @app.patch("/api/meetings/{meeting_id}", response_model=MeetingSummaryOut)
+    async def rename_meeting(meeting_id: str, body: MeetingPatch, db: Db):
+        m = await _meeting(db, meeting_id)
+        m.title = body.title.strip()
+        await db.commit()
+        return m
+
+    @app.post("/api/meetings/{meeting_id}/restore", response_model=MeetingSummaryOut)
+    async def restore_meeting(meeting_id: str, db: Db):
+        m = await db.get(Meeting, meeting_id)
+        if m is None:
+            raise HTTPException(404, "Rapat tidak ditemukan")
+        m.deleted_at = None
+        await db.commit()
+        return m
+
+    @app.get("/api/meetings/{meeting_id}/audio/{source}")
+    async def get_audio(meeting_id: str, source: Literal["mic", "speaker"], request: Request, db: Db):
+        await _meeting(db, meeting_id)
+        path = await request.app.state.storage.audio_path(meeting_id, source)
+        if path is None:
+            raise HTTPException(404, "Audio tidak tersedia")
+        return FileResponse(path, media_type="audio/wav")  # Starlette serves Range requests, so seeking works
 
     @app.delete("/api/meetings/{meeting_id}", status_code=204)
     async def delete_meeting(meeting_id: str, db: Db):
@@ -122,10 +169,39 @@ def create_app(settings: Settings | None = None, *, engines: Engines | None = No
     @app.put("/api/meetings/{meeting_id}/audio/{source}", status_code=201)
     async def upload_audio(meeting_id: str, source: Literal["mic", "speaker"], request: Request, db: Db):
         await _meeting(db, meeting_id)
-        size = await request.app.state.storage.save_audio(meeting_id, source, request.stream())
-        if size == 0:
-            raise HTTPException(400, "File audio kosong")
-        return {"bytes": size}
+        tmp_dir = settings.data_dir / "tmp"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        raw = tmp_dir / f"{uuid.uuid4().hex}.upload"
+        wav = raw.with_suffix(".wav")
+        limit = settings.max_upload_mb * 1024 * 1024
+        try:
+            size = 0
+            with raw.open("wb") as f:
+                async for chunk in request.stream():
+                    size += len(chunk)
+                    if size > limit:
+                        raise HTTPException(413, f"File melebihi batas {settings.max_upload_mb} MB")
+                    f.write(chunk)
+            if size == 0:
+                raise HTTPException(400, "File audio kosong")
+            final = raw
+            if not is_wav(raw):
+                try:
+                    await asyncio.to_thread(to_wav_16k_mono, raw, wav)
+                except UnsupportedAudio as exc:
+                    raise HTTPException(415, str(exc)) from exc
+                final = wav
+
+            async def chunks():
+                with final.open("rb") as f:
+                    while block := f.read(1024 * 1024):
+                        yield block
+
+            stored = await request.app.state.storage.save_audio(meeting_id, source, chunks())
+            return {"bytes": stored}
+        finally:
+            raw.unlink(missing_ok=True)
+            wav.unlink(missing_ok=True)
 
     @app.post("/api/meetings/{meeting_id}/finish", response_model=MeetingSummaryOut)
     async def finish_meeting(meeting_id: str, db: Db):
@@ -161,15 +237,17 @@ def create_app(settings: Settings | None = None, *, engines: Engines | None = No
         await db.commit()
         return p
 
-    @app.get("/api/tasks", response_model=list[TaskOut])
+    @app.get("/api/tasks", response_model=list[TaskWithMeeting])
     async def list_tasks(db: Db, status: Literal["suggested", "confirmed", "rejected"] | None = None,
                          meeting_id: str | None = None):
-        q = select(Task).order_by(Task.created_at)
+        q = (select(Task, Meeting.title).join(Meeting, Meeting.id == Task.meeting_id)
+             .where(Meeting.deleted_at.is_(None)).order_by(Task.created_at))
         if status:
             q = q.where(Task.status == status)
         if meeting_id:
             q = q.where(Task.meeting_id == meeting_id)
-        return (await db.execute(q)).scalars().all()
+        return [TaskWithMeeting(**TaskOut.model_validate(t).model_dump(), meeting_title=title)
+                for t, title in (await db.execute(q)).all()]
 
     @app.patch("/api/tasks/{task_id}", response_model=TaskOut)
     async def patch_task(task_id: str, body: TaskPatch, db: Db):
@@ -185,7 +263,25 @@ def create_app(settings: Settings | None = None, *, engines: Engines | None = No
             changes["deadline_approximate"] = False  # a human-set date is a commitment
         for k, v in changes.items():
             setattr(t, k, v)
+        await db.flush()
+        m = await db.get(Meeting, t.meeting_id)
+        if m and m.status in ("review", "done"):
+            pending = (await db.execute(select(Task.id).where(Task.meeting_id == t.meeting_id, Task.status == "suggested").limit(1))).first()
+            m.status = "review" if pending else "done"  # finishing the review is visible, undoing it re-opens it
         await db.commit()
         return t
 
+    if settings.web_dir and (web := Path(settings.web_dir)).is_dir():
+        # Registered last so every /api route wins. Unknown paths fall back to index.html
+        # so client-side routes survive a browser refresh.
+        class SpaFiles(StaticFiles):
+            async def get_response(self, path, scope):
+                try:
+                    return await super().get_response(path, scope)
+                except Exception:
+                    if path.startswith("api/"):
+                        raise
+                    return await super().get_response("index.html", scope)
+
+        app.mount("/", SpaFiles(directory=web, html=True), name="web")
     return app

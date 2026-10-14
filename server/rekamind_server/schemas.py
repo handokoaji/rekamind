@@ -128,6 +128,13 @@ class TaskPatch(BaseModel):
     status: Literal["suggested", "confirmed", "rejected"] | None = None
 
 
+class JobBrief(_ORM):
+    id: str
+    status: str
+    stage: str | None
+    progress: int
+
+
 class MeetingSummaryOut(_ORM):
     id: str
     title: str
@@ -136,6 +143,15 @@ class MeetingSummaryOut(_ORM):
     started_at: datetime
     ended_at: datetime | None
     error: str | None
+    job: JobBrief | None = None  # the in-flight processing job, if any
+
+
+class MeetingPatch(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+
+
+class TaskWithMeeting(TaskOut):
+    meeting_title: str
 
 
 class MeetingDetail(MeetingSummaryOut):
