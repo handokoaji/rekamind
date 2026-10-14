@@ -23,6 +23,7 @@ class H(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Type","application/json"); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
     def do_GET(self):
         if self.path.startswith("/api/health"): self._send(200, {{"status":"ok"}})
+        elif self.path.startswith("/api/meetings") and os.environ.get("FAKE_TOKEN") and self.headers.get("Authorization") != "Bearer " + os.environ["FAKE_TOKEN"]: self._send(401, {{"detail":"Silakan masuk."}})
         elif self.path.startswith("/api/meetings"): self._send(200, [{{"id":"m1","job": {{"status":"running"}} if os.path.exists(BUSY) else None}}])
         else: self._send(404, {{"detail":"x"}})
     def _drain(self):
@@ -322,4 +323,32 @@ fn recording_a_second_meeting_straight_away_holds_the_first_upload_until_it_ends
         "both meetings reached the server"
     );
     lb.stop();
+}
+
+#[test]
+fn idle_shutdown_authenticates_with_the_local_secret() {
+    // Regression found by running the real shell: the idle watcher asked "anything running?"
+    // without the secret, got 401, treated that as "cannot tell" and never stopped the backend.
+    let d = tempfile::tempdir().unwrap();
+    let port = free_port();
+    let (prog, args) = fake_server_script(d.path(), port);
+    let url = format!("http://127.0.0.1:{port}");
+    let env = vec![("FAKE_TOKEN".to_string(), "s3cret".to_string())];
+
+    let anon = LocalBackend::new(prog.clone(), args.clone(), env.clone(), url.clone());
+    anon.ensure(Duration::from_secs(10)).unwrap();
+    assert!(
+        !anon.idle_tick(Duration::ZERO),
+        "without the secret it cannot tell, so it must not kill"
+    );
+    assert!(anon.owns_process());
+    anon.stop();
+
+    let lb = LocalBackend::new(prog, args, env, url).with_token("s3cret");
+    lb.ensure(Duration::from_secs(10)).unwrap();
+    assert!(
+        lb.idle_tick(Duration::ZERO),
+        "with the secret it sees nothing is queued and stops"
+    );
+    assert!(!lb.owns_process());
 }

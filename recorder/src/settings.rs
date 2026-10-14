@@ -128,12 +128,15 @@ impl Settings {
             ("REKAMIND_PORT".to_string(), self.local_port.to_string()),
             ("REKAMIND_CORS_ORIGINS".to_string(), UI_ORIGINS.to_string()),
         ];
-        Some(Arc::new(LocalBackend::new(
-            self.local_program.clone(),
-            self.local_args.clone(),
-            env,
-            self.server_url(),
-        )))
+        Some(Arc::new(
+            LocalBackend::new(
+                self.local_program.clone(),
+                self.local_args.clone(),
+                env,
+                self.server_url(),
+            )
+            .with_token(token),
+        ))
     }
 
     /// Missing or unreadable file -> defaults; a corrupt file must never stop the app from opening.

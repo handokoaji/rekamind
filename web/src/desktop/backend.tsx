@@ -8,8 +8,8 @@ interface Ctx {
   error: string | null;
   /** True once the backend has answered at least once; after that, restarts never blank the page. */
   everReady: boolean;
-  /** "local" backends are started and stopped by the shell, so being down is normal, not an error. */
-  mode: "local" | "remote";
+  /** Which kind of backend the shell chose; null until the shell has said. "local" backends are started and stopped by the shell, so being down is normal, not an error. */
+  mode: "local" | "remote" | null;
   retry: () => void;
 }
 const BackendCtx = createContext<Ctx>({ status: "ready", error: null, everReady: true, mode: "remote", retry: () => undefined });
@@ -20,7 +20,7 @@ export const useBackendReady = () => useContext(BackendCtx);
 export function BackendProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>("starting");
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<"local" | "remote">("local");
+  const [mode, setMode] = useState<"local" | "remote" | null>(null);
   const everReady = useRef(false);
   const inFlight = useRef(false);
 

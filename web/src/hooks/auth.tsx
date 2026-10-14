@@ -20,7 +20,9 @@ export function useAuth(): Ctx {
   return c;
 }
 
-export type AuthState = { status: "loading" } | { status: "signed-out" } | { status: "error"; error: Error } | { status: "ready"; me: Me };
+const LOCAL_ME: Me = { id: "local", email: "", name: null, picture: null, role: "superadmin", auth_mode: "local_token" };
+
+export type AuthState = { status: "loading" } |  { status: "signed-out" } | { status: "error"; error: Error } | { status: "ready"; me: Me };
 
 /** One place decides whether the app shows a login screen: /api/me. Any other request that gets a 401
  *  (a session that expired while the page was open) just re-asks it. */
@@ -29,11 +31,21 @@ export function useAuthState(): AuthState {
   // In the desktop app the shell decides which server (and which credential) to use, and a local
   // backend starts on demand: asking before it is up would be a spurious "cannot connect".
   const backend = useBackendReady();
-  const up = backend.status === "ready" || backend.everReady;
-  const q = useQuery({ queryKey: ["me"], queryFn: api.me, enabled: up, retry: false, staleTime: 60_000, refetchOnWindowFocus: true });
+  const local = backend.mode === "local";
+  const up = backend.mode !== null && (local || backend.status === "ready" || backend.everReady);
+  const q = useQuery({
+    queryKey: ["me"], queryFn: api.me,
+    enabled: up && !local, retry: false, staleTime: 60_000, refetchOnWindowFocus: true,
+  });
   useEffect(() => onUnauthorized(() => { void qc.invalidateQueries({ queryKey: ["me"] }); }), [qc]);
+  // The desktop app's own backend serves exactly one person (the one at this keyboard) and is switched
+  // off during recordings, so there is nothing to ask and no one else to sign in. The shell shows
+  // "starting" / "cannot start" itself, and the backend still demands the local secret.
+  if (local) return { status: "ready", me: LOCAL_ME };
+  if (backend.mode === null && isDesktop()) return { status: "loading" };
   if (backend.status === "error" && !backend.everReady) return { status: "error", error: new Error(backend.error ?? "Tidak bisa menyalakan layanan.") };
-  if (!up || q.isPending) return { status: "loading" };
+  if (!up) return { status: "loading" };
+  if (q.isPending) return { status: "loading" };
   if (q.error instanceof ApiError && q.error.status === 401) return { status: "signed-out" };
   // A later refresh failing (backend stopped while idle, network blip) must not throw away a good session.
   if (q.error && !q.data) return { status: "error", error: q.error };
@@ -48,7 +60,7 @@ export function AuthProvider({ me, children }: { me: Me; children: ReactNode }) 
       // The shell owns the credential: forget it there too, then show the login screen again.
       try { await desktop.logout(); } catch { /* nothing more to forget */ }
       setAuthToken(null);
-      qc.clear();
+        qc.clear();
       return;
     }
     qc.clear();

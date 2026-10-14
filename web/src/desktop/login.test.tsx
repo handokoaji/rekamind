@@ -46,7 +46,7 @@ describe("desktop sign-in", () => {
 });
 
 describe("session check in the desktop app", () => {
-  const view = { settings: { mode: "local" }, server_url: "http://127.0.0.1:1", auth_token: "tok", recordings_dir: "", hotkey_error: null };
+  const view = { settings: { mode: "remote" }, server_url: "http://127.0.0.1:1", auth_token: "tok", recordings_dir: "", hotkey_error: null };
   function Probe() { const a = useAuthState(); return <p>{a.status}</p>; }
   const mount = () => render(<QueryClientProvider client={new QueryClient()}><BackendProvider><Probe /></BackendProvider></QueryClientProvider>);
 
@@ -65,7 +65,16 @@ describe("session check in the desktop app", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect((fetchMock.mock.calls[0]![1] as RequestInit).headers).toMatchObject({ authorization: "Bearer tok" });
   });
-  it("a backend that cannot be started is reported as such, not as a login problem", async () => {
+  it("the local backend serves only this person: no identity request, and the app opens even while the backend is off (recording)", async () => {
+    bridge.settings.mockResolvedValue({ ...view, settings: { mode: "local" } });
+    bridge.ensureBackend.mockRejectedValue(new Error("Perekaman sedang berjalan."));
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    mount();
+    expect(await screen.findByText("ready")).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it("a remote server that cannot be reached is reported as such, not as a login problem", async () => {
     bridge.settings.mockResolvedValue(view);
     bridge.ensureBackend.mockRejectedValue(new Error("Layanan lokal tidak mau menyala."));
     vi.stubGlobal("fetch", vi.fn());

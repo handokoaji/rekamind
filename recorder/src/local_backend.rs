@@ -42,6 +42,12 @@ impl LocalBackend {
         }
     }
 
+    /// The credential this backend demands (`REKAMIND_LOCAL_TOKEN`); needed to ask it whether it is busy.
+    pub fn with_token(mut self, token: impl Into<String>) -> Self {
+        self.token = Some(token.into());
+        self
+    }
+
     fn client(&self) -> Client {
         Client::new(&self.url, self.token.clone())
     }
