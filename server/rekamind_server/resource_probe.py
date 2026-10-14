@@ -15,10 +15,16 @@ def peak_rss_mb() -> float | None:
                             ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t), ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
                             ("PagefileUsage", ctypes.c_size_t), ("PeakPagefileUsage", ctypes.c_size_t)]
 
+            # Without argtypes ctypes passes the process handle as a 32-bit int and the call quietly
+            # fills nothing in (the bench then reported 0.0 MB on Windows).
+            k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            k32.GetCurrentProcess.restype = wintypes.HANDLE
+            k32.K32GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(PMC), wintypes.DWORD]
+            k32.K32GetProcessMemoryInfo.restype = wintypes.BOOL
             pmc = PMC()
             pmc.cb = ctypes.sizeof(PMC)
-            h = ctypes.windll.kernel32.GetCurrentProcess()
-            ctypes.windll.psapi.GetProcessMemoryInfo(h, ctypes.byref(pmc), pmc.cb)
+            if not k32.K32GetProcessMemoryInfo(k32.GetCurrentProcess(), ctypes.byref(pmc), pmc.cb):
+                return None  # unknown is honest; 0.0 is not
             return round(pmc.PeakWorkingSetSize / 1e6, 1)
         import resource
 

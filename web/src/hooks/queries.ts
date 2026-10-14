@@ -48,7 +48,7 @@ export function useInvalidate() {
 
 export function useProcessMeeting() {
   const invalidate = useInvalidate();
-  return useMutation({ mutationFn: (id: string) => api.process(id), onSettled: invalidate });
+  return useMutation({ mutationFn: (v: string | { id: string; stage: "all" | "extract" }) => (typeof v === "string" ? api.process(v) : api.process(v.id, v.stage)), onSettled: invalidate });
 }
 
 /** Task edits apply instantly in the UI and roll back with the server's message if rejected. */

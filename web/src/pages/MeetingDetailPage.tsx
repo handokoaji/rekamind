@@ -313,6 +313,7 @@ export function MeetingDetailPage() {
   const hasResult = m.status === "review" || m.status === "done";
   const stage = m.job?.stage ? stageLabel[m.job.stage] ?? m.job.stage : "Menunggu giliran";
   const canRun = (m.status === "recorded" || m.status === "failed") && (caps.data?.processing_ready ?? false);
+  const canRunAgain = caps.data?.processing_ready ?? false;
 
   return (
     <div className="flex flex-col gap-6">
@@ -331,6 +332,13 @@ export function MeetingDetailPage() {
           <p className="font-medium">{stage}…</p>
           <ProgressBar value={m.job?.progress ?? 0} label="Kemajuan pemrosesan" />
           <p className="text-sm text-muted">Anda boleh menutup halaman ini; pemrosesan tetap berjalan di server.</p>
+        </Card>)}
+      {m.status === "review" && m.error && (
+        <Card className="flex flex-wrap items-center gap-3 border-warning/40 bg-warning-soft p-4 text-warning" role="status">
+          <ShieldAlert className="size-5 shrink-0" aria-hidden />
+          <p className="min-w-60 flex-1 text-sm">{m.error}</p>
+          {!m.summary && m.segments.length > 0 && canRunAgain && (
+            <Button size="sm" variant="primary" loading={process.isPending} onClick={() => process.mutate({ id: m.id, stage: "extract" }, { onError: (e) => toast.error(e.message) })}>Buat ulang ringkasan</Button>)}
         </Card>)}
       {m.status === "failed" && <Card className="border-danger/40 bg-danger-soft p-5 text-danger" role="alert"><p className="font-medium">Pemrosesan gagal</p><p className="mt-1 text-sm">{m.error ?? "Terjadi kesalahan yang tidak diketahui."}</p></Card>}
       {m.status === "recorded" && !canRun && <Card className="p-5 text-sm text-muted">Rekaman tersimpan. Server ini belum punya mesin pemrosesan, sambungkan ke server pemrosesan di Pengaturan.</Card>}

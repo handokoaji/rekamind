@@ -53,6 +53,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", type=Path, help="also write the hypothesis transcript here")
     args = ap.parse_args(argv)
 
+    from . import enginepack
+
+    enginepack.activate()  # the engines may live only in the desktop app's engine pack
     from .engines.whisper import FasterWhisperTranscriber, pick_device_and_compute
 
     device, compute = pick_device_and_compute(args.device, args.compute_type)

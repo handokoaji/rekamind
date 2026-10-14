@@ -42,7 +42,8 @@ class OidcClient:
         self._discovery: dict | None = None
         self._discovery_at = 0.0
         self._jwks: dict[str, dict] = {}
-        self._jwks_at = 0.0
+        # time.monotonic() counts from boot: 0.0 would read as "just fetched" for the first minutes after a restart
+        self._jwks_at = float("-inf")
 
     # ---- provider metadata --------------------------------------------------
     async def discovery(self) -> dict:

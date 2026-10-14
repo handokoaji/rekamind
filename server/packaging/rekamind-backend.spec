@@ -4,7 +4,24 @@ import os
 # antivirus attention a backend that starts on demand cannot afford.
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
-hidden = (
+# Python's whole standard library, not just what the backend itself imports: the ML packages installed
+# later (torch, pyannote...) import stdlib modules the frozen app never needed (pickletools, ...), and
+# PyInstaller only bundles what it can see. A few MB buys never having to chase them one by one.
+import sys
+
+_STDLIB_SKIP = {"tkinter", "idlelib", "turtledemo", "test", "lib2to3", "ensurepip", "antigravity", "this", "__main__"}
+stdlib = [m for m in sorted(sys.stdlib_module_names) if m not in _STDLIB_SKIP and not m.startswith("_")]
+import importlib.util
+
+for _name in list(stdlib):  # packages (unittest, xml, email...) need their submodules named too
+    try:
+        _spec = importlib.util.find_spec(_name)
+    except Exception:  # noqa: BLE001 - platform-specific modules may not import here
+        continue
+    if _spec is not None and _spec.submodule_search_locations:
+        stdlib += [m for m in collect_submodules(_name) if ".test" not in m and not m.endswith(".tests")]
+
+hidden = (stdlib + 
     collect_submodules("uvicorn")
     + collect_submodules("rekamind_server")
     + collect_submodules("sqlalchemy.dialects.sqlite")

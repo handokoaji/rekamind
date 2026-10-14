@@ -26,7 +26,7 @@ from .config import Settings
 from .db import init_db, make_engine, make_session_factory
 from .engines.base import Engines
 from .engines.registry import build_engines
-from .models import Job, Meeting, Participant, Task
+from .models import Job, Meeting, Participant, Segment, Task
 from .schemas import (
     JobBrief,
     JobOut,
@@ -321,12 +321,18 @@ def create_app(settings: Settings | None = None, *, engines: Engines | None = No
         return m
 
     @app.post("/api/meetings/{meeting_id}/process", status_code=202, response_model=JobOut)
-    async def process_meeting(meeting_id: str, request: Request, db: Db, user: User_):
+    async def process_meeting(meeting_id: str, request: Request, db: Db, user: User_,
+                              stage: Literal["all", "extract"] = "all"):
         if request.app.state.engines is None:
             raise HTTPException(503, "Mesin pemrosesan belum dikonfigurasi di backend ini")
         m = await _meeting(db, meeting_id, user)
         if m.status == "recording":
             raise HTTPException(409, "Selesaikan perekaman dulu sebelum memproses")
+        if stage == "extract":  # only the summary and tasks again; needs a saved transcript
+            has_transcript = (await db.execute(select(Segment.id).where(Segment.meeting_id == meeting_id).limit(1))).first()
+            if not has_transcript:
+                raise HTTPException(409, "Belum ada transkrip. Proses rapat dari awal.")
+            return await jobs.enqueue(request.app.state.sf, meeting_id, kind="extract")
         return await jobs.enqueue(request.app.state.sf, meeting_id)
 
     @app.get("/api/jobs/{job_id}", response_model=JobOut)

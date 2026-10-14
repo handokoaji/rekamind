@@ -105,6 +105,11 @@ def main(exe: str) -> int:
     doc = json.loads(r.stdout.strip().splitlines()[-1])
     check(doc["ok"] is False and "error" in doc, "engines check reports a missing pack instead of crashing")
     check(subprocess.run([exe, "engines", "install", "--help"], env=env, capture_output=True, timeout=60).returncode == 0, "pip is bundled for the engine install")
+    # Having pip is not the same as pip being able to run frozen (it was not, on Windows), and the ML
+    # packages installed later import standard-library modules the backend never does.
+    r = subprocess.run([exe, "engines", "selftest"], env=env, capture_output=True, text=True, timeout=60)
+    doc = json.loads(r.stdout.strip().splitlines()[-1])
+    check(doc["ok"] is True, f"pip can locate its own resources and the stdlib the ML packages need is bundled ({doc})")
     print("\nSmoke test lulus.")
     return 0
 

@@ -103,6 +103,21 @@ async def test_a_genuine_token_is_accepted_and_yields_the_identity():
     assert (ident.sub, ident.email, ident.name) == ("sub-boss", "boss@kantor.id", "Boss")
 
 
+async def test_signing_in_works_right_after_the_machine_booted(monkeypatch):
+    # time.monotonic() counts from boot. The signing-key cache used 0.0 as "never fetched", which read as
+    # "fetched a moment ago" for the first 5 minutes after boot, so a first login then failed with
+    # "unknown signing key" (found when the sandbox restarted).
+    import time as _time
+
+    from rekamind_server.auth import oidc as oidc_mod
+
+    real = _time.monotonic
+    monkeypatch.setattr(oidc_mod.time, "monotonic", lambda: real() - real() + 30.0)  # 30 s after boot
+    idp = MockIdp()
+    ident = await oidc(idp).verify_id_token(idp.mint("n1"), expected_nonce="n1")
+    assert ident.email == "boss@kantor.id"
+
+
 @pytest.mark.parametrize("why,kwargs", [
     ("wrong audience (token meant for another app)", {"aud": "someone-elses-client"}),
     ("wrong issuer", {"iss": "https://evil.example"}),

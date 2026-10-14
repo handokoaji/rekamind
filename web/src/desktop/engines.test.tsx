@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -108,7 +109,7 @@ describe("first-run banner", () => {
   const show = (ready: boolean | undefined, mode: "local" | "remote") => {
     bridge.settings.mockResolvedValue(view({ settings: { ...view().settings, mode } }));
     (bridge as Record<string, unknown>).ensureBackend = vi.fn().mockResolvedValue(undefined);
-    return render(<MemoryRouter><BackendProvider><EngineSetupBanner ready={ready} /></BackendProvider></MemoryRouter>);
+    return render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><BackendProvider><EngineSetupBanner ready={ready} /></BackendProvider></MemoryRouter></QueryClientProvider>);
   };
   it("points a local, not-yet-ready machine to the installation, and says recording still works", async () => {
     show(false, "local");
@@ -123,5 +124,16 @@ describe("first-run banner", () => {
       expect(screen.queryByText("Mesin transkripsi belum dipasang")).toBeNull();
       unmount();
     }
+  });
+});
+
+describe("backend start", () => {
+  it("re-checks server health once the backend answered (so the 'unreachable' pill clears without waiting 15 s)", async () => {
+    bridge.settings.mockResolvedValue(view());
+    (bridge as Record<string, unknown>).ensureBackend = vi.fn().mockResolvedValue(undefined);
+    const qc = new QueryClient();
+    const spy = vi.spyOn(qc, "invalidateQueries");
+    render(<QueryClientProvider client={qc}><MemoryRouter><BackendProvider><p>x</p></BackendProvider></MemoryRouter></QueryClientProvider>);
+    await waitFor(() => expect(spy).toHaveBeenCalledWith({ queryKey: ["health"] }));
   });
 });

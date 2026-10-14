@@ -73,6 +73,7 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://api.groq.com/openai/v1"
     llm_api_key: str = ""
     llm_model: str = "openai/gpt-oss-120b"
+    llm_chunk_chars: int = 12000  # transcript characters per request; lower it for small per-minute token caps
 
     @staticmethod
     def _csv(v: str) -> set[str]:

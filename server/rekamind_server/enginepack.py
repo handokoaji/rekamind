@@ -16,7 +16,9 @@ from pathlib import Path
 TORCH_INDEX = {"cpu": "https://download.pytorch.org/whl/cpu", "cuda": "https://download.pytorch.org/whl/cu126"}
 # Pins follow the v1 README (torch 2.13 / cu126); ctranslate2 comes in through faster-whisper.
 PACKAGES = {
-    "asr": ["faster-whisper>=1.0", "soundfile>=0.12"],
+    # av<17: faster-whisper 1.2.x calls av.open(..., metadata_errors=...), which av 17+ rejects
+    # (measured: every transcription failed with a TypeError on a freshly installed pack).
+    "asr": ["faster-whisper>=1.0", "soundfile>=0.12", "av>=12,<17"],
     "diarize": ["pyannote.audio>=4.0", "soundfile>=0.12"],
     # faster-whisper on NVIDIA needs the CUDA 12 runtime libraries next to it.
     "cuda_runtime": ["nvidia-cublas-cu12", "nvidia-cudnn-cu12==9.*"],
@@ -35,7 +37,9 @@ def activate(pack: Path | None = None) -> Path:
     pack = pack or default_pack_dir()
     p = str(pack)
     if pack.is_dir() and p not in sys.path:
-        sys.path.insert(0, p)
+        # At the END: whatever the frozen backend (or the venv) already carries wins, so the pack can add
+        # libraries but never shadow the backend's own sqlalchemy/alembic/numpy/av with other versions.
+        sys.path.append(p)
     if sys.platform == "win32" and pack.is_dir():
         # Native DLLs (torch, ctranslate2, cuDNN) are no longer found through PATH on Python 3.8+.
         for d in [pack / "torch" / "lib", pack / "ctranslate2", *pack.glob("nvidia/*/bin")]:
@@ -100,7 +104,22 @@ def check(pack: Path | None = None) -> dict:
         out["ctranslate2"] = ctranslate2.__version__
         out["faster_whisper"] = faster_whisper.__version__
         out["cuda_devices"] = int(ctranslate2.get_cuda_device_count())
-        out["ok"] = True
+        # Importing is not enough: a mismatched av broke audio decoding only when a file was opened.
+        import struct
+        import tempfile
+        import wave
+
+        from faster_whisper.audio import decode_audio
+
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "probe.wav"
+            with wave.open(str(path), "wb") as w:
+                w.setnchannels(1)
+                w.setsampwidth(2)
+                w.setframerate(16000)
+                w.writeframes(struct.pack("<h", 100) * 3200)
+            out["decoded_samples"] = int(len(decode_audio(str(path))))
+        out["ok"] = out["decoded_samples"] > 0
     except Exception as e:  # noqa: BLE001 - report, never crash the caller
         out["error"] = f"{type(e).__name__}: {e}"
     return out
@@ -123,6 +142,56 @@ def pip_args(kind: str, pack: Path, with_diarize: bool, pins: list[str] | None =
             # for every package would slow the install and fail wherever download.pytorch.org is blocked.
             *(["--extra-index-url", TORCH_INDEX[kind]] if with_diarize else []),
             *pkgs, *(pins or [])]
+
+
+_ML_STDLIB = ("pickletools", "cProfile", "pstats", "unittest.mock", "xml.etree.ElementTree", "mmap", "unicodedata", "venv", "sqlite3", "ctypes.util", "multiprocessing.shared_memory", "concurrent.futures.process", "asyncio", "logging.handlers", "zoneinfo", "tarfile", "zipfile", "curses" if False else "decimal")
+
+
+def fix_distlib_for_frozen() -> None:
+    """pip (running inside the PyInstaller backend) asks distlib for package resources, and distlib only
+    knows the loaders of a normal interpreter: on Windows that raised `Unable to locate finder for
+    'pip._vendor.distlib'` and no engine could be installed. Teach it that the frozen loader reads files
+    from disk like any other (the data files are collected next to the executable)."""
+    from pip._vendor import distlib
+    from pip._vendor.distlib import resources
+
+    loader = getattr(distlib, "__loader__", None)
+    if loader is not None and type(loader) not in resources._finder_registry:
+        resources.register_finder(loader, resources.ResourceFinder)  # takes an instance, keys on its type
+
+
+def selftest(fix: bool = True) -> dict:
+    """Exercise the distlib path that failed (resource lookup for the script launcher), without any network."""
+    out: dict = {"ok": False, "error": None, "frozen": bool(getattr(sys, "frozen", False))}
+    try:
+        if fix:
+            fix_distlib_for_frozen()
+        from pip._vendor.distlib.resources import finder
+
+        # distlib's Windows script writer does exactly this to find its t64.exe launcher.
+        if finder("pip._vendor.distlib").find("t64.exe") is None:
+            raise FileNotFoundError("t64.exe is not bundled with pip._vendor.distlib")
+        # Standard-library modules that torch / pyannote import but the backend itself never does
+        # (pickletools was missing from the frozen build and broke speaker separation).
+        missing = []
+        for name in _ML_STDLIB:
+            try:
+                __import__(name)
+            except Exception:  # noqa: BLE001
+                missing.append(name)
+        out["missing_stdlib"] = missing
+        out["ok"] = not missing
+    except Exception as e:  # noqa: BLE001
+        out["error"] = f"{type(e).__name__}: {e}"
+        try:
+            from pip._vendor.distlib import resources
+
+            m = sys.modules.get("pip._vendor.distlib")
+            out["loader"] = repr(type(getattr(m, "__loader__", None)))
+            out["registered"] = [repr(k) for k in resources._finder_registry]  # noqa: SLF001
+        except Exception as inner:  # noqa: BLE001
+            out["diagnostics_error"] = str(inner)
+    return out
 
 
 def install(kind: str, with_diarize: bool = False, pack: Path | None = None) -> int:
@@ -157,6 +226,8 @@ def main(argv: list[str]) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("status")
     sub.add_parser("check")
+    st = sub.add_parser("selftest")
+    st.add_argument("--no-fix", action="store_true", help="skip the frozen-loader fix (reproduces the Windows failure)")
     i = sub.add_parser("install")
     i.add_argument("kind", choices=["cpu", "cuda"])
     i.add_argument("--diarize", action="store_true")
@@ -166,6 +237,10 @@ def main(argv: list[str]) -> int:
     if a.cmd == "status":
         print(json.dumps(status()))
         return 0
+    if a.cmd == "selftest":
+        r = selftest(not a.no_fix)
+        print(json.dumps(r))
+        return 0 if r["ok"] else 1
     if a.cmd == "check":
         r = check()
         print(json.dumps(r))

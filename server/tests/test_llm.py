@@ -99,3 +99,45 @@ def test_long_transcript_is_chunked_on_line_boundaries_and_merged():
     r = _llm(lambda req: _reply(json.dumps(GOOD))).extract(_inp(text))
     assert len(r.tasks) == len(chunk_transcript(text))  # one call per default-size chunk; dedupe is the pipeline's job
     assert len(chunk_transcript(text)) >= 2
+
+
+def _long_transcript(lines=400):
+    return "\n".join(f"[{i // 60:02d}:{i % 60:02d}] Budi: " + "kalimat rapat yang cukup panjang " * 6 for i in range(lines))
+
+
+def test_a_413_too_large_request_is_split_until_it_fits_and_nothing_is_lost():
+    # Found with a real 52-minute meeting on a free Groq key (8000 tokens/minute): 413 "Request too large"
+    # used to fail the whole meeting. The provider here refuses anything over 6000 characters.
+    sizes = []
+
+    def handler(req):
+        user = json.loads(req.content)["messages"][1]["content"]
+        sizes.append(len(user))
+        if len(user) > 6000:
+            return httpx.Response(413, json={"error": {"message": "Request too large ... on tokens per minute (TPM): Limit 8000, Requested 10207"}})
+        return _reply(json.dumps({**GOOD, "tasks": [{**GOOD["tasks"][0], "title": f"Tugas {len(sizes)}"}]}))
+
+    r = _llm(handler).extract(_inp(_long_transcript()))
+    assert max(sizes[-3:]) <= 6000 and len(r.tasks) >= 4, "split into several accepted requests"
+    assert len({t.title for t in r.tasks}) == len(r.tasks), "every part contributed its own result"
+
+
+def test_a_429_rate_limit_with_retry_after_is_waited_out_not_split():
+    waits, calls = [], []
+
+    def handler(req):
+        calls.append(1)
+        if len(calls) == 1:
+            return httpx.Response(429, headers={"retry-after": "3"}, json={"error": {"message": "Rate limit reached on tokens per minute (TPM): Limit 8000, Used 7000, Requested 2000. Please try again in 3s"}})
+        return _reply(json.dumps(GOOD))
+
+    llm = OpenAiCompatExtractor("http://llm/v1", "k", "m", transport=httpx.MockTransport(handler), sleep=waits.append)
+    assert llm.extract(_inp()).tasks and waits == [3.0] and len(calls) == 2
+
+
+def test_a_request_that_is_too_large_even_when_tiny_fails_clearly():
+    from rekamind_server.engines.llm import LlmTooLarge
+
+    llm = _llm(lambda req: httpx.Response(413, json={"error": {"message": "Request too large"}}))
+    with pytest.raises(LlmTooLarge):
+        llm.extract(_inp(_long_transcript(60)))

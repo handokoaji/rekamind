@@ -18,7 +18,7 @@ def test_activate_puts_an_existing_pack_on_the_path_once_and_ignores_a_missing_o
         assert sys.path == before
         enginepack.activate(tmp_path)
         enginepack.activate(tmp_path)
-        assert sys.path.count(str(tmp_path)) == 1 and sys.path[0] == str(tmp_path)
+        assert sys.path.count(str(tmp_path)) == 1 and sys.path[-1] == str(tmp_path), "appended, so it never shadows the backend's own libraries"
     finally:
         sys.path[:] = before
 
@@ -50,3 +50,18 @@ def test_check_reports_a_missing_engine_instead_of_raising(tmp_path, monkeypatch
     monkeypatch.setitem(sys.modules, "ctranslate2", None)  # import -> ImportError
     r = enginepack.check(tmp_path)
     assert r["ok"] is False and "ctranslate2" in r["error"]
+
+
+def test_the_pack_pins_av_below_17_and_the_backend_bundles_the_same_range():
+    assert "av>=12,<17" in enginepack.PACKAGES["asr"]
+    import re
+    from pathlib import Path
+
+    py = (Path(__file__).parent.parent / "pyproject.toml").read_text()
+    assert re.search(r'"av>=12,<17"', py), "the frozen backend must carry an av the pack also accepts"
+
+
+def test_selftest_runs_the_distlib_launcher_lookup_that_failed_in_the_frozen_windows_build():
+    r = enginepack.selftest()
+    assert r["ok"] is True, r
+    assert enginepack.fix_distlib_for_frozen() is None  # idempotent

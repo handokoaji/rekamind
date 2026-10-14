@@ -9,10 +9,11 @@ ACTIVE = ("queued", "running")
 
 
 async def enqueue(sf: async_sessionmaker[AsyncSession], meeting_id: str, kind: str = "process") -> Job:
-    """Idempotent: a double-click on "Proses" returns the job already in flight."""
+    """Idempotent: a double-click on "Proses" returns the job already in flight (of either kind: two jobs
+    rewriting the same meeting at once would corrupt it)."""
     async with sf() as s:
         existing = (
-            await s.execute(select(Job).where(Job.meeting_id == meeting_id, Job.kind == kind, Job.status.in_(ACTIVE)))
+            await s.execute(select(Job).where(Job.meeting_id == meeting_id, Job.status.in_(ACTIVE)))
         ).scalars().first()
         if existing:
             return existing

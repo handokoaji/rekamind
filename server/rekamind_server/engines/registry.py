@@ -31,7 +31,8 @@ def build_engines(settings: Settings) -> Engines | None:
     else:
         raise ValueError(f"REKAMIND_DIARIZER='{settings.diarizer}' tidak dikenal (none | pyannote)")
 
-    extractor = OpenAiCompatExtractor(settings.llm_base_url, settings.llm_api_key, settings.llm_model)
+    extractor = OpenAiCompatExtractor(settings.llm_base_url, settings.llm_api_key, settings.llm_model,
+                                      chunk_chars=settings.llm_chunk_chars)
 
     def release() -> None:
         for e in (transcriber, diarizer):

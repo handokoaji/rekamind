@@ -1,0 +1,3 @@
+
+# Golden contract files are compared byte for byte (and generated on Linux): never convert line endings.
+desktop/contract/*.json text eol=lf

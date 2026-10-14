@@ -89,7 +89,8 @@ export const api = {
   /** Removes audio, transcript and tasks for good (the plain delete is undoable and purged after 30 days). */
   purgeMeeting: (id: string) => request<void>("DELETE", `/meetings/${id}?permanent=true`),
   restoreMeeting: (id: string) => request<Meeting>("POST", `/meetings/${id}/restore`),
-  process: (id: string) => request("POST", `/meetings/${id}/process`),
+  /** stage "extract" redoes only the summary and tasks (the transcript is kept). */
+  process: (id: string, stage: "all" | "extract" = "all") => request("POST", `/meetings/${id}/process${stage === "extract" ? "?stage=extract" : ""}`),
   renameParticipant: (id: string, name: string | null) => request<Participant>("PATCH", `/participants/${id}`, { name }),
   tasks: (status?: TaskStatus, scope: Scope = "mine") => {
     const p = new URLSearchParams();

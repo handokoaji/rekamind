@@ -397,8 +397,10 @@ fn ui_state_json_matches_the_golden_contract_file() {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, &pretty).unwrap();
     }
-    let on_disk =
-        std::fs::read_to_string(&path).expect("contract file missing: run with UPDATE_CONTRACT=1");
+    // A Windows checkout may have converted the line endings; the content is what the contract is about.
+    let on_disk = std::fs::read_to_string(&path)
+        .expect("contract file missing: run with UPDATE_CONTRACT=1")
+        .replace("\r\n", "\n");
     assert_eq!(on_disk, pretty, "UiState JSON changed: update web/src/desktop/types.ts, then regenerate with UPDATE_CONTRACT=1");
 }
 
@@ -459,4 +461,39 @@ fn a_refused_process_request_is_a_warning_not_a_failed_upload() {
         s.pending.is_empty(),
         "the recording is uploaded, so it is no longer pending"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn the_live_recording_is_recognised_however_its_folder_is_spelled() {
+    // Found on Windows (canonicalize() gives `\\?\C:\...` while the session kept `C:\...`), where
+    // discard() deleted the recording that was still being written. A symlinked root is the same
+    // class of problem on Unix: two spellings of one folder.
+    let real = tempfile::tempdir().unwrap();
+    let holder = tempfile::tempdir().unwrap();
+    let link = holder.path().join("rec-link");
+    std::os::unix::fs::symlink(real.path(), &link).unwrap();
+    let c = ctl(&link, None);
+    c.start("Sedang jalan").unwrap();
+    std::thread::sleep(Duration::from_millis(200));
+    let name = std::fs::read_dir(real.path())
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .file_name();
+    assert!(c.scan_pending().is_empty(), "live folder listed as pending");
+    for spelling in [link.join(&name), real.path().join(&name)] {
+        assert!(
+            c.discard(&spelling)
+                .unwrap_err()
+                .contains("sedang berjalan"),
+            "{spelling:?}"
+        );
+        assert!(
+            real.path().join(&name).join("mic.wav").exists(),
+            "the recording must still be there"
+        );
+    }
+    c.stop().unwrap();
 }

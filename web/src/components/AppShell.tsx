@@ -1,5 +1,5 @@
 import { CheckSquare, FileAudio, Settings, Users, WifiOff } from "lucide-react";
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../hooks/auth";
 import { useHealth } from "../hooks/queries";
@@ -26,8 +26,14 @@ function ServerStatus() {
   // A local backend is switched off on purpose while recording and after idling: that is not an
   // error. Bring it back quietly instead of showing a red alarm.
   const quiet = isDesktop() && backend.mode === "local";
+  // At most one restart per few seconds. Without the limit, "restart -> status flips -> effect runs
+  // again while health still reads 'down'" looped ~140 times a second for the first 15 s after start.
+  const lastRestart = useRef(0);
   useEffect(() => {
-    if (isError && quiet && !recording && backend.status === "ready") backend.retry();
+    if (isError && quiet && !recording && backend.status === "ready" && Date.now() - lastRestart.current > 5_000) {
+      lastRestart.current = Date.now();
+      backend.retry();
+    }
   }, [isError, quiet, recording, backend]);
   const installing = !!backend.error?.startsWith("Pemasangan mesin");
   if (!isError || (quiet && (recording || installing || backend.status === "starting"))) return null; // connected is the normal state: say nothing

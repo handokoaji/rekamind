@@ -167,3 +167,23 @@ Pemasangan: engine pack CUDA 2,23 GB / 241 dtk; + diarisasi 6,69 GB / 803 dtk (j
 2. Proses rapat 52 menit (`recordings/042daa73…`) dari UI: harus selesai walau LLM tier 8000 TPM (temuan 4).
 3. Ulangi `cargo test` di Windows (temuan 2 dan 6).
 4. Uji manual yang tersisa: A5, A6, A9, A10, T1–T4 dan satu rapat nyata dengan suara di mic.
+
+## 8. Status perbaikan (sesi cloud, setelah laporan di atas)
+
+Diverifikasi di Linux (sandbox); **belum di Windows**: butir yang ditandai "uji ulang di PC".
+
+| # | Temuan | Perbaikan | Bukti di sandbox | Uji ulang di PC |
+|---|---|---|---|---|
+| 1 | pip beku gagal (`distlib` finder) | `enginepack.fix_distlib_for_frozen()` mendaftarkan loader PyInstaller (`register_finder` menerima *instance*; percobaan pertama saya salah memberi tipe). Perintah baru `engines selftest` + langkah di `smoke_backend.py` | Kegagalan **direproduksi di Linux** pada biner beku (`selftest --no-fix` → `DistlibException`), lalu lulus dengan perbaikan; pasang CPU dari biner beku sukses | Klik "Pasang" dari app |
+| 2 | `discard()` menghapus rekaman berjalan | `same_dir()` mengkanonikalkan kedua sisi (di `discard` dan `scan_pending`) | Tes baru dengan root berupa symlink **gagal sebelum perbaikan, lulus sesudah** | `cargo test` di Windows |
+| 3 | `av` 19 merusak faster-whisper | `av>=12,<17` di pack **dan** di backend (`pyproject`), supaya pin pack = versi terbundel; `engines check` kini benar-benar men-decode audio lewat `faster_whisper.audio` | Pack terpasang segar berisi `av-16.1.0`, `check` men-decode 3200 sampel | Transkripsi dari pack segar |
+| 4 | LLM 413 menggagalkan rapat | Potongan bawaan 24.000 → 12.000 karakter (`REKAMIND_LLM_CHUNK_CHARS`); 413/"too large" membelah potongan secara rekursif; 429 TPM dengan `retry-after` tetap ditunggu; bila tetap gagal **transkrip disimpan**, rapat `review` dengan pesan, dan tombol "Buat ulang ringkasan" (`POST /process?stage=extract`, tanpa transkripsi ulang) | 3 tes LLM + 3 tes degradasi (transkrip tidak ditranskripsi ulang saat coba ulang) | Rapat 52 menit dengan Groq 8000 TPM |
+| 5 | `pickletools` hilang | Seluruh stdlib (termasuk submodul paket) dimasukkan ke bundel; `selftest` memeriksa modul yang dipakai torch/pyannote. Diarisasi yang gagal tidak lagi menggagalkan rapat: satu pembicara `SPEAKER_00` + catatan | `selftest` awalnya menemukan `unittest.mock` dan `xml.etree` juga hilang (submodul), sudah diperbaiki; bundel tetap 250 MB | Diarisasi dari backend beku di Windows |
+| 6 | Golden JSON CRLF | `.gitattributes` (`eol=lf`) + tes menormalkan `\\r\\n` | — | `cargo test` di Windows |
+| 7 | Pack menimpa pustaka bundel | `activate()` memakai `sys.path.append` (bundel menang) | tes | — |
+| 8 | float32 di Pascal | `choose_compute`: float16 → int8 bila tak ada; OOM CUDA turun ke int8 lalu CPU | 6 tes (dengan model tiruan) | Pascal asli: pastikan `auto` memilih int8 (~4 GB) |
+| 9 | Polling `/api/health` rapat | Penyebab sebenarnya: efek "restart" di UI yang berputar ~140×/dtk; kini maksimal sekali per 5 dtk dan health di-refetch setelah backend siap | tes | Hitung `GET /api/health` di `backend.log` |
+| 10 | bench tanpa pack, RSS 0,0 | `bench` memanggil `enginepack.activate()`; probe RSS memakai argtypes yang benar dan mengembalikan `None` bila gagal | — (tak bisa diuji di Linux) | `bench` di Windows |
+
+Temuan tambahan dari sesi ini: `OidcClient` memakai `time.monotonic()` dengan nilai awal 0, sehingga **login pertama dalam 5 menit
+setelah boot gagal** ("unknown signing key"). Diperbaiki (nilai awal `-inf`) dengan tes yang gagal tanpa perbaikan.

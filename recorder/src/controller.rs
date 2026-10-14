@@ -152,6 +152,15 @@ fn read_meta(dir: &Path) -> Option<SavedMeta> {
     serde_json::from_str(&fs::read_to_string(dir.join(META_FILE)).ok()?).ok()
 }
 
+/// Two spellings of the same folder (symlink, `\\?\` prefix and 8.3 names on Windows, `..`) must compare
+/// equal: this guards "never delete or list the recording that is still being written".
+fn same_dir(a: &Path, b: &Path) -> bool {
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(x), Ok(y)) => x == y,
+        _ => a == b,
+    }
+}
+
 fn files_in(dir: &Path) -> Vec<(Source, PathBuf)> {
     Source::ALL
         .into_iter()
@@ -480,7 +489,7 @@ impl Controller {
             .unwrap()
             .active
             .as_ref()
-            .is_some_and(|a| a.session.dir() == dir)
+            .is_some_and(|a| same_dir(a.session.dir(), &dir))
         {
             return Err("Rekaman ini sedang berjalan.".into());
         }
@@ -511,12 +520,13 @@ impl Controller {
             .active
             .as_ref()
             .map(|a| a.session.dir().to_path_buf());
+        let is_live = |p: &Path| live.as_deref().is_some_and(|l| same_dir(l, p));
         let mut out: Vec<Pending> = entries
             .flatten()
             .map(|e| e.path())
             .filter(|p| {
                 p.is_dir()
-                    && live.as_deref() != Some(p.as_path())
+                    && !is_live(p)
                     && !p.join(UPLOADED_FILE).exists()
                     && !files_in(p).is_empty()
             })

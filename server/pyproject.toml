@@ -14,7 +14,7 @@ dependencies = [
     "pydantic-settings>=2.4",
     "httpx>=0.27",
     "numpy>=1.26",
-    "av>=12",  # decodes mp3/m4a/ogg uploads to WAV; also a faster-whisper dependency
+    "av>=12,<17",  # (faster-whisper 1.2 breaks on av 17+) decodes mp3/m4a/ogg uploads to WAV; also a faster-whisper dependency
 ]
 
 [project.optional-dependencies]
