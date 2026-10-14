@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     worker_inprocess: bool = True
     worker_poll_seconds: float = 1.0
     language: str = "id"
+    # Deleted meetings stay recoverable this long, then audio and data are removed for good (0 = keep forever).
+    trash_days: int = 30
 
     # --- Access control ----------------------------------------------------------------------
     # google      : multi-user, "Sign in with Google" using YOUR OWN Google OAuth client (default)

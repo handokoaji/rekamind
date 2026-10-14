@@ -82,3 +82,9 @@ OS di Windows. Coba login pertama Anda sebelum mengandalkannya.
 
 - Opsi login OAuth lain (mis. IdP kampus) bisa ditambahkan nanti sebagai penyedia kedua; saat ini hanya Google.
 - Kredensial layanan terpisah untuk worker GPU jarak jauh belum ada.
+
+## Penghapusan data
+
+Hapus di UI = pindah ke tong sampah (bisa diurungkan 10 detik, dan tetap pulih lewat API). Data benar-benar
+dihapus (audio di disk/S3, transkrip, task, peserta) lewat **Hapus permanen** atau otomatis setelah
+`REKAMIND_TRASH_DAYS` hari (bawaan 30; 0 = simpan selamanya). Rapat yang sedang diproses tidak bisa dihapus permanen (409).

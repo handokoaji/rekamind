@@ -45,7 +45,9 @@ function Row({ m, canProcess, showOwner }: { m: Meeting; canProcess: boolean; sh
     await qc.invalidateQueries({ queryKey: ["meetings"] });
     // Undo instead of "Are you sure?": deleting stays one click, and so does changing your mind.
     toast(`“${m.title}” dihapus`, {
-      duration: 8000,
+      duration: 10000,
+      description: "Dihapus permanen setelah 30 hari.",
+      cancel: { label: "Hapus permanen", onClick: () => void api.purgeMeeting(m.id).then(() => toast.success("Dihapus permanen.")).catch((e: Error) => toast.error(e.message)) },
       action: { label: "Urungkan", onClick: () => void api.restoreMeeting(m.id).then(() => qc.invalidateQueries({ queryKey: ["meetings"] })) },
     });
   }

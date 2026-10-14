@@ -121,7 +121,7 @@ docker compose up -d --build        # atau tempel docker-compose.yml sebagai sta
 | 0 | Benchmark engine pada rekaman Indonesia nyata | Alat siap (`python -m rekamind_server.bench`); **menunggu dijalankan di PC Anda** |
 | 1 | Inti backend: model, antrean job, pipeline, API, task terstruktur | Selesai (72 tes) |
 | 1b | Engine: faster-whisper, pyannote, LLM OpenAI-compatible | Ditulis; **model/GPU belum teruji** (hanya stub) |
-| 1c | Penyimpanan S3 (MinIO/SeaweedFS/AWS), Alembic | Selesai. S3 diuji ke server S3 tiruan di socket (moto); **MinIO/SeaweedFS asli belum** |
+| 1c | Penyimpanan S3 (MinIO/SeaweedFS/AWS), Alembic | Selesai. Diuji ke SeaweedFS asli (Docker) dan moto; Postgres 16 asli (12 rapat serentak, migrasi 0001→0002 dengan data, dua migrasi bersamaan, 8 E2E auth). **MinIO asli belum** (image tidak tersedia di sandbox) |
 | 2 | SPA React (daftar rapat, detail, review task, transkrip, pembicara, pengaturan) | Selesai: 15 tes unit, 5 tes E2E, axe WCAG AA bersih (terang/gelap), tanpa scroll horizontal di 375 px |
 | 3a | Perekam Rust (`recorder/`): library + CLI `rekamind-rec` | Selesai di sisi kode: 33 tes lolos di Linux; kode Windows (WASAPI) ter-compile terhadap API aslinya tetapi **belum pernah dijalankan**. Lihat "Perekam Rust" |
 | 3b | Shell Tauri: jendela, tray, pintasan global, notifikasi, backend lokal on-demand | Selesai dan **dijalankan sungguhan di Linux** (WebKitGTK + X11): hotkey, rekam, unggah, SIGTERM. **Belum dijalankan di Windows** (WebView2, tray, NSIS) |

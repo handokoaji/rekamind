@@ -15,7 +15,7 @@ from sqlalchemy import select, true, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from . import __version__, jobs
+from . import __version__, jobs, trash
 from .audio import UnsupportedAudio, is_wav, to_wav_16k_mono
 from .auth import routes as auth_routes
 from .auth import service as auth_service
@@ -130,7 +130,9 @@ def create_app(settings: Settings | None = None, *, engines: Engines | None = No
         if settings.worker_inprocess and app.state.engines:
             worker = Worker(app.state.sf, app.state.storage, app.state.engines, settings.worker_poll_seconds)
             task = asyncio.create_task(worker.run_forever())
+        sweep = asyncio.create_task(trash.sweep_forever(app.state.sf, app.state.storage, settings.trash_days))
         yield
+        sweep.cancel()
         if task:
             task.cancel()
         if own_http:
@@ -261,8 +263,14 @@ def create_app(settings: Settings | None = None, *, engines: Engines | None = No
         return FileResponse(path, media_type="audio/wav")  # Starlette serves Range requests, so seeking works
 
     @app.delete("/api/meetings/{meeting_id}", status_code=204)
-    async def delete_meeting(meeting_id: str, db: Db, user: User_):
-        m = await _meeting(db, meeting_id, user)
+    async def delete_meeting(meeting_id: str, request: Request, db: Db, user: User_, permanent: bool = False):
+        m = await _meeting(db, meeting_id, user, deleted=permanent)
+        if permanent:  # final: audio, transcript, tasks. Also works on a meeting already in the trash.
+            try:
+                await trash.purge_meeting(db, request.app.state.storage, m)
+            except trash.Busy:
+                raise HTTPException(409, "Rapat sedang diproses. Coba lagi setelah selesai.") from None
+            return
         m.deleted_at = datetime.now(UTC)  # soft delete: undoable, and safe against sync resurrection
         await db.commit()
 

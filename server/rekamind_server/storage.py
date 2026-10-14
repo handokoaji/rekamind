@@ -29,6 +29,10 @@ class Storage(Protocol):
         """Drop any local copy that exists only as a cache of remote storage."""
         ...
 
+    async def delete_audio(self, meeting_id: str) -> None:
+        """Remove every stored file of a meeting for good. Missing files are fine."""
+        ...
+
 
 async def _spool(chunks: AsyncIterator[bytes], dest: Path) -> int:
     """Write an upload to disk chunk by chunk: memory stays flat however long the meeting was."""
@@ -62,6 +66,10 @@ class LocalStorage:
 
     def release_local(self, meeting_id: str) -> None:  # the files ARE the storage
         pass
+
+    async def delete_audio(self, meeting_id: str) -> None:
+        _check(meeting_id, "mic")
+        await asyncio.to_thread(shutil.rmtree, self._root / "recordings" / meeting_id, True)
 
 
 class S3Storage:
@@ -138,3 +146,10 @@ class S3Storage:
     def release_local(self, meeting_id: str) -> None:
         _check(meeting_id, "mic")
         shutil.rmtree(self._cache / meeting_id, ignore_errors=True)
+
+    async def delete_audio(self, meeting_id: str) -> None:
+        _check(meeting_id, "mic")
+        for source in ("mic", "speaker"):
+            # delete_object succeeds for a missing key on S3-compatible stores, so no 404 handling needed
+            await asyncio.to_thread(self._s3.delete_object, Bucket=self._bucket, Key=self._key(meeting_id, source))
+        self.release_local(meeting_id)

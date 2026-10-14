@@ -2,7 +2,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -18,8 +18,16 @@ _LOCK_KEY = 0x52454B41  # arbitrary constant: "REKA"
 def make_engine(url: str) -> AsyncEngine:
     if url.startswith("sqlite") and ":memory:" in url:
         # One shared connection, otherwise every checkout sees its own empty DB.
-        return create_async_engine(url, poolclass=StaticPool, connect_args={"check_same_thread": False})
-    return create_async_engine(url)
+        engine = create_async_engine(url, poolclass=StaticPool, connect_args={"check_same_thread": False})
+    else:
+        engine = create_async_engine(url)
+    if url.startswith("sqlite"):
+        # SQLite ignores foreign keys unless asked. Postgres always enforces them, so without this a
+        # constraint bug only shows up in production on the other database.
+        @event.listens_for(engine.sync_engine, "connect")
+        def _fk_on(dbapi_connection, _record):  # noqa: ANN001
+            dbapi_connection.execute("PRAGMA foreign_keys=ON")
+    return engine
 
 
 def alembic_config(connection=None) -> Config:
