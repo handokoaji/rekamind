@@ -21,8 +21,9 @@
 </div>
 
 > [!WARNING]
-> **Ini rilis beta (0.x) untuk diuji, bukan rilis final.** Fungsi utama sudah diuji otomatis dan di satu PC
-> Windows, tetapi belum di banyak mesin. **Jangan jadikan Rekamind satu-satunya salinan rekaman yang penting.**
+> **Ini rilis beta (0.x; terbaru: v0.4.0-beta.2) untuk diuji, bukan rilis final.** Fungsi utama sudah diuji otomatis dan
+> dicoba langsung di dua PC Windows (satu NVIDIA, satu Intel), tetapi belum di banyak mesin. Aplikasi desktop Linux dan
+> GPU AMD **belum** diuji di perangkat keras nyata. **Jangan jadikan Rekamind satu-satunya salinan rekaman yang penting.**
 > Daftar batasan yang jujur ada di [Batasan rilis beta](#-batasan-rilis-beta).
 
 > [!NOTE]
@@ -341,7 +342,7 @@ Dinyatakan apa adanya supaya Anda tahu apa yang sedang diuji:
 - **Installer belum bertanda tangan** (Windows akan memperingatkan).
 - **Linux desktop (baki sistem, hotkey global, perekaman audio) belum diuji di mesin sungguhan.** Backend dan
   antarmukanya diuji di Linux; shell desktop-nya baru dibangun di CI.
-- **Windows**: diuji di satu PC (Windows 11, GTX 1080 Ti). Rekam panjang dengan jendela tertutup, mati paksa saat
+- **Windows**: diuji mendalam di satu PC (Windows 11, GTX 1080 Ti) dan secara manual di satu laptop Intel Core Ultra 7 155H. Rekam panjang dengan jendela tertutup, mati paksa saat
   merekam, ekspor Word di aplikasi Word asli, dan penyimpanan di Credential Manager masih dalam pengujian manual.
 - **GitHub, GitLab, Google login, dan S3/MinIO asli** baru diuji dengan server tiruan/otomatis, belum dengan layanan
   sungguhan.

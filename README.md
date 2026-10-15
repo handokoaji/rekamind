@@ -21,9 +21,10 @@
 </div>
 
 > [!WARNING]
-> **This is a beta (0.x) release for testing, not a final release.** The core features are covered by automated
-> tests and have been tried on one Windows PC, but not on many machines. **Do not make Rekamind the only copy of a
-> recording that matters.** See the honest list of [beta limitations](#-beta-limitations).
+> **This is a beta (0.x) release (latest: v0.4.0-beta.2) for testing, not a final release.** The core features are
+> covered by automated tests and have been tried by hand on two Windows PCs (one NVIDIA, one Intel), but not on many
+> machines. The Linux desktop app and AMD GPUs have **not** been tested on real hardware. **Do not make Rekamind the
+> only copy of a recording that matters.** See the honest list of [beta limitations](#-beta-limitations).
 
 > [!NOTE]
 > **Language:** the interface is available in **Indonesian (default) and English**; switch with the language selector in the
@@ -352,7 +353,7 @@ Stated plainly so you know what is being tested:
 - **Installers are unsigned** (Windows will warn you).
 - **Linux desktop (tray, global hotkey, audio capture) has not been tested on a real machine.** The backend and UI are
   tested on Linux; the desktop shell is only built in CI.
-- **Windows**: tested on one PC (Windows 11, GTX 1080 Ti). Long recordings with the window closed, force-kill during
+- **Windows**: tested in detail on one PC (Windows 11, GTX 1080 Ti) and by hand on one Intel Core Ultra 7 155H laptop. Long recordings with the window closed, force-kill during
   recording, Word export in real Microsoft Word, and Credential Manager storage are still being tested manually.
 - **GPU**: CPU and NVIDIA CUDA are supported; **Intel GPU is experimental** (OpenVINO; works on one Core Ultra 7 155H by manual check, not measured); AMD GPU (Vulkan) is experimental and has not been tested on real hardware.
 - **Real GitHub, GitLab, Google sign-in and S3/MinIO** have only been tested against mock/automated servers.
