@@ -11,6 +11,7 @@ import { cn } from "../lib/cn";
 import { useBackendReady } from "../desktop/backend";
 import { isDesktop } from "../desktop/bridge";
 import { RecorderBar } from "../desktop/RecorderBar";
+import { RecordingFocus } from "../desktop/RecordingFocus";
 import { useDesktopRecording } from "../desktop/useRecorder";
 import { ErrorState, Spinner } from "./ui/Feedback";
 import { Button } from "./ui/Button";
@@ -74,8 +75,24 @@ function Content() {
 
 export function AppShell() {
   const { canAdmin } = useAuth();
+  const backend = useBackendReady();
+  const recording = useDesktopRecording();
   const nav = navItems();
   const items = canAdmin ? [...nav.slice(0, 2), { to: "/admin", label: t("Pengguna"), icon: Users }, nav[2]!] : nav;
+  // A local backend is off while recording, so the list, tasks and settings cannot work: show only what can.
+  if (isDesktop() && recording && backend.mode === "local") {
+    return (
+      <div className="min-h-screen">
+        <header className="border-b border-border bg-bg/85">
+          <div className="mx-auto flex max-w-5xl items-center gap-2 px-4 py-3 font-semibold tracking-tight">
+            <Logo className="size-8" /> Rekamind
+            <div className="ml-auto"><LanguageSwitcher /></div>
+          </div>
+        </header>
+        <main id="utama" className="px-4 py-8"><RecordingFocus /></main>
+      </div>
+    );
+  }
   return (
     <div className="min-h-screen pb-24">
       <a href="#utama" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-card focus:px-3 focus:py-2">
@@ -98,7 +115,7 @@ export function AppShell() {
               </NavLink>
             ))}
           </nav>
-          <div className="ml-auto flex items-center gap-2 sm:gap-3"><ServerStatus /><LanguageSwitcher className="w-[4.5rem] px-1 sm:w-auto sm:px-2" /><UserMenu /></div>
+          <div className="ml-auto flex items-center gap-2 sm:gap-3"><ServerStatus /><LanguageSwitcher /><UserMenu /></div>
         </div>
       </header>
       <main id="utama" className="mx-auto max-w-5xl px-4 py-8">

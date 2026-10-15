@@ -119,7 +119,15 @@ export const api = {
     return request<TaskWithMeeting[]>("GET", `/tasks${p.size ? `?${p}` : ""}`);
   },
   patchTask: (id: string, patch: TaskPatch) => request<Task>("PATCH", `/tasks/${id}`, patch),
-  audioUrl: (id: string, source: Source) => `${getBackendUrl()}/api/meetings/${id}/audio/${source}`,
+  /** An <audio src> cannot send the bearer header (the desktop app has no cookie), so the file is fetched
+   *  with the same credentials as every other call and played from a blob URL. */
+  fetchAudio: async (id: string, source: Source): Promise<Blob> => {
+    let res: Response;
+    try { res = await fetch(`${getBackendUrl()}/api/meetings/${id}/audio/${source}`, { headers: authHeaders() }); }
+    catch { throw new ApiError(0, t("Tidak dapat terhubung ke server.")); }
+    if (!res.ok) throw new ApiError(res.status, res.status === 404 ? t("Audio tidak tersedia untuk rapat ini.") : messageFrom(await res.json().catch(() => null), res.status));
+    return res.blob();
+  },
 };
 
 /** PUT with progress (fetch cannot report upload progress). */

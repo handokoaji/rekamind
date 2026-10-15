@@ -14,7 +14,7 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: (name: string, fn: (e: { paylo
 vi.mock("./useRecorder", () => ({ useRecorder: () => ({ state: { phase: "idle" } }) }));
 
 import { DesktopSettings } from "./DesktopSettings";
-import { EnginesPanel } from "./EnginesPanel";
+import { EnginesPanel, parseInstallProgress } from "./EnginesPanel";
 
 const pack = (o: Partial<EngineState["pack"]> = {}): EngineState["pack"] => ({ pack_dir: "/data/engine-pack", asr: false, diarize: false, kind: null, python: "3.13", ...o });
 const state = (o: Partial<EngineState> = {}): EngineState => ({ pack: pack(), job: { running: null, log: [], last_error: undefined }, ...o });
@@ -85,6 +85,8 @@ describe("engine pack panel", () => {
     bridge.engines.mockResolvedValue(state({ job: { running: "install cpu", log: ["Collecting torch", "Downloading torch-2.13.whl"], last_error: undefined } }));
     render(<EnginesPanel recording={false} whisperModel="large-v3" />);
     expect(await screen.findByRole("status")).toHaveTextContent("Memasang mesin");
+    expect(screen.queryByLabelText("Keluaran pemasangan")).toBeNull(); // log is hidden until asked for
+    await userEvent.click(screen.getByRole("button", { name: "Tampilkan log" }));
     expect(await screen.findByLabelText("Keluaran pemasangan")).toHaveTextContent("Downloading torch-2.13.whl");
     await userEvent.click(screen.getByRole("button", { name: "Batalkan" }));
     expect(bridge.cancelEngines).toHaveBeenCalled();
@@ -97,6 +99,7 @@ describe("engine pack panel", () => {
     await screen.findByText("Belum dipasang");
     await waitFor(() => expect(handlers["engines://line"]).toBeDefined());
     handlers["engines://line"]!({ payload: "Collecting faster-whisper" });
+    await userEvent.click(await screen.findByRole("button", { name: "Tampilkan log" }));
     expect(await screen.findByLabelText("Keluaran pemasangan")).toHaveTextContent("Collecting faster-whisper");
     bridge.engines.mockResolvedValue(state({ pack: pack({ asr: true, kind: "cuda" }) }));
     handlers["engines://done"]!({ payload: null });
@@ -176,5 +179,26 @@ describe("backend start", () => {
     const spy = vi.spyOn(qc, "invalidateQueries");
     render(<QueryClientProvider client={qc}><MemoryRouter><BackendProvider><p>x</p></BackendProvider></MemoryRouter></QueryClientProvider>);
     await waitFor(() => expect(spy).toHaveBeenCalledWith({ queryKey: ["health"] }));
+  });
+});
+
+describe("parseInstallProgress", () => {
+  it("reads percent, size and speed from the installer's progress line", () => {
+    expect(parseInstallProgress(["x", "  ... 123 / 700 MB (17%), 0.45 MB/s"])).toEqual({ pct: 17, doneMb: 123, totalMb: 700, speed: 0.45, stalled: false });
+  });
+  it("handles an unknown total, thousands separators, and a stall warning being the newest line", () => {
+    expect(parseInstallProgress(["  ... 1,234 MB terunduh"])?.doneMb).toBe(1234);
+    expect(parseInstallProgress(["  ... 5 / 9 MB (55%), 1.00 MB/s", "  ! Tidak ada kemajuan unduhan selama 60 dtk (5 dari 9 MB)."])?.stalled).toBe(true);
+    expect(parseInstallProgress(["Rekamind 0.4.0, build fc5bd12"])).toBeNull();
+  });
+});
+
+describe("install progress bar", () => {
+  it("shows the download bar with its speed, and the stall warning, while the log stays hidden", async () => {
+    bridge.engines.mockResolvedValue(state({ job: { running: "install cuda", log: ["  ... 123 / 700 MB (17%), 0.45 MB/s"], last_error: undefined } }));
+    render(<EnginesPanel recording={false} whisperModel="large-v3" />);
+    expect(await screen.findByRole("progressbar", { name: "Kemajuan unduhan" })).toHaveAttribute("aria-valuenow", "17");
+    expect(screen.getByText(/123 dari 700 MB · 0\.45 MB\/s/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Keluaran pemasangan")).toBeNull();
   });
 });

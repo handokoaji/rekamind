@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { toast } from "sonner";
 import { api } from "../lib/api";
 import { formatClock } from "../lib/format";
 import { t } from "../lib/i18n";
@@ -21,17 +22,26 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [now, setNow] = useState<Now | null>(null);
   const [ms, setMs] = useState(0);
 
+  const loaded = useRef<{ key: string; url: string } | null>(null);
+
   const play = useCallback((n: Now, startMs: number) => {
     const el = audio.current;
     if (!el) return;
-    const src = api.audioUrl(n.meetingId, n.source);
     const seekAndPlay = () => { el.currentTime = startMs / 1000; void el.play().catch(() => undefined); };
+    const key = `${n.meetingId}/${n.source}`;
     setNow(n);
-    if (!el.src.endsWith(src) && el.getAttribute("src") !== src) {
-      el.src = src;
+    if (loaded.current?.key === key) { seekAndPlay(); return; }
+    api.fetchAudio(n.meetingId, n.source).then((blob) => {
+      if (loaded.current) URL.revokeObjectURL(loaded.current.url);
+      const url = URL.createObjectURL(blob);
+      loaded.current = { key, url };
+      el.src = url;
       el.addEventListener("loadedmetadata", seekAndPlay, { once: true });
       el.load();
-    } else seekAndPlay();
+    }).catch((e: unknown) => {
+      setNow(null);
+      toast.error(e instanceof Error ? e.message : t("Audio tidak bisa diputar."));
+    });
   }, []);
   const close = useCallback(() => { audio.current?.pause(); setNow(null); setMs(0); }, []);
   const value = useMemo(() => ({ now, ms, play, close }), [now, ms, play, close]);

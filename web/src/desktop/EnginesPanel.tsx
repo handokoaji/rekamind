@@ -1,14 +1,32 @@
-import { Cpu, Download, Loader2, ShieldCheck, Zap } from "lucide-react";
+import { ChevronDown, Cpu, Download, Loader2, ShieldCheck, Zap } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
+import { ProgressBar } from "../components/ui/Feedback";
 import { useBackendReady } from "./backend";
 import { desktop } from "./bridge";
 import type { EngineCheck, EngineState } from "./types";
 import { t } from "../lib/i18n";
 
 const KIND_LABEL = { cpu: "CPU", cuda: "NVIDIA GPU", openvino: "Intel GPU", vulkan: "GPU (Vulkan)" } as const;
+
+export interface InstallProgress { pct: number | null; doneMb: number; totalMb: number | null; speed: number | null; stalled: boolean }
+
+const num = (v: string) => Number(v.replace(/,/g, ""));
+/** The installer prints a structured line every few seconds ("... 123 / 700 MB (17%), 0.45 MB/s"), and a warning when a
+ *  download stands still. The newest one of those is the progress; the rest of the log is for diagnosis. */
+export function parseInstallProgress(lines: string[]): InstallProgress | null {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const l = lines[i]!;
+    if (/Tidak ada kemajuan unduhan/.test(l)) return { pct: null, doneMb: 0, totalMb: null, speed: null, stalled: true };
+    const a = /\.\.\. ([\d.,]+) \/ ([\d.,]+) MB \((\d+)%\), ([\d.]+) MB\/s/.exec(l);
+    if (a) return { pct: Number(a[3]), doneMb: num(a[1]!), totalMb: num(a[2]!), speed: Number(a[4]), stalled: false };
+    const b = /\.\.\. ([\d.,]+) MB(?: terunduh)?(?:, ([\d.]+) MB\/s)?/.exec(l);
+    if (b) return { pct: null, doneMb: num(b[1]!), totalMb: null, speed: b[2] ? Number(b[2]) : null, stalled: false };
+  }
+  return null;
+}
 
 /** Installs and verifies the speech engines. They are not in the installer: they are several GB and
  *  depend on the hardware, so the user picks once and sees real progress. */
@@ -18,6 +36,7 @@ export function EnginesPanel({ recording, whisperModel }: { recording: boolean; 
   const [diarize, setDiarize] = useState(false);
   const [check, setCheck] = useState<EngineCheck | null>(null);
   const [lines, setLines] = useState<string[]>([]);
+  const [showLog, setShowLog] = useState(false);
   const logRef = useRef<HTMLPreElement>(null);
   const { retry } = useBackendReady();
   const retryRef = useRef(retry);
@@ -44,6 +63,8 @@ export function EnginesPanel({ recording, whisperModel }: { recording: boolean; 
   useEffect(() => { const el = logRef.current; if (el) el.scrollTop = el.scrollHeight; }, [lines]);
 
   const running = state?.job.running ?? null;
+  const progress = running ? parseInstallProgress(lines) : null;
+  const failed = !running && !!state?.job.last_error;
   const act = (fn: () => Promise<unknown>) => { setError(null); fn().then(refresh).catch((e: Error) => setError(e.message)); };
   const pack = state?.pack;
   const installed = !!pack?.asr;
@@ -91,11 +112,28 @@ export function EnginesPanel({ recording, whisperModel }: { recording: boolean; 
       {running && (
         <div className="flex flex-col gap-2">
           <p role="status" className="flex items-center gap-2 text-sm font-medium"><Loader2 className="size-4 animate-spin" aria-hidden /> {running.startsWith("install") ? t("Memasang mesin…") : t("Mengunduh model…")}</p>
+          {progress?.pct != null
+            ? <ProgressBar value={progress.pct} label={t("Kemajuan unduhan")} />
+            : <div role="progressbar" aria-label={t("Kemajuan unduhan")} className="h-1.5 w-full overflow-hidden rounded-full bg-border"><div className="h-full w-1/3 animate-pulse rounded-full bg-primary motion-reduce:animate-none" /></div>}
+          <p className="text-xs text-muted">
+            {progress?.totalMb != null
+              ? t("Unduhan saat ini: {done} dari {total} MB{speed}", { done: Math.round(progress.doneMb), total: Math.round(progress.totalMb), speed: progress.speed != null ? ` · ${progress.speed.toFixed(2)} MB/s` : "" })
+              : progress && !progress.stalled
+              ? t("Unduhan saat ini: {done} MB{speed}", { done: Math.round(progress.doneMb), speed: progress.speed != null ? ` · ${progress.speed.toFixed(2)} MB/s` : "" })
+              : t("Menyiapkan paket… pemasangan beberapa GB bisa memakan waktu lama.")}
+          </p>
+          {progress?.stalled && <p role="status" className="rounded-lg bg-warning-soft px-3 py-2 text-sm text-warning">{t("Unduhan hampir tidak bergerak: jaringan ke server paket sedang lambat. Pemasangan masih mencoba; Anda bisa menunggu atau membatalkan.")}</p>}
           <Button variant="ghost" size="sm" className="self-start" onClick={() => act(() => desktop.cancelEngines())}>{t("Batalkan")}</Button>
         </div>
       )}
 
       {lines.length > 0 && (
+        <button type="button" aria-expanded={showLog || failed} onClick={() => setShowLog((v) => !v)}
+          className="flex items-center gap-1 self-start text-xs font-medium text-muted hover:text-fg">
+          <ChevronDown className={`size-3.5 transition-transform ${showLog || failed ? "rotate-180" : ""}`} aria-hidden /> {showLog || failed ? t("Sembunyikan log") : t("Tampilkan log")}
+        </button>
+      )}
+      {lines.length > 0 && (showLog || failed) && (
         <pre ref={logRef} tabIndex={0} aria-label={t("Keluaran pemasangan")} className="max-h-40 overflow-auto rounded-lg bg-bg p-3 text-xs leading-relaxed text-muted">{lines.join("\n")}</pre>
       )}
 

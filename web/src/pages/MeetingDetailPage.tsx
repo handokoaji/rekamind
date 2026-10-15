@@ -1,7 +1,7 @@
 import * as Tabs from "@radix-ui/react-tabs";
 import {
-  ArrowLeft, Check, ClipboardCopy, Download, FileText, HelpCircle, ListChecks, Pencil, Play, RotateCcw, ShieldAlert,
-  ShieldCheck, Undo2, Users, X,
+  ArrowLeft, Check, ClipboardCopy, Download, FileText, Headphones, HelpCircle, ListChecks, Mic, Monitor, Pencil, Play,
+  RotateCcw, ShieldAlert, ShieldCheck, Undo2, Users, X,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
@@ -301,6 +301,30 @@ function TitleEditor({ m }: { m: MeetingDetail }) {
   );
 }
 
+/** The recording itself, always playable: it must not depend on the transcript having words in it
+ *  (an empty transcript is exactly when you need to listen). */
+function AudioCard({ m }: { m: MeetingDetail }) {
+  const player = usePlayer();
+  const sources = [
+    { source: "speaker" as const, label: t("Suara komputer"), icon: Monitor },
+    { source: "mic" as const, label: t("Mikrofon"), icon: Mic },
+  ];
+  return (
+    <Card className="flex flex-wrap items-center gap-3 p-4">
+      <p className="mr-auto flex items-center gap-2 text-sm font-medium"><Headphones className="size-4 text-muted" aria-hidden /> {t("Dengarkan rekaman")}</p>
+      {sources.map(({ source, label, icon: Icon }) => {
+        const playing = player.now?.meetingId === m.id && player.now.source === source;
+        return (
+          <Button key={source} size="sm" variant={playing ? "primary" : "secondary"}
+            onClick={() => player.play({ meetingId: m.id, source, label: `${m.title} · ${label}` }, 0)}>
+            <Icon className="size-3.5" aria-hidden /> {label}
+          </Button>
+        );
+      })}
+    </Card>
+  );
+}
+
 export function MeetingDetailPage() {
   const { id = "" } = useParams();
   const [params, setParams] = useSearchParams();
@@ -335,6 +359,7 @@ export function MeetingDetailPage() {
       </div>
 
       <ExportDialog meetingId={m.id} open={exporting} onOpenChange={setExporting} />
+      {m.status !== "recording" && <AudioCard m={m} />}
       {(m.status === "queued" || m.status === "processing") && (
         <Card className="flex flex-col gap-3 p-6" aria-live="polite">
           <p className="font-medium">{stage}…</p>

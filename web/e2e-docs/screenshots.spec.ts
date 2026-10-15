@@ -149,10 +149,10 @@ test("screenshots README", async ({ page, request }) => {
   // antarmuka bahasa Inggris (pilihan bahasa di header)
   await page.goto(`/rapat/${id}?tab=task`);
   await settled(page);
-  await page.getByLabel("Bahasa / Language").selectOption("en");
+  await page.getByRole("button", { name: "English" }).click();
   await page.waitForTimeout(400);
   await shot(page, "16-english-ui", true);
-  await page.getByLabel("Bahasa / Language").selectOption("id");
+  await page.getByRole("button", { name: "Indonesia" }).click();
 });
 
 for (const [phase, name] of [["idle", "13-desktop-siap"], ["recording", "14-desktop-merekam"]] as const) {
