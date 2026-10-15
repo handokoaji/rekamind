@@ -14,6 +14,9 @@ on:
 env:
   OLD_REF: ${{ github.event.inputs.old_ref || '8fe8a936fe29158e499d875e9c0d2662a2933008' }}
 
+permissions:
+  contents: read
+
 jobs:
   control:
     runs-on: windows-latest
