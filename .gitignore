@@ -12,8 +12,6 @@ model_cache/
 *.log
 dist/
 build/
-packaging/ffmpeg/
-packaging/Output/
 
 # v2 web
 web/e2e-shots/
