@@ -9,7 +9,7 @@ sandbox; program `whisper-cli` Vulkan asli dibangun oleh CI dan baru dijalankan 
 Butir **[ANDA]** butuh mata/telinga/tangan pengguna (mis. grafik GPU); minta pengguna lalu tunggu.
 
 ## Prasyarat (dikerjakan pengelola sebelum uji)
-1. Workflow **Engine assets (whisper.cpp Vulkan)** sudah dijalankan dan rilis `engine-assets` memuat
+1. (Sudah dipenuhi pada 2026-10-15: whisper.cpp v1.9.5, Windows + Linux, SHA-256 di `manifest.json`.) Workflow **Engine assets (whisper.cpp Vulkan)** sudah dijalankan dan rilis `engine-assets` memuat
    `whisper-cli-vulkan-windows-x64.zip` + `manifest.json`. Tanpa itu pemasangan GAGAL dengan "Tidak bisa mengambil daftar mesin".
    Periksa: https://github.com/handokoaji/rekamind/releases/tag/engine-assets
 2. Installer dari CI branch `feat/amd-vulkan` (Actions -> run terbaru hijau -> Artifacts -> `rekamind-installer-windows-latest`).

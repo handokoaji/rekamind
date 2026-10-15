@@ -211,3 +211,20 @@ def test_parse_helpers():
     assert wc.parse_devices("noise\nggml_vulkan: 0 = Intel(R) Arc(TM) Graphics (Intel open-source Mesa driver) | uma: 1\n") == ["Intel(R) Arc(TM) Graphics"]
     assert wc.parse_devices("no vulkan here") == []
     assert wc.parse_segments({"transcription": [{"offsets": {"from": 5, "to": 5}, "text": " ok"}]})[0].end_ms == 6
+
+
+def test_tls_context_keeps_system_roots_and_only_adds_certifi(monkeypatch):
+    """An office that inspects TLS with its own CA must keep working: the system store is not replaced by certifi's."""
+    import ssl
+
+    calls = []
+
+    class Ctx:
+        def load_verify_locations(self, cafile=None, **k):
+            calls.append(cafile)
+
+    made = []
+    monkeypatch.setattr(ssl, "create_default_context", lambda *a, **k: made.append((a, k)) or Ctx())
+    engine_assets._ssl_context()
+    assert made == [((), {})]  # the plain default context: system store / SSL_CERT_FILE untouched
+    assert len(calls) == 1 and calls[0].endswith("cacert.pem")  # certifi added on top

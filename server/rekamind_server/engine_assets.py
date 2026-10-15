@@ -44,12 +44,16 @@ def platform_key() -> str:
 
 
 def _ssl_context() -> ssl.SSLContext:
+    """The system trust store (and SSL_CERT_FILE) first, so an office network that inspects TLS with its own CA
+    works; certifi's roots are *added* for builds with no usable system store (never replace the system roots)."""
+    ctx = ssl.create_default_context()
     try:
         import certifi  # bundled with the frozen backend
 
-        return ssl.create_default_context(cafile=certifi.where())
-    except Exception:  # noqa: BLE001 - fall back to the system store
-        return ssl.create_default_context()
+        ctx.load_verify_locations(cafile=certifi.where())
+    except Exception:  # noqa: BLE001 - the system store alone is fine
+        pass
+    return ctx
 
 
 def check_url(url: str) -> str:
