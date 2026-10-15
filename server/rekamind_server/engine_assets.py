@@ -51,7 +51,7 @@ def _ssl_context() -> ssl.SSLContext:
         import certifi  # bundled with the frozen backend
 
         ctx.load_verify_locations(cafile=certifi.where())
-    except Exception:  # noqa: BLE001 - the system store alone is fine
+    except Exception:  # noqa: BLE001, S110 - the system store alone is fine
         pass
     return ctx
 
