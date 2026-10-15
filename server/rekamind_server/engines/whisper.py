@@ -92,9 +92,11 @@ class FasterWhisperTranscriber:
             vad_filter=True,  # skip long silences: faster, and fewer hallucinations
             condition_on_previous_text=False,  # one bad segment must not poison the rest
             initial_prompt=prompt,
+            word_timestamps=True,  # so a sentence that spans two speakers can be cut where the voice changes
         )
         return [
-            AsrSegment(int(s.start * 1000), int(s.end * 1000), s.text.strip())
+            AsrSegment(int(s.start * 1000), int(s.end * 1000), s.text.strip(),
+                       tuple((int(w.start * 1000), int(w.end * 1000), w.word) for w in (getattr(s, "words", None) or ())))
             for s in segments
             if s.no_speech_prob < NO_SPEECH_PROB_THRESHOLD and s.text.strip()
         ]

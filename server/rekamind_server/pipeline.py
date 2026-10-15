@@ -29,6 +29,81 @@ def assign_speaker(seg: AsrSegment, turns: list[SpeakerTurn]) -> str | None:
     return best
 
 
+NEAR_MS = 3000  # a segment in a gap between turns still belongs to the speaker right next to it
+MIN_RUN_WORDS = 3  # a shorter run of another speaker is diarization noise or a back-channel, not a speaker change
+MIN_RUN_MS = 1000
+
+
+def _label_at(ms: int, turns: list[SpeakerTurn]) -> str | None:
+    """The turn containing `ms`, else the nearest turn if it is within NEAR_MS."""
+    best, best_d = None, NEAR_MS + 1
+    for t in turns:
+        d = 0 if t.start_ms <= ms <= t.end_ms else min(abs(ms - t.start_ms), abs(ms - t.end_ms))
+        if d < best_d:
+            best, best_d = t.label, d
+    return best
+
+
+def label_segments(segs: list[AsrSegment], turns: list[SpeakerTurn], fallback: str | None = None) -> list[tuple[AsrSegment, str]]:
+    """(segment, speaker label) pairs. A segment whose words are spoken by different people is cut at the change
+    (the ASR cuts sentences, not speakers, so one segment used to be given to whoever spoke most of it)."""
+    out: list[tuple[AsrSegment, str]] = []
+    for seg in segs:
+        if fallback:
+            out.append((seg, fallback))
+            continue
+        whole = assign_speaker(seg, turns) or _label_at((seg.start_ms + seg.end_ms) // 2, turns) or "UNKNOWN"
+        if len(seg.words) < 2:
+            out.append((seg, whole))
+            continue
+        labels = [_label_at((a + b) // 2, turns) for a, b, _ in seg.words]
+        known = [l for l in labels if l]
+        if len(set(known)) < 2:
+            out.append((seg, known[0] if known else whole))
+            continue
+        # unlabeled words take their neighbour's label, then runs of one word are folded into the previous run
+        for i, l in enumerate(labels):
+            if l is None:
+                labels[i] = next((x for x in labels[:i][::-1] if x), None) or next((x for x in labels[i:] if x), whole)
+        for i in range(1, len(labels)):  # a word that continues the previous one ("coba" + "-coba") never starts a turn
+            if not seg.words[i][2].startswith(" "):
+                labels[i] = labels[i - 1]
+        runs: list[list[int]] = []
+        for i, l in enumerate(labels):
+            if runs and labels[runs[-1][0]] == l:
+                runs[-1].append(i)
+            else:
+                runs.append([i])
+
+        def solid(r: list[int]) -> bool:  # long enough to be a real turn, not boundary noise or a back-channel
+            return len(r) >= MIN_RUN_WORDS and seg.words[r[-1]][1] - seg.words[r[0]][0] >= MIN_RUN_MS
+
+        merged: list[list[int]] = []
+        for r in runs:
+            if merged and (not solid(r) or labels[merged[-1][0]] == labels[r[0]]):
+                merged[-1].extend(r)
+            else:
+                merged.append(list(r))
+        if len(merged) > 1 and not solid(merged[0]):
+            merged[1] = merged[0] + merged[1]
+            merged.pop(0)
+        joined: list[list[int]] = []
+        for r in merged:
+            if joined and labels[joined[-1][0]] == labels[r[0]]:
+                joined[-1].extend(r)
+            else:
+                joined.append(r)
+        merged = joined
+        if len(merged) < 2:
+            out.append((seg, labels[merged[0][0]]))
+            continue
+        for r in merged:
+            ws = [seg.words[i] for i in r]
+            out.append((AsrSegment(ws[0][0], max(ws[-1][1], ws[0][0] + 1), "".join(w[2] for w in ws).strip(), tuple(ws)),
+                        labels[r[0]]))
+    return out
+
+
 def match_participant(name: str | None, participants: list[Participant]) -> Participant | None:
     """Exact name first, then a unique first-name match. Ambiguity returns None:
     leaving the assignee unresolved for the user beats silently picking the wrong person."""
@@ -196,12 +271,18 @@ async def _transcribe_and_store(sf, storage, engines, job, language, local_name,
         rows: list[tuple[AsrSegment, str, Participant]] = []
         for seg in mic_segs:
             rows.append((seg, "mic", participant("ME", local=True)))
-        for seg in spk_segs:
-            rows.append((seg, "speaker", participant(fallback_label or assign_speaker(seg, turns) or "UNKNOWN")))
+        for seg, label in label_segments(spk_segs, turns, fallback_label):
+            rows.append((seg, "speaker", participant(label)))
         await s.flush()
         rows.sort(key=lambda r: r[0].start_ms)
         for seg, source, p in rows:
             s.add(Segment(meeting_id=job.meeting_id, participant_id=p.id, source=source,
                           start_ms=seg.start_ms, end_ms=seg.end_ms, text=seg.text))
+        # A re-run can use fewer speakers than the last one; a leftover SPEAKER_03 with nothing said would still be
+        # counted as a detected person.
+        used = {p.id for _, _, p in rows}
+        for p in by_label.values():
+            if p.id not in used:
+                await s.delete(p)
         await s.commit()
-        return rows, list(by_label.values())
+        return rows, [p for p in by_label.values() if p.id in used]

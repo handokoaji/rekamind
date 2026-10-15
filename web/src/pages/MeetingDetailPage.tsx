@@ -250,7 +250,8 @@ function SpeakerCountCard({ m }: { m: MeetingDetail }) {
   const caps = useCapabilities();
   const process = useProcessMeeting();
   const invalidate = useInvalidate();
-  const detected = m.participants.filter((p) => !p.is_local_user).length;
+  // Real speakers only: someone who said nothing (a leftover of an earlier run) or the "UNKNOWN" bucket is not a person.
+  const detected = m.participants.filter((p) => !p.is_local_user && p.label !== "UNKNOWN" && m.segments.some((s) => s.participant_id === p.id)).length;
   const [n, setN] = useState<string>(m.num_speakers ? String(m.num_speakers) : "");
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -297,12 +298,13 @@ function SpeakersTab({ m }: { m: MeetingDetail }) {
     if ((p.name ?? "") === name.trim()) return;
     api.renameParticipant(p.id, name.trim() || null).then(() => invalidate()).catch((e: Error) => toast.error(e.message));
   };
-  if (!m.participants.length) return <EmptyState icon={<Users className="size-6" />} title={t("Belum ada pembicara")}>{t("Pembicara dikenali setelah rapat diproses.")}</EmptyState>;
+  const people = m.participants.filter((p) => m.segments.some((s) => s.participant_id === p.id));
+  if (!people.length) return <EmptyState icon={<Users className="size-6" />} title={t("Belum ada pembicara")}>{t("Pembicara dikenali setelah rapat diproses.")}</EmptyState>;
   return (
     <div className="flex flex-col gap-5">
       <SpeakerCountCard m={m} />
       <p className="text-sm text-muted">{t("Beri nama pembicara agar transkrip dan PIC task mudah dibaca.")}</p>
-      <ul className="flex flex-col gap-3">{m.participants.map((p, i) => (
+      <ul className="flex flex-col gap-3">{people.map((p, i) => (
         <li key={p.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-4">
           <span className={cn("grid size-9 place-items-center rounded-full text-xs font-bold", tones[i % tones.length])} aria-hidden>{(p.name ?? p.label).slice(0, 2).toUpperCase()}</span>
           <div className="min-w-48 flex-1">

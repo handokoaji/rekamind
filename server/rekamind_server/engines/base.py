@@ -16,6 +16,8 @@ class AsrSegment:
     start_ms: int
     end_ms: int
     text: str
+    # Per-word timing (start_ms, end_ms, text) when the engine provides it; lets a segment be cut where the speaker changes.
+    words: tuple[tuple[int, int, str], ...] = ()
 
 
 @dataclass(frozen=True)
