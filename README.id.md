@@ -375,6 +375,15 @@ Arsitektur: [docs/v2/ARCHITECTURE.md](docs/v2/ARCHITECTURE.md) · Rilis: [docs/R
 Kontribusi: [CONTRIBUTING.md](CONTRIBUTING.id.md) · Keamanan: [SECURITY.md](SECURITY.id.md) ·
 Riwayat perubahan: [CHANGELOG.md](CHANGELOG.md)
 
+## 💛 Dukung proyek ini
+
+Rekamind gratis dan sumber terbuka (MIT), dikerjakan di waktu luang. Bila aplikasi ini menghemat waktu Anda dan Anda ingin membantu agar terus berjalan:
+
+- 🌍 **Dari mana saja:** [GitHub Sponsors](https://github.com/sponsors/handokoaji)
+- 🇮🇩 **Indonesia** (QRIS, dompet digital): [Saweria](https://saweria.co/handokoaji)
+
+Dukungan sepenuhnya opsional. Bintang, laporan bug, atau pull request sama berartinya.
+
 ## Lisensi
 
 [MIT](LICENSE). Pustaka dan model pihak ketiga memiliki lisensinya sendiri (mis. model pyannote memerlukan

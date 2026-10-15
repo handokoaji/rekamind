@@ -385,6 +385,15 @@ Architecture: [docs/v2/ARCHITECTURE.md](docs/v2/ARCHITECTURE.md) (Indonesian) ·
 Contributing: [CONTRIBUTING.md](CONTRIBUTING.md) · Security: [SECURITY.md](SECURITY.md) ·
 Changelog: [CHANGELOG.md](CHANGELOG.md)
 
+## 💛 Support the project
+
+Rekamind is free and open source (MIT), made in spare time. If it saves you time and you would like to help keep it going:
+
+- 🌍 **Anywhere:** [GitHub Sponsors](https://github.com/sponsors/handokoaji)
+- 🇮🇩 **Indonesia** (QRIS, e-wallets): [Saweria](https://saweria.co/handokoaji)
+
+Support is entirely optional. A star, a bug report or a pull request helps just as much.
+
 ## License
 
 [MIT](LICENSE). Third-party libraries and models have their own licences (e.g. the pyannote models require accepting
