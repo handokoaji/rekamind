@@ -39,6 +39,23 @@ VRAM 3,3-4,2 GB (puncak 5,3 GB saat diarisasi). B7 dan B8 belum terbukti pada ko
 Catatan: saya tidak memverifikasi bahwa jendela tetap terbuka (hanya proses UI yang hidup), dan tidak ada aksi pengguna selama 30 menit.
 Temuan lama "backend restart sendiri 5x" (08:31-09:36) **tidak muncul lagi** pada kode terbaru dalam jendela ini; penyebab tidak saya verifikasi.
 
+## Update: perubahan masuk setelah uji otomatis (10:5x WIB)
+
+Saat mendorong hasil G8, GitHub menolak push (non-fast-forward) karena dua commit baru dari pihak lain:
+
+| Commit | Isi |
+|---|---|
+| `cf51bb0` | `chore(release): v0.4.0-beta.1 pre-release, README rewrite, docs hygiene` |
+| `0e8a42a` | `ci: fix recorder clippy (chunks_exact lint) and docker image build env` |
+
+Keduanya tidak menyentuh `PC_FINAL_RESULTS.md`; digabung dengan **merge** (bukan rebase/force) menjadi `7385e8f`
+supaya `origin` (GitLab UGM) tetap fast-forward. Kedua remote sekarang di `7385e8f`.
+
+**Dampak pada keabsahan hasil:** perubahan itu 75 berkas (+992/-291), termasuk web (`AppShell.tsx`, `LoginScreen.tsx`,
+`Logo.tsx`, `vite.config.ts`, `playwright.docs.config.ts`). Seluruh hasil otomatis di dokumen ini (build 70,2 MiB, smoke 17 ok,
+pytest 203, vitest 71, Playwright 23, cargo 70, bench, C3, G8) berasal dari `ebc3f1c`, **bukan** dari `v0.4.0-beta.1`.
+Bila uji akhir harus mengesahkan beta.1, build + smoke + tes otomatis perlu diulang dari `7385e8f`.
+
 ## Menunggu pengguna [ANDA]
 
 A1-A7 (rekam >= 30 mnt jendela tertutup, putar WAV, cabut headset, mati paksa, rekaman berjalan, zona waktu Windows, sleep),
