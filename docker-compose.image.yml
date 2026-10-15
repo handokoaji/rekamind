@@ -3,9 +3,9 @@
 # Plain Docker:  docker compose -f docker-compose.image.yml up -d
 #
 # Image variants (same tag, different suffix):
-#   ghcr.io/handokoaji/rekamind-server:0.4.0-beta.2-cpu   transcribes on the CPU (recommended; needs a few GB of RAM and
+#   ghcr.io/handokoaji/rekamind-server:0.4.0-beta.3-cpu   transcribes on the CPU (recommended; needs a few GB of RAM and
 #                                                         downloads the Whisper model on first use into the data volume)
-#   ghcr.io/handokoaji/rekamind-server:0.4.0-beta.2       API only: record, upload, view, export. Does NOT process meetings.
+#   ghcr.io/handokoaji/rekamind-server:0.4.0-beta.3       API only: record, upload, view, export. Does NOT process meetings.
 # NVIDIA/AMD/Intel GPU acceleration is not available in the image (beta); it runs on the CPU.
 #
 # AUTH: Google sign-in with YOUR OWN OAuth client (docs/AUTH.md). The server refuses to start without
@@ -13,7 +13,7 @@
 # The port is published on loopback; put an HTTPS reverse proxy in front for other machines.
 services:
   rekamind:
-    image: ghcr.io/handokoaji/rekamind-server:${REKAMIND_IMAGE_TAG:-0.4.0-beta.2-cpu}
+    image: ghcr.io/handokoaji/rekamind-server:${REKAMIND_IMAGE_TAG:-0.4.0-beta.3-cpu}
     restart: unless-stopped
     ports:
       - "127.0.0.1:${REKAMIND_PORT:-8787}:8787"

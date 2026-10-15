@@ -821,7 +821,7 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "rekamind-recorder"
-version = "0.4.0-beta.2"
+version = "0.4.0-beta.3"
 dependencies = [
  "base64 0.22.1",
  "ctrlc",

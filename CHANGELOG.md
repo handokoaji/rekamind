@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-beta.3] - 2026-10-15
+
+Test release. First AMD GPU (Vulkan) release that has been run on real hardware (Ryzen AI 7 350, Radeon 860M), plus a fix for the engine test button on AMD.
+
+### Fixed
+- **"Uji mesin" said "No Vulkan device; using the CPU" on AMD even though transcription used the GPU** (`enginepack.py`): the probe ran `whisper-cli` with `-np`, which silences all of whisper.cpp's logging including the `ggml_vulkan: 0 = ...` line the app reads the device from. The probe now uses `-nt`. The fake `whisper-cli` in the tests mimics `-np` so this stays covered.
+
+### Changed
+- README (EN/ID): the AMD (Vulkan) engine is documented as tested on one Ryzen AI 7 350 (Radeon 860M). Stated plainly: speaker separation (pyannote) still runs on the CPU on AMD; accuracy against the CPU engine and 30+ minute meetings have not been measured; the progress bar moves per stage, not within a stage.
+
 ## [0.4.0-beta.2] - 2026-10-15
 
 Test release. Fixes the recorder bug that produced choppy audio and empty transcripts on Windows, and adds experimental Intel (OpenVINO) and AMD (Vulkan) engines.

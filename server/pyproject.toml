@@ -1,6 +1,6 @@
 [project]
 name = "rekamind-server"
-version = "0.4.0b2"
+version = "0.4.0b3"
 description = "Rekamind v2 backend: API, job queue, and processing pipeline"
 requires-python = ">=3.11"
 dependencies = [
