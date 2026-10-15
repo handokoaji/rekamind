@@ -67,6 +67,13 @@ A1. Pengaturan -> Mesin transkripsi -> NVIDIA, centang pemisah pembicara (pyanno
     `Errno 22` / kode 120 bila ada (salin 30 baris terakhir log persis).
 A2. "Uji mesin" harus melaporkan GPU NVIDIA terdeteksi. `rekamind-backend.exe engines status` -> `kind: "cuda"`.
 
+A3. [Masalah terbuka dari uji sebelumnya, `docs/v2/NVIDIA_REGRESSION_RESULTS.md`] Dengan pyannote dan cache pip DINGIN (kosongkan cache pip dan
+    `engine-pack`), pemasangan macet 0,01-0,2 MB/s pada `nvidia_cuda_nvrtc_cu12`. Dugaan [Medium]: `--extra-index-url https://download.pytorch.org/whl/cu126`
+    membuat pip memilih tautan `pypi.nvidia.com` (±28 KB/s dari jaringan ini). Buktikan dengan `pip download -v` (lihat host unduhan), lalu
+    perbaiki di `server/rekamind_server/enginepack.py` (mis. pasang paket `nvidia-*` dari PyPI saja sebelum torch, indeks PyTorch hanya untuk `torch*`),
+    tambahkan tes di `server/tests/test_pip_progress.py`/`test_engine_regression.py`, dan ulangi A1 dengan cache dingin. Peringatan "tidak ada kemajuan"
+    juga tidak menangkap unduhan yang menetes; pertimbangkan ambang kecepatan.
+
 ## Bagian B. Pisahkan mesin dari perekam (inti)
 B1. Buat/ambil satu WAV ucapan Indonesia yang JELAS, mono 16 kHz (mis. bacakan 1-2 menit, atau pakai TTS Windows). Simpan di folder sementara
     di luar repo. Putar sendiri dan pastikan jelas.
@@ -151,10 +158,13 @@ A2. Telusuri peringatan `fun_asr`: catat versi `transformers`, `optimum`, `optim
     cari akar penyebab (ketidakcocokan versi? `AutoConfig`/`model_type`?) dan perbaiki (pin versi di `PACKAGES["openvino"]` dan/atau penyesuaian
     `engines/openvino.py`). Pasang ulang bersih bila perlu dan ulangi.
 A3. Buat/ambil satu WAV ucapan Indonesia yang JELAS, mono 16 kHz, 1-2 menit, simpan di luar repo. Jalankan transkripsi lewat mesin Intel
-    (unggah sebagai rapat, atau `python -m rekamind_server.bench <wav> --model large-v3 --device intel`; cek `--help`, opsi bisa berbeda).
+    (unggah sebagai rapat, atau skrip kecil di luar repo yang memanggil `OpenVinoTranscriber("large-v3", "GPU").transcribe(wav, "id")` dari
+    `server/rekamind_server/engines/openvino.py`). JANGAN memakai `rekamind_server.bench --device intel`: `bench.py` memakai faster-whisper saja
+    dan tidak mengenal OpenVINO, jadi hasilnya menyesatkan.
     Catat: perangkat aktual (GPU atau jatuh ke CPU?), waktu, RTF, jumlah segmen, apakah timestamp per segmen benar atau hanya satu segmen per jendela,
     dan kualitas teksnya (bandingkan dengan teks yang kamu tahu). Ini membuktikan mesin Intel sehat TANPA perekam.
-A4. Ulangi A3 dengan `--device cpu` pada WAV yang sama sebagai pembanding. Jika CPU berhasil dan Intel kosong/salah: bug ada di `engines/openvino.py`.
+A4. Ulangi A3 dengan `OpenVinoTranscriber(..., "CPU")` dan dengan faster-whisper CPU (`rekamind_server.bench <wav> --device cpu`, ini sah untuk
+    faster-whisper) pada WAV yang sama sebagai pembanding. Jika CPU berhasil dan Intel kosong/salah: bug ada di `engines/openvino.py`.
     Periksa terutama ambang senyap `SILENCE_RMS` (apakah WAV normal terbuang?), `return_timestamps`, dan dekode token.
 
 ## Bagian B. Rekaman patah-patah (bagian perekam sama dengan PC NVIDIA)
