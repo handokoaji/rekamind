@@ -40,7 +40,7 @@ Image dipublikasikan di GitHub Container Registry pada setiap rilis:
    **Docker biasa:** `docker compose -f docker-compose.image.yml up -d` dengan variabel itu di berkas `.env`.
 3. Pasang reverse proxy HTTPS di depannya (lihat di bawah) dan arahkan aplikasi desktop ke alamat itu (**Server terpisah**).
 
-> **Bila pull ditolak:** saat pertama kali dipublikasikan, paket GHCR bisa berstatus *private*. Pemilik repositori perlu mengubahnya menjadi **Public** sekali (GitHub → profil → Packages → `rekamind-server` → Package settings → Change visibility). Image baru dibangun dan dijalankan di CI/sandbox; transkripsi di dalam container belum diverifikasi dengan rapat sungguhan (beta).
+> **Bila pull ditolak:** paket mungkin berstatus *private*. Untuk `v0.4.0-beta.1` sudah diverifikasi publik (tarik anonim berhasil). Bila private di tempat Anda, pemilik repositori mengubahnya menjadi **Public** (GitHub → profil → Packages → `rekamind-server` → Package settings → Change visibility). Image baru dibangun dan dijalankan di CI/sandbox; transkripsi di dalam container belum diverifikasi dengan rapat sungguhan (beta).
 
 ### Bangun sendiri
 

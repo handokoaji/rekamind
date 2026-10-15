@@ -40,7 +40,7 @@ Images are published on GitHub Container Registry with every release:
    **Plain Docker:** `docker compose -f docker-compose.image.yml up -d` with those variables in a `.env` file.
 3. Put an HTTPS reverse proxy in front (see below) and point the desktop app to it (**Server terpisah** / Remote server).
 
-> **If the pull is denied:** the first time a package is published to GHCR it can be *private*. The repository owner must set the package to **Public** once (GitHub → profile → Packages → `rekamind-server` → Package settings → Change visibility). The image has only been built and started in CI/sandbox so far; transcription inside the container has not been verified against a real meeting (beta).
+> **If the pull is denied:** the package may be *private*. For `v0.4.0-beta.1` it was verified to be public (anonymous pull works). If it is private for you, the repository owner sets it to **Public** (GitHub → profile → Packages → `rekamind-server` → Package settings → Change visibility). The image has only been built and started in CI/sandbox so far; transcription inside the container has not been verified against a real meeting (beta).
 
 ### Build it yourself
 

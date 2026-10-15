@@ -165,7 +165,7 @@ Buka halaman rilis dan pilih berkas sesuai sistem Anda:
 |---|---|---|
 | **Windows 10/11 (64-bit)** | [`Rekamind-Windows-x64-setup.exe`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.1/Rekamind-Windows-x64-setup.exe) | Pemasang `.exe`. Tanpa hak admin. |
 | **Linux (64-bit)** | [`Rekamind-Linux-x64.deb`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.1/Rekamind-Linux-x64.deb) | Debian/Ubuntu dan turunannya. |
-| Linux, distro lain | [`Rekamind-Linux-x64.AppImage`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.1/Rekamind-Linux-x64.AppImage) | Bila tersedia di rilis. |
+| Linux, distro lain | [`Rekamind-Linux-x64.AppImage`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.1/Rekamind-Linux-x64.AppImage) | **Belum tersedia di beta.1** (build AppImage gagal; perbaikan direncanakan). Pakai `.deb`. |
 
 Semua berkas disertai `SHA256SUMS.txt`. Semua halaman rilis: [Releases](https://github.com/handokoaji/rekamind/releases).
 
