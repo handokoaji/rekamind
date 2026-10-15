@@ -8,9 +8,9 @@
 
 **Rekam rapat. Dapatkan transkrip per pembicara, ringkasan, dan daftar task. Data tetap milik Anda.**
 
-[![Rilis](https://img.shields.io/badge/rilis-v0.4.0--beta.3-f59e0b?style=for-the-badge)](https://github.com/handokoaji/rekamind/releases/tag/v0.4.0-beta.3)
+[![Rilis](https://img.shields.io/badge/rilis-v0.4.0--beta.4-f59e0b?style=for-the-badge)](https://github.com/handokoaji/rekamind/releases/tag/v0.4.0-beta.4)
 [![Platform](https://img.shields.io/badge/Windows%20%C2%B7%20Linux-4f46e5?style=for-the-badge)](#-unduh)
-[![Lisensi](https://img.shields.io/badge/lisensi-MIT-16a34a?style=for-the-badge)](LICENSE)
+[![Lisensi](https://img.shields.io/badge/lisensi-AGPL--3.0-16a34a?style=for-the-badge)](LICENSE)
 
 [**Unduh**](#-unduh) · [Panduan mulai](#-panduan-dari-pemasangan-sampai-terpakai) · [Fitur](#-fitur) · [Server tim](#-server-bersama-untuk-tim) · [Masalah umum](#-masalah-umum)
 
@@ -21,7 +21,7 @@
 </div>
 
 > [!WARNING]
-> **Ini rilis beta (0.x; terbaru: v0.4.0-beta.3) untuk diuji, bukan rilis final.** Fungsi utama sudah diuji otomatis dan
+> **Ini rilis beta (0.x; terbaru: v0.4.0-beta.4) untuk diuji, bukan rilis final.** Fungsi utama sudah diuji otomatis dan
 > dicoba langsung di tiga PC Windows (satu NVIDIA, satu Intel, satu AMD), tetapi belum di banyak mesin. Aplikasi desktop
 > Linux **belum** diuji di perangkat keras nyata. **Jangan jadikan Rekamind satu-satunya salinan rekaman yang penting.**
 > Daftar batasan yang jujur ada di [Batasan rilis beta](#-batasan-rilis-beta).
@@ -39,7 +39,7 @@
 - **Dari rekaman jadi pekerjaan.** Hasilnya bukan hanya teks: ada keputusan, jalannya rapat, dan **task** lengkap
   dengan PIC, tenggat, dan kutipan bukti yang bisa diputar ulang.
 - **Satu orang atau satu tim.** Pasang di laptop sendiri, atau di server kantor dengan login Google.
-- **Terbuka.** Lisensi MIT. Tidak ada akun, telemetri, atau kredensial bawaan.
+- **Terbuka.** Berlisensi AGPL-3.0-or-later. Tidak ada akun, telemetri, atau kredensial bawaan.
 
 ## ✨ Fitur
 
@@ -165,8 +165,8 @@ Buka halaman rilis dan pilih berkas sesuai sistem Anda:
 
 | Sistem | Berkas | Catatan |
 |---|---|---|
-| **Windows 10/11 (64-bit)** | [`Rekamind-Windows-x64-setup.exe`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.3/Rekamind-Windows-x64-setup.exe) | Pemasang `.exe`. Tanpa hak admin. |
-| **Linux (64-bit)** | [`Rekamind-Linux-x64.deb`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.3/Rekamind-Linux-x64.deb) | Debian/Ubuntu dan turunannya. |
+| **Windows 10/11 (64-bit)** | [`Rekamind-Windows-x64-setup.exe`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.4/Rekamind-Windows-x64-setup.exe) | Pemasang `.exe`. Tanpa hak admin. |
+| **Linux (64-bit)** | [`Rekamind-Linux-x64.deb`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.4/Rekamind-Linux-x64.deb) | Debian/Ubuntu dan turunannya. |
 | Linux, distro lain | `Rekamind-Linux-x64.AppImage` | **Belum tersedia di beta.2** (build AppImage gagal; perbaikan direncanakan). Pakai `.deb`. |
 
 Semua berkas disertai `SHA256SUMS.txt`. Semua halaman rilis: [Releases](https://github.com/handokoaji/rekamind/releases).
@@ -381,7 +381,7 @@ Riwayat perubahan: [CHANGELOG.md](CHANGELOG.md)
 
 ## 💛 Dukung proyek ini
 
-Rekamind gratis dan sumber terbuka (MIT), dikerjakan di waktu luang. Bila aplikasi ini menghemat waktu Anda dan Anda ingin membantu agar terus berjalan:
+Rekamind gratis dan sumber terbuka (AGPL-3.0-or-later), dikerjakan di waktu luang. Bila aplikasi ini menghemat waktu Anda dan Anda ingin membantu agar terus berjalan:
 
 <p>
   <a href="https://github.com/sponsors/handokoaji"><img alt="GitHub Sponsors" src="https://img.shields.io/badge/Sponsor-GitHub_Sponsors-db61a2?style=flat-square&logo=githubsponsors&logoColor=white"></a>
@@ -396,5 +396,5 @@ Dukungan sepenuhnya opsional. Bintang, laporan bug, atau pull request sama berar
 
 ## Lisensi
 
-[MIT](LICENSE). Pustaka dan model pihak ketiga memiliki lisensinya sendiri (mis. model pyannote memerlukan
+[AGPL-3.0-or-later](LICENSE), Hak cipta (C) 2026 handokoaji. Bila Anda menjalankan Rekamind yang sudah diubah sebagai layanan jaringan, AGPL mewajibkan Anda menyediakan kode sumber versi Anda kepada pengguna layanan itu. Rilis sampai v0.4.0-beta.3 diterbitkan dengan lisensi MIT; salinan itu tetap MIT, dan AGPL-3.0-or-later berlaku mulai v0.4.0-beta.4. Pustaka dan model pihak ketiga memiliki lisensinya sendiri (lihat [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); mis. model pyannote memerlukan
 persetujuan syarat di Hugging Face).

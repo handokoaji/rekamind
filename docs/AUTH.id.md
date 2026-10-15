@@ -2,7 +2,7 @@
 
 # Login dan hak akses Rekamind
 
-Rekamind open source (MIT). Siapa pun boleh memasangnya di servernya sendiri. Karena itu **tidak ada
+Rekamind open source (AGPL-3.0-or-later). Siapa pun boleh memasangnya di servernya sendiri. Karena itu **tidak ada
 kredensial Google bawaan**: setiap pemasang membuat OAuth client Google sendiri dan memasukkannya lewat
 variabel lingkungan. Rahasia tidak pernah ada di repo, di browser, atau di aplikasi desktop.
 

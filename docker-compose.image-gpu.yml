@@ -11,7 +11,7 @@
 # The port is published on loopback; put an HTTPS reverse proxy in front for other machines.
 services:
   rekamind:
-    image: ghcr.io/handokoaji/rekamind-server:${REKAMIND_IMAGE_TAG:-0.4.0-beta.3-cuda}
+    image: ghcr.io/handokoaji/rekamind-server:${REKAMIND_IMAGE_TAG:-0.4.0-beta.4-cuda}
     restart: unless-stopped
     ports:
       - "127.0.0.1:${REKAMIND_PORT:-8787}:8787"

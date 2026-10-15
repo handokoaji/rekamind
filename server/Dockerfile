@@ -15,7 +15,7 @@ RUN npm run build
 FROM python:3.12-slim
 ARG EXTRAS=postgres,s3
 LABEL org.opencontainers.image.source="https://github.com/handokoaji/rekamind" \
-      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.licenses="AGPL-3.0-or-later" \
       org.opencontainers.image.description="Rekamind backend: meetings, transcripts, summaries, tasks"
 
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 REKAMIND_DATA_DIR=/data REKAMIND_WEB_DIR=/app/web HF_HOME=/data/huggingface \

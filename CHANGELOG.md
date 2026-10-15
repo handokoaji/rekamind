@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-beta.4] - 2026-10-15
+
+Test release. **The whole repository is now licensed under AGPL-3.0-or-later** (releases up to v0.4.0-beta.3 were MIT and stay MIT). Carries everything from beta.3.
+
+### Changed
+- Licence: MIT -> AGPL-3.0-or-later (`LICENSE`, `Cargo.toml`, `pyproject.toml`, image label, READMEs, docs). Added `THIRD_PARTY_NOTICES.md` (CC-BY-4.0 attribution for two pyannote models and a list of third-party licences, with what is verified and what is not) and a contributor licence statement in `CONTRIBUTING`.
+
 ## [0.4.0-beta.3] - 2026-10-15
 
 Test release. First AMD GPU (Vulkan) release that has been run on real hardware (Ryzen AI 7 350, Radeon 860M), plus a fix for the engine test button on AMD.

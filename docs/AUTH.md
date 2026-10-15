@@ -2,7 +2,7 @@
 
 # Rekamind login and access rights
 
-Rekamind is open source (MIT). Anyone may install it on their own server. For that reason there are **no default
+Rekamind is open source (AGPL-3.0-or-later). Anyone may install it on their own server. For that reason there are **no default
 Google credentials**: each installer creates their own Google OAuth client and supplies it through
 environment variables. Secrets are never in the repo, in the browser, or in the desktop app.
 

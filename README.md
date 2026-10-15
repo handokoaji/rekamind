@@ -8,9 +8,9 @@
 
 **Record meetings. Get a per-speaker transcript, a summary and a task list. Your data stays yours.**
 
-[![Release](https://img.shields.io/badge/release-v0.4.0--beta.3-f59e0b?style=for-the-badge)](https://github.com/handokoaji/rekamind/releases/tag/v0.4.0-beta.3)
+[![Release](https://img.shields.io/badge/release-v0.4.0--beta.4-f59e0b?style=for-the-badge)](https://github.com/handokoaji/rekamind/releases/tag/v0.4.0-beta.4)
 [![Platform](https://img.shields.io/badge/Windows%20%C2%B7%20Linux-4f46e5?style=for-the-badge)](#-download)
-[![License](https://img.shields.io/badge/license-MIT-16a34a?style=for-the-badge)](LICENSE)
+[![License](https://img.shields.io/badge/license-AGPL--3.0-16a34a?style=for-the-badge)](LICENSE)
 
 [**Download**](#-download) · [Getting started](#-guide-from-install-to-first-use) · [Features](#-features) · [Team server](#-shared-server-for-teams) · [Troubleshooting](#-troubleshooting)
 
@@ -21,7 +21,7 @@
 </div>
 
 > [!WARNING]
-> **This is a beta (0.x) release (latest: v0.4.0-beta.3) for testing, not a final release.** The core features are
+> **This is a beta (0.x) release (latest: v0.4.0-beta.4) for testing, not a final release.** The core features are
 > covered by automated tests and have been tried by hand on three Windows PCs (one NVIDIA, one Intel, one AMD), but not
 > on many machines. The Linux desktop app has **not** been tested on real hardware. **Do not make Rekamind the
 > only copy of a recording that matters.** See the honest list of [beta limitations](#-beta-limitations).
@@ -40,7 +40,7 @@
 - **From recording to work.** The result is more than text: decisions, the flow of the meeting, and **tasks** with
   assignee, deadline and an evidence quote you can replay.
 - **One person or a whole team.** Install on your own laptop, or on an office server with Google sign-in.
-- **Open.** MIT licensed. No accounts, no telemetry, no bundled credentials.
+- **Open.** AGPL-3.0-or-later licensed. No accounts, no telemetry, no bundled credentials.
 
 ## ✨ Features
 
@@ -166,8 +166,8 @@ Pick the file for your system:
 
 | System | File | Notes |
 |---|---|---|
-| **Windows 10/11 (64-bit)** | [`Rekamind-Windows-x64-setup.exe`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.3/Rekamind-Windows-x64-setup.exe) | `.exe` installer. No admin rights needed. |
-| **Linux (64-bit)** | [`Rekamind-Linux-x64.deb`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.3/Rekamind-Linux-x64.deb) | Debian/Ubuntu and derivatives. |
+| **Windows 10/11 (64-bit)** | [`Rekamind-Windows-x64-setup.exe`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.4/Rekamind-Windows-x64-setup.exe) | `.exe` installer. No admin rights needed. |
+| **Linux (64-bit)** | [`Rekamind-Linux-x64.deb`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.4/Rekamind-Linux-x64.deb) | Debian/Ubuntu and derivatives. |
 | Linux, other distros | `Rekamind-Linux-x64.AppImage` | **Not available in beta.2** (the AppImage build failed; fix planned). Use the `.deb`. |
 
 Every file comes with `SHA256SUMS.txt`. All releases: [Releases](https://github.com/handokoaji/rekamind/releases).
@@ -390,7 +390,7 @@ Changelog: [CHANGELOG.md](CHANGELOG.md)
 
 ## 💛 Support the project
 
-Rekamind is free and open source (MIT), made in spare time. If it saves you time and you would like to help keep it going:
+Rekamind is free and open source (AGPL-3.0-or-later), made in spare time. If it saves you time and you would like to help keep it going:
 
 <p>
   <a href="https://github.com/sponsors/handokoaji"><img alt="GitHub Sponsors" src="https://img.shields.io/badge/Sponsor-GitHub_Sponsors-db61a2?style=flat-square&logo=githubsponsors&logoColor=white"></a>
@@ -405,5 +405,5 @@ Support is entirely optional. A star, a bug report or a pull request helps just 
 
 ## License
 
-[MIT](LICENSE). Third-party libraries and models have their own licences (e.g. the pyannote models require accepting
+[AGPL-3.0-or-later](LICENSE), Copyright (C) 2026 handokoaji. If you run a modified Rekamind as a network service, the AGPL requires you to offer the source of your version to that service's users. Releases up to v0.4.0-beta.3 were published under the MIT licence; those copies stay MIT, and AGPL-3.0-or-later applies from v0.4.0-beta.4 onwards. Third-party libraries and models have their own licences (see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); e.g. the pyannote models require accepting
 terms on Hugging Face).
