@@ -22,8 +22,8 @@
 
 > [!WARNING]
 > **This is a beta (0.x) release (latest: v0.4.0-beta.2) for testing, not a final release.** The core features are
-> covered by automated tests and have been tried by hand on two Windows PCs (one NVIDIA, one Intel), but not on many
-> machines. The Linux desktop app and AMD GPUs have **not** been tested on real hardware. **Do not make Rekamind the
+> covered by automated tests and have been tried by hand on three Windows PCs (one NVIDIA, one Intel, one AMD), but not
+> on many machines. The Linux desktop app has **not** been tested on real hardware. **Do not make Rekamind the
 > only copy of a recording that matters.** See the honest list of [beta limitations](#-beta-limitations).
 
 > [!NOTE]
@@ -175,8 +175,7 @@ Every file comes with `SHA256SUMS.txt`. All releases: [Releases](https://github.
 **The installers are not code-signed** (beta). Windows SmartScreen will show "Windows protected your PC": click
 **More info → Run anyway**. This is normal for apps without a paid certificate; compare the checksum if in doubt.
 
-**Not supported yet:** macOS and ARM machines. **Intel and AMD GPU acceleration is experimental** (see [GPU support](#gpu-support))
-[GPU support](#gpu-support)).
+**Not supported yet:** macOS and ARM machines. **Intel and AMD GPU acceleration is experimental** (see [GPU support](#gpu-support)).
 
 ## 🚀 Guide: from install to first use
 
@@ -230,8 +229,9 @@ Open **Pengaturan → Mesin transkripsi → Pasang** (Settings → Transcription
 
 | Choice | For | Download size |
 |---|---|---|
-| **CPU** | Every computer, including AMD GPU machines. Slower. | smaller |
+| **CPU** | Every computer. Slower. | smaller |
 | **NVIDIA GPU** | NVIDIA cards with enough VRAM (in our test `large-v3` used 3.3 to 4.2 GB). Much faster. | larger (CUDA libraries) |
+| **AMD GPU (Vulkan)**, experimental | Integrated Radeon (tested on the Radeon 860M) and other Vulkan GPUs. Speeds up transcription only; speaker separation stays on the CPU. | small program + ~1 GB model |
 
 There is a progress bar and a cancel button. When it finishes click **Uji mesin** (Test engine); it should say
 "Terpasang" (Installed). The speech model downloads when the first meeting is processed (several GB), or click
@@ -250,7 +250,7 @@ that includes speaker separation finishes, the app switches the setting on for y
 |---|---|
 | **CPU** (any) | Supported. Tested. |
 | **NVIDIA GPU** (CUDA) | Supported. Tested on one PC (Windows 11, GTX 1080 Ti). |
-| **AMD GPU** (integrated Radeon 680M/780M/860M, e.g. Ryzen 7 7735HS, 8845HS, Ryzen AI 7 350, and other Vulkan-capable GPUs) | **Experimental, via Vulkan (whisper.cpp)** (*Install for AMD GPU (Vulkan)*; from beta.2). A small native program is downloaded on demand; models are the quantised ggml files (~1 GB for large-v3). **Not yet verified on real hardware**; the first target is the Ryzen AI 7 350 (Radeon 860M). ROCm and DirectML are not used. |
+| **AMD GPU** (integrated Radeon 680M/780M/860M, e.g. Ryzen 7 7735HS, 8845HS, Ryzen AI 7 350, and other Vulkan-capable GPUs) | **Experimental, via Vulkan (whisper.cpp)** (*Install for AMD GPU (Vulkan)*; from beta.2). A small native program is downloaded on demand; models are the quantised ggml files (~1 GB for large-v3). **Tested on one machine: Ryzen AI 7 350 (Radeon 860M, Windows 11).** There, transcription of a real ~11 minute recording ran on the GPU (about 3 minutes for the computer-audio track, `large-v3` q5_0, ~85% GPU use and ~2.4 GB RAM peak, as read from Task Manager and the process list). **Speaker separation (pyannote) runs on the CPU** on AMD, because the AMD engine installs the CPU build of PyTorch; only transcription is accelerated. Accuracy against the CPU engine and long (30+ minute) meetings have **not** been measured yet. ROCm and DirectML are not used. |
 | **Intel GPU** (integrated Arc/Iris Xe, e.g. Core Ultra 7 155H) | **Experimental, via OpenVINO** (*Install for Intel GPU*; from beta.2). Built on the path validated in v1 on a Core Ultra 7 155H. In v2 it installs and runs on that machine according to the maintainer's manual check, but **no measurements (speed, accuracy) have been recorded yet**, so it stays experimental. Large models need several GB of RAM during the one-time conversion; the first meeting is slower because of it. |
 | **Intel NPU** | Not supported (evaluated in v1: unreliable on real speech). |
 
@@ -339,7 +339,9 @@ environment variables (not through the UI). Full steps, variables and the securi
 | No meeting audio (microphone only) | Windows: make sure an active output device exists. Linux: install `pulseaudio-utils` / `pipewire-pulse`. |
 | `Ctrl+Alt+R` does nothing | Conflicts with another app. Change it in Settings. |
 | GPU out of memory | Rekamind automatically falls back to a lighter mode, then to CPU. Close other GPU apps. |
-| Slow on an AMD/Intel GPU machine | Check **Uji mesin**: if it shows no GPU, the engine fell back to the CPU (update the graphics driver). Experimental engines may also be slower than expected. |
+| Slow on an AMD/Intel GPU machine | Check **Uji mesin**: if it shows no GPU, the engine may have fallen back to the CPU (update the graphics driver). Experimental engines may also be slower than expected. |
+| AMD: **Uji mesin** says "no Vulkan device; using the CPU" | In v0.4.0-beta.2 this message was wrong on at least the Radeon 860M: the GPU was used for real transcription but the test button could not see it (fixed in the next build). To be sure, look for `whisper.cpp memakai GPU Vulkan: <name>` in `backend\logs\backend.log`. |
+| The progress bar barely moves on the AMD engine | Progress is reported per stage (mic, computer audio, speakers, merge), not within a stage, so the bar can sit still for a few minutes on a long recording. Task Manager (GPU, then CPU during speaker separation) shows it is working. |
 
 Backend log lives in the app data folder: `backend\logs\backend.log` (Windows: `%LOCALAPPDATA%\id.rekamind.desktop`;
 on Linux the exact location is shown in Settings → backend folder).
@@ -355,7 +357,7 @@ Stated plainly so you know what is being tested:
   tested on Linux; the desktop shell is only built in CI.
 - **Windows**: tested in detail on one PC (Windows 11, GTX 1080 Ti) and by hand on one Intel Core Ultra 7 155H laptop. Long recordings with the window closed, force-kill during
   recording, Word export in real Microsoft Word, and Credential Manager storage are still being tested manually.
-- **GPU**: CPU and NVIDIA CUDA are supported; **Intel GPU is experimental** (OpenVINO; works on one Core Ultra 7 155H by manual check, not measured); AMD GPU (Vulkan) is experimental and has not been tested on real hardware.
+- **GPU**: CPU and NVIDIA CUDA are supported; **Intel GPU is experimental** (OpenVINO; works on one Core Ultra 7 155H by manual check, not measured); **AMD GPU (Vulkan) is experimental**: it ran a real recording on one Ryzen AI 7 350 (Radeon 860M), but accuracy has not been compared with the CPU and speaker separation still runs on the CPU.
 - **Real GitHub, GitLab, Google sign-in and S3/MinIO** have only been tested against mock/automated servers.
 - **Quality** of transcripts, speaker separation and task extraction has not been measured across many kinds of
   audio. Review the output, especially names and deadlines.
@@ -367,7 +369,7 @@ Stated plainly so you know what is being tested:
 Planned for the next releases (**not implemented yet**; listed so you know what to expect, and in no firm order):
 
 - **Intel GPU**: experimental support is implemented (OpenVINO). Next: record real measurements (speed, accuracy) on the Core Ultra 7 155H and drop the "experimental" label once they hold up.
-- **AMD GPU**: experimental support is implemented (Vulkan / whisper.cpp) and has **not** been run on real hardware yet; the Ryzen AI 7 350 is the first test machine. Older/smaller iGPUs such as the Vega in a Ryzen 5 5600G are not targeted (little benefit expected). **Volunteer testers with other AMD machines welcome** (open an issue).
+- **AMD GPU**: experimental support is implemented (Vulkan / whisper.cpp) and has run a real recording on the Ryzen AI 7 350 (Radeon 860M). Next: compare accuracy and hallucinations on silence against the CPU engine, test a 30+ minute meeting, and drop the "experimental" label once they hold up. Also planned: speaker separation on the GPU for AMD (today it runs on the CPU), and progress inside a stage instead of only between stages. Older/smaller iGPUs such as the Vega in a Ryzen 5 5600G are not targeted (little benefit expected). **Volunteer testers with other AMD machines welcome** (open an issue).
 - **Release hygiene:** signed installers, a working Linux AppImage, and a real-machine test of the Linux desktop app.
 - **More interface languages** beyond Indonesian and English, and a choice of output language for summaries and tasks.
 

@@ -22,8 +22,8 @@
 
 > [!WARNING]
 > **Ini rilis beta (0.x; terbaru: v0.4.0-beta.2) untuk diuji, bukan rilis final.** Fungsi utama sudah diuji otomatis dan
-> dicoba langsung di dua PC Windows (satu NVIDIA, satu Intel), tetapi belum di banyak mesin. Aplikasi desktop Linux dan
-> GPU AMD **belum** diuji di perangkat keras nyata. **Jangan jadikan Rekamind satu-satunya salinan rekaman yang penting.**
+> dicoba langsung di tiga PC Windows (satu NVIDIA, satu Intel, satu AMD), tetapi belum di banyak mesin. Aplikasi desktop
+> Linux **belum** diuji di perangkat keras nyata. **Jangan jadikan Rekamind satu-satunya salinan rekaman yang penting.**
 > Daftar batasan yang jujur ada di [Batasan rilis beta](#-batasan-rilis-beta).
 
 > [!NOTE]
@@ -225,8 +225,9 @@ Buka **Pengaturan → Mesin transkripsi → Pasang**.
 
 | Pilihan | Untuk | Ukuran unduhan |
 |---|---|---|
-| **CPU** | Semua komputer, termasuk yang ber-GPU AMD. Lebih lambat. | unduhan lebih kecil |
+| **CPU** | Semua komputer. Lebih lambat. | unduhan lebih kecil |
 | **NVIDIA GPU** | Kartu NVIDIA dengan VRAM cukup (pada uji kami model `large-v3` memakai 3,3 sampai 4,2 GB). Jauh lebih cepat. | lebih besar (pustaka CUDA) |
+| **GPU AMD (Vulkan)**, eksperimental | Radeon terintegrasi (diuji di Radeon 860M) dan GPU lain yang mendukung Vulkan. Hanya mempercepat transkripsi; pemisah pembicara tetap di CPU. | program kecil + model ±1 GB |
 
 Ada progres dan tombol batal. Setelah selesai klik **Uji mesin**; harus muncul "Terpasang". Model suara
 diunduh saat rapat pertama diproses (beberapa GB), atau klik **Unduh model ... sekarang** agar tidak menunggu nanti.
@@ -238,7 +239,7 @@ Ukuran unduhan pasti bergantung pada versi pustaka saat Anda memasang; periksa r
 |---|---|
 | **CPU** (apa pun) | Didukung. Diuji. |
 | **GPU NVIDIA** (CUDA) | Didukung. Diuji di satu PC (Windows 11, GTX 1080 Ti). |
-| **GPU AMD** (terintegrasi Radeon 680M/780M/860M, mis. Ryzen 7 7735HS, 8845HS, Ryzen AI 7 350, dan GPU lain yang mendukung Vulkan) | **Eksperimental, lewat Vulkan (whisper.cpp)** (*Pasang untuk GPU AMD (Vulkan)*; mulai beta.2). Program native kecil diunduh sesuai kebutuhan; model memakai berkas ggml terkuantisasi (±1 GB untuk large-v3). **Belum diverifikasi di perangkat keras nyata**; target pertama Ryzen AI 7 350 (Radeon 860M). ROCm dan DirectML tidak dipakai. |
+| **GPU AMD** (terintegrasi Radeon 680M/780M/860M, mis. Ryzen 7 7735HS, 8845HS, Ryzen AI 7 350, dan GPU lain yang mendukung Vulkan) | **Eksperimental, lewat Vulkan (whisper.cpp)** (*Pasang untuk GPU AMD (Vulkan)*; mulai beta.2). Program native kecil diunduh sesuai kebutuhan; model memakai berkas ggml terkuantisasi (±1 GB untuk large-v3). **Diuji di satu mesin: Ryzen AI 7 350 (Radeon 860M, Windows 11).** Di sana transkripsi rekaman nyata ±11 menit berjalan di GPU (sekitar 3 menit untuk jalur suara komputer, `large-v3` q5_0, GPU ±85% dan puncak RAM ±2,4 GB, menurut Task Manager dan daftar proses). **Pemisah pembicara (pyannote) berjalan di CPU** pada AMD, karena mesin AMD memasang PyTorch versi CPU; hanya transkripsi yang dipercepat. Akurasi dibanding mesin CPU dan rapat panjang (30+ menit) **belum** diukur. ROCm dan DirectML tidak dipakai. |
 | **GPU Intel** (terintegrasi Arc/Iris Xe, mis. Core Ultra 7 155H) | **Eksperimental, lewat OpenVINO** (*Pasang untuk Intel GPU*; mulai beta.2). Dibangun dari jalur yang terbukti di v1 pada Core Ultra 7 155H. Di v2 mesin ini terpasang dan berjalan di mesin itu menurut pengecekan manual pengelola, tetapi **belum ada pengukuran (kecepatan, akurasi) yang dicatat**, jadi statusnya tetap eksperimental. Model besar butuh beberapa GB RAM saat konversi sekali-jalan; rapat pertama lebih lambat karenanya. |
 | **NPU Intel** | Belum didukung (dievaluasi di v1: tidak andal pada ucapan nyata). |
 
@@ -329,7 +330,9 @@ besar di [docs/INSTALL.id.md](docs/INSTALL.id.md).
 | Mikrofon senyap | Bar level menampilkan *Hening*. Periksa tombol mute headset, volume input, dan **Settings → Sound → Input** di Windows. |
 | Tidak ada suara rapat (hanya mikrofon) | Windows: pastikan ada perangkat output aktif. Linux: pasang `pulseaudio-utils`/`pipewire-pulse`. |
 | `Ctrl+Alt+R` tidak bereaksi | Bentrok dengan aplikasi lain. Ganti di Pengaturan. |
-| Lambat di komputer GPU AMD/Intel | Periksa **Uji mesin**: bila tidak menampilkan GPU, mesin kembali ke CPU (perbarui driver grafis). Mesin eksperimental juga bisa lebih lambat dari harapan. |
+| Lambat di komputer GPU AMD/Intel | Periksa **Uji mesin**: bila tidak menampilkan GPU, mesin mungkin kembali ke CPU (perbarui driver grafis). Mesin eksperimental juga bisa lebih lambat dari harapan. |
+| AMD: **Uji mesin** menulis "tidak ada perangkat Vulkan; memakai CPU" | Di v0.4.0-beta.2 pesan ini keliru, setidaknya di Radeon 860M: GPU dipakai untuk transkripsi sungguhan tetapi tombol uji tidak bisa melihatnya (diperbaiki di build berikutnya). Untuk memastikan, cari `whisper.cpp memakai GPU Vulkan: <nama>` di `backend\logs\backend.log`. |
+| Progress bar hampir tidak bergerak di mesin AMD | Progres dilaporkan per tahap (mikrofon, suara komputer, pembicara, penggabungan), bukan di dalam satu tahap, jadi bar bisa diam beberapa menit pada rekaman panjang. Task Manager (GPU, lalu CPU saat pemisahan pembicara) menunjukkan prosesnya jalan. |
 | GPU kehabisan memori | Rekamind otomatis turun ke mode lebih hemat, lalu CPU. Tutup aplikasi GPU lain. |
 
 Log backend ada di folder data aplikasi: `backend\logs\backend.log` (Windows: `%LOCALAPPDATA%\id.rekamind.desktop`; lokasi persis di Linux tertera di Pengaturan → folder backend).
@@ -346,7 +349,7 @@ Dinyatakan apa adanya supaya Anda tahu apa yang sedang diuji:
   merekam, ekspor Word di aplikasi Word asli, dan penyimpanan di Credential Manager masih dalam pengujian manual.
 - **GitHub, GitLab, Google login, dan S3/MinIO asli** baru diuji dengan server tiruan/otomatis, belum dengan layanan
   sungguhan.
-- **GPU**: CPU dan NVIDIA CUDA didukung; **GPU Intel eksperimental** (OpenVINO; berjalan di satu Core Ultra 7 155H menurut pengecekan manual, belum diukur); **GPU AMD eksperimental** (Vulkan / whisper.cpp, belum diuji di perangkat keras nyata).
+- **GPU**: CPU dan NVIDIA CUDA didukung; **GPU Intel eksperimental** (OpenVINO; berjalan di satu Core Ultra 7 155H menurut pengecekan manual, belum diukur); **GPU AMD eksperimental** (Vulkan / whisper.cpp): sudah menjalankan rekaman nyata di satu Ryzen AI 7 350 (Radeon 860M), tetapi akurasinya belum dibandingkan dengan CPU dan pemisah pembicara masih di CPU.
 - **Kualitas** transkrip, pemisahan pembicara, dan ekstraksi task belum diukur pada banyak jenis audio. Tinjau
   hasilnya, terutama nama dan tenggat.
 - **Bahasa:** antarmuka tersedia dalam Indonesia dan Inggris; ringkasan dan task yang dihasilkan hanya berbahasa Indonesia. Pesan dari server atau perekam Rust (mis. sebagian teks galat) belum diterjemahkan.
@@ -357,7 +360,7 @@ Dinyatakan apa adanya supaya Anda tahu apa yang sedang diuji:
 Direncanakan untuk rilis berikutnya (**belum dikerjakan**; dicatat supaya Anda tahu arahnya, tanpa urutan pasti):
 
 - **GPU Intel**: dukungan eksperimental sudah diimplementasikan (OpenVINO). Berikutnya: catat pengukuran nyata (kecepatan, akurasi) di Core Ultra 7 155H dan lepas label "eksperimental" bila hasilnya baik.
-- **GPU AMD**: dukungan eksperimental sudah diimplementasikan (Vulkan / whisper.cpp) dan **belum** dijalankan di perangkat keras nyata; Ryzen AI 7 350 adalah mesin uji pertama. iGPU lama/kecil seperti Vega pada Ryzen 5 5600G tidak ditargetkan (manfaat diperkirakan kecil). **Relawan penguji dengan mesin AMD lain dipersilakan** (buka issue).
+- **GPU AMD**: dukungan eksperimental sudah diimplementasikan (Vulkan / whisper.cpp) dan sudah menjalankan rekaman nyata di Ryzen AI 7 350 (Radeon 860M). Berikutnya: bandingkan akurasi dan halusinasi pada bagian hening dengan mesin CPU, uji rapat 30+ menit, lalu lepas label "eksperimental" bila hasilnya baik. Direncanakan juga: pemisah pembicara di GPU untuk AMD (saat ini di CPU), dan progres di dalam satu tahap, bukan hanya antar tahap. iGPU lama/kecil seperti Vega pada Ryzen 5 5600G tidak ditargetkan (manfaat diperkirakan kecil). **Relawan penguji dengan mesin AMD lain dipersilakan** (buka issue).
 - **Kebersihan rilis:** installer bertanda tangan, AppImage Linux yang berfungsi, dan uji aplikasi desktop Linux di mesin nyata.
 - **Lebih banyak bahasa antarmuka** selain Indonesia dan Inggris, serta pilihan bahasa keluaran ringkasan dan task.
 
