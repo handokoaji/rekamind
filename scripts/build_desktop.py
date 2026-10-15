@@ -28,7 +28,25 @@ def run(cmd: list[str], cwd: Path) -> None:
     subprocess.run(cmd, cwd=cwd, check=True)
 
 
+def require_tools() -> bool:
+    """Say what is missing before a 5-minute build dies with a cryptic error halfway."""
+    missing = []
+    for tool, hint in (("node", "Node 22+ (nodejs.org)"), ("cargo", "Rust (rustup.rs); buka terminal baru atau tambahkan ~/.cargo/bin ke PATH"),
+                       (NPM, "npm (ikut Node)")):
+        if shutil.which(tool) is None:
+            missing.append(f"  - `{tool}` tidak ditemukan di PATH: pasang {hint}")
+    try:
+        import PyInstaller  # noqa: F401
+    except ImportError:
+        missing.append("  - PyInstaller belum terpasang di Python ini: `pip install pyinstaller` (dan aktifkan venv proyek)")
+    if missing:
+        print("Prasyarat build belum lengkap:\n" + "\n".join(missing), file=sys.stderr)
+    return not missing
+
+
 def main() -> int:
+    if not require_tools():
+        return 2
     ap = argparse.ArgumentParser()
     ap.add_argument("--bundles", default="nsis" if sys.platform == "win32" else "deb")
     ap.add_argument("--skip-web", action="store_true")

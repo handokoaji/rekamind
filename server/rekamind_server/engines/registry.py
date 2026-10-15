@@ -15,6 +15,13 @@ def build_engines(settings: Settings) -> Engines | None:
     if name != "local":
         raise ValueError(f"REKAMIND_ENGINES='{name}' tidak dikenal (none | fake | local)")
 
+    if settings.hf_token:
+        # huggingface_hub reads this: without it the Whisper download is anonymous (slower, rate-limited)
+        # even though the token was set for the diarizer.
+        import os
+
+        os.environ.setdefault("HF_TOKEN", settings.hf_token)
+
     from .llm import OpenAiCompatExtractor
     from .whisper import FasterWhisperTranscriber
 

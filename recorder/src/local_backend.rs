@@ -212,6 +212,10 @@ impl LocalBackend {
         false
     }
 
+    pub fn reset_idle(&self) {
+        *self.idle_since.lock().unwrap() = None;
+    }
+
     /// Call periodically. Stops the backend we started once nothing has been queued or running
     /// for `idle_after`. Returns true if it stopped it.
     pub fn idle_tick(&self, idle_after: Duration) -> bool {
@@ -254,6 +258,19 @@ pub struct Watcher {
 
 impl Watcher {
     pub fn start(backend: Arc<LocalBackend>, idle_after: Duration, every: Duration) -> Self {
+        Self::start_dynamic(move || Some(backend.clone()), || false, idle_after, every)
+    }
+
+    /// `current` is asked every tick, so a backend that was rebuilt (settings changed, engines installed)
+    /// is the one watched; a watcher holding the old object would never stop the new process.
+    /// `hold` returning true (the window is open: someone is looking at the list) postpones shutdown and
+    /// restarts the idle clock: stopping a backend the visible UI then restarts within seconds only wastes work.
+    pub fn start_dynamic(
+        current: impl Fn() -> Option<Arc<LocalBackend>> + Send + 'static,
+        hold: impl Fn() -> bool + Send + 'static,
+        idle_after: Duration,
+        every: Duration,
+    ) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
         let flag = stop.clone();
         let thread = thread::spawn(move || {
@@ -263,7 +280,13 @@ impl Watcher {
                 slept += Duration::from_millis(100);
                 if slept >= every {
                     slept = Duration::ZERO;
-                    backend.idle_tick(idle_after);
+                    if let Some(b) = current() {
+                        if hold() {
+                            b.reset_idle();
+                        } else {
+                            b.idle_tick(idle_after);
+                        }
+                    }
                 }
             }
         });

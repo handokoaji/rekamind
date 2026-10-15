@@ -82,3 +82,22 @@ async def test_retrying_only_the_summary_needs_a_transcript_and_does_not_run_bes
     first = (await client.post(f"/api/meetings/{m}/process")).json()
     again = await client.post(f"/api/meetings/{m}/process")
     assert again.json()["id"] == first["id"]
+
+
+async def test_a_recording_without_speech_does_not_call_the_llm(client):
+    class Silent:
+        def transcribe(self, wav, language):
+            return []
+
+    class MustNotRun:
+        def extract(self, inp):
+            raise AssertionError("an LLM call was made for an empty transcript")
+
+    client.app.state.engines.transcriber = Silent()
+    client.app.state.engines.extractor = MustNotRun()
+    m = await _upload(client)
+    await client.post(f"/api/meetings/{m}/process")
+    await _run(client)
+    d = (await client.get(f"/api/meetings/{m}")).json()
+    assert d["status"] == "review" and d["segments"] == [] and d["summary"] is None
+    assert "Tidak ada ucapan terdeteksi" in d["error"]

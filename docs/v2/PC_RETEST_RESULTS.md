@@ -127,3 +127,19 @@ R12 (opsional), A5, A6, A9, A10, M1, T1-T4.
 
 0. (BLOKER, SUDAH DIPERBAIKI di sesi ini, belum di-commit) Temuan lama #1 masih ada di jalur `install`: perbaikan distlib hanya diterapkan oleh `selftest`, bukan `install`. Lihat bagian R2.
 1. (Ringan, lingkungan) Skrip build dan Playwright bergantung pada PATH sesi: `cargo` dan `python` venv harus aktif. Pertimbangkan pesan galat yang lebih jelas di `scripts/build_desktop.py`.
+
+## Tanggapan sesi cloud atas temuan baru (setelah `5cb5c04`)
+
+Catatan jujur: temuan baru #1 (butir "selftest ok tetapi install gagal") adalah **kesalahan saya**. Perbaikan distlib
+saya tulis dengan penggantian teks yang diam-diam tidak mengenai `install()`, dan saya hanya memverifikasi `selftest`
+serta pemasangan di Linux (yang memang tidak memanggil finder tersebut). Hitungan "14 baris ok" di prompt juga salah (yang benar 13).
+
+| Temuan | Tanggapan |
+|---|---|
+| 2 backend menyala ulang sendiri | Penyebab ditemukan: pemantau idle mematikan backend (10 mnt), UI yang terbuka mendeteksi "down" dan menyalakannya lagi; ditambah pemantau memegang objek backend lama setelah backend dibangun ulang. Kini pemantau tidak mematikan apa pun selama jendela terbuka dan selalu memantau backend terkini (tes baru) |
+| 3 unduhan model tanpa progres | `engines warmup` mencetak ukuran terunduh tiap 4 dtk (tampil di panel UI) |
+| 4 token HF tidak sampai ke Whisper | `HF_TOKEN` diset dari token yang sama (server dan warmup) |
+| 5 rekaman tanpa ucapan memanggil Groq | Dilewati; catatan "Tidak ada ucapan terdeteksi" (tes baru) |
+| 6 dua lokasi pack | `engines install` mencetak "Lokasi pack: ..."; app memakai `REKAMIND_ENGINE_PACK` |
+| 7 pesan galat build | `build_desktop.py` memeriksa node/cargo/npm/PyInstaller di awal dengan pesan yang jelas |
+| #7 lama (pack menimpa pustaka) | Tetap tidak diverifikasi langsung; `sys.path.append` sudah dipakai |

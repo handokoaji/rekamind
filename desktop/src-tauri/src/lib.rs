@@ -229,12 +229,19 @@ fn register_hotkey(app: &AppHandle, hotkey: &str) {
     *sh.hotkey_error.lock().unwrap() = err;
 }
 
-fn restart_watcher(sh: &Shared) {
-    let mut w = sh.watcher.lock().unwrap();
-    *w = None; // dropping the old one stops its thread
-    if let Some(lb) = sh.ctl.local_backend() {
-        *w = Some(Watcher::start(lb, BACKEND_IDLE_AFTER, Duration::from_secs(60)));
-    }
+/// One watcher for the app's lifetime. It asks the controller for the *current* backend each tick (the
+/// backend object is replaced when settings or engines change) and does not shut anything down while the
+/// window is open: the UI polls and would only start it again.
+fn start_watcher(app: &AppHandle) {
+    let sh = app.state::<Shared>();
+    let (cur, win) = (app.clone(), app.clone());
+    let w = Watcher::start_dynamic(
+        move || cur.state::<Shared>().ctl.local_backend(),
+        move || win.get_webview_window("main").is_some(),
+        BACKEND_IDLE_AFTER,
+        Duration::from_secs(60),
+    );
+    *sh.watcher.lock().unwrap() = Some(w);
 }
 
 // ----------------------------------------------------------------------------- commands
@@ -315,7 +322,6 @@ fn settings_set(app: AppHandle, sh: State<'_, Shared>, settings: Settings) -> Re
     sh.ctl.set_config(settings.to_config(sh.credential(&settings).as_deref()));
     sh.ctl.set_local_backend(sh.make_backend(&settings));
     *sh.settings.lock().unwrap() = settings.clone();
-    restart_watcher(&sh);
     if settings.hotkey != old_hotkey {
         register_hotkey(&app, &settings.hotkey);
     }
@@ -581,7 +587,7 @@ pub fn run() {
             let sh = app.state::<Shared>();
             let current = sh.settings.lock().unwrap().clone();
             sh.ctl.set_local_backend(sh.make_backend(&current));
-            restart_watcher(&sh);
+            start_watcher(app.handle());
             register_hotkey(app.handle(), &hotkey);
 
             // The tray is a convenience, not a requirement: if the desktop has none, carry on without it.

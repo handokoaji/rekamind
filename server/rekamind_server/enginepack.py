@@ -198,6 +198,7 @@ def install(kind: str, with_diarize: bool = False, pack: Path | None = None) -> 
     """Run pip *inside this interpreter* (works from the frozen backend too). Output goes to stdout."""
     pack = pack or default_pack_dir()
     pack.mkdir(parents=True, exist_ok=True)
+    print(f"Lokasi pack: {pack}", flush=True)  # the CLI and the desktop app may use different folders
     fix_distlib_for_frozen()  # same fix selftest applies; without it pip dies in distlib when frozen
     from pip._internal.cli.main import (
         main as pip_main,  # bundled with the frozen backend
@@ -212,10 +213,32 @@ def install(kind: str, with_diarize: bool = False, pack: Path | None = None) -> 
 def warmup(model: str, pack: Path | None = None) -> int:
     """Download the Whisper weights now (instead of at the first meeting). Needs the pack installed."""
     activate(pack)
+    import threading
+
     from faster_whisper.utils import download_model
 
-    print(f"Mengunduh model {model} …", flush=True)
-    path = download_model(model, cache_dir=os.environ.get("HF_HOME") and str(Path(os.environ["HF_HOME"]) / "hub") or None)
+    if os.environ.get("REKAMIND_HF_TOKEN"):
+        os.environ.setdefault("HF_TOKEN", os.environ["REKAMIND_HF_TOKEN"])
+    cache = os.environ.get("HF_HOME") and str(Path(os.environ["HF_HOME"]) / "hub") or None
+    print(f"Mengunduh model {model} (bisa beberapa GB; progres tampil tiap beberapa detik) …", flush=True)
+    done = threading.Event()
+
+    def report() -> None:
+        # huggingface_hub's own progress bar is silent when not attached to a terminal, which made a
+        # 6-minute download look like a hang.
+        root = Path(cache) if cache else Path.home() / ".cache" / "huggingface" / "hub"
+        while not done.wait(4):
+            try:
+                size = sum(f.stat().st_size for f in root.rglob("*") if f.is_file())
+                print(f"  … {size / 1e6:,.0f} MB terunduh", flush=True)
+            except OSError:
+                pass
+
+    threading.Thread(target=report, daemon=True).start()
+    try:
+        path = download_model(model, cache_dir=cache)
+    finally:
+        done.set()
     print(f"Model siap: {path}", flush=True)
     return 0
 

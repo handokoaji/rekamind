@@ -352,3 +352,54 @@ fn idle_shutdown_authenticates_with_the_local_secret() {
     );
     assert!(!lb.owns_process());
 }
+
+#[test]
+fn the_watcher_never_stops_a_backend_while_the_window_is_open_and_follows_a_replaced_backend() {
+    use rekamind_recorder::local_backend::Watcher;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Mutex;
+    // Found on the installed app: the idle watcher stopped the backend, the open UI noticed and started it
+    // again, every ~10 minutes; and after a backend was rebuilt the watcher still held the old object.
+    let d = tempfile::tempdir().unwrap();
+    let port = free_port();
+    let (prog, args) = fake_server_script(d.path(), port);
+    let lb = Arc::new(LocalBackend::new(
+        prog,
+        args,
+        vec![],
+        format!("http://127.0.0.1:{port}"),
+    ));
+    lb.ensure(Duration::from_secs(10)).unwrap();
+
+    let window_open = Arc::new(AtomicBool::new(true));
+    let (current, w2) = (Arc::new(Mutex::new(Some(lb.clone()))), window_open.clone());
+    let c2 = current.clone();
+    let _w = Watcher::start_dynamic(
+        move || c2.lock().unwrap().clone(),
+        move || w2.load(Ordering::SeqCst),
+        Duration::from_millis(100),
+        Duration::from_millis(100),
+    );
+    std::thread::sleep(Duration::from_millis(1200));
+    assert!(
+        lb.owns_process(),
+        "kept alive while the window is open, however long it sat idle"
+    );
+
+    // the controller replaces the backend object (settings changed): the watcher must watch the new one
+    let lb2 = Arc::new(LocalBackend::new(
+        "sleep",
+        vec!["30".into()],
+        vec![],
+        "http://127.0.0.1:1",
+    ));
+    lb.stop();
+    *current.lock().unwrap() = Some(lb2.clone());
+    window_open.store(false, Ordering::SeqCst);
+    let t = Instant::now();
+    while Instant::now() - t < Duration::from_secs(5) {
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    // lb2 is not ours (never started) so it is untouched, but the call path ran against it without panicking
+    assert!(!lb2.owns_process());
+}

@@ -98,17 +98,22 @@ async def run_process_job(
     transcript = "\n".join(f"[{_fmt(seg.start_ms)}] {p.name or p.label}: {seg.text}" for seg, _, p in rows)
 
     await jobs.set_progress(sf, job.id, "extracting", 80)
-    try:
-        result = await asyncio.to_thread(
-            engines.extractor.extract,
-            ExtractionInput(title=title, started_at=started_at, language=language,
-                            participants=[p.name or p.label for p in participants], transcript=transcript),
-        )
-    except LlmError as exc:
-        # The transcript is the expensive part and it is saved: keep it, say what is missing, offer a retry.
-        log.warning("extraction failed for %s: %s", job.meeting_id, exc)
-        notes.append(f"Ringkasan dan task belum dibuat: {exc}. Transkrip tersimpan; tekan \"Buat ulang ringkasan\" setelah masalahnya teratasi.")
-        result = None
+    result = None
+    if not rows:
+        # Nothing was said (or detected): an LLM call would only produce an empty summary and spend quota.
+        notes.append("Tidak ada ucapan terdeteksi dalam rekaman ini, jadi ringkasan dan task tidak dibuat.")
+    else:
+        try:
+            result = await asyncio.to_thread(
+                engines.extractor.extract,
+                ExtractionInput(title=title, started_at=started_at, language=language,
+                                participants=[p.name or p.label for p in participants], transcript=transcript),
+            )
+        except LlmError as exc:
+            # The transcript is the expensive part and it is saved: keep it, say what is missing, offer a retry.
+            log.warning("extraction failed for %s: %s", job.meeting_id, exc)
+            notes.append(f"Ringkasan dan task belum dibuat: {exc}. Transkrip tersimpan; tekan \"Buat ulang ringkasan\" setelah masalahnya teratasi.")
+            result = None
 
     meeting_day: date = started_at.date()
     async with sf() as s:
