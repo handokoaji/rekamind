@@ -28,17 +28,34 @@ beforeEach(() => { Object.values(bridge).forEach((f) => f.mockReset().mockResolv
 describe("engine pack panel", () => {
   it("offers installation for CPU or NVIDIA when nothing is installed, and says recording still works", async () => {
     bridge.engines.mockResolvedValue(state());
-    render(<EnginesPanel recording={false} whisperModel="large-v3" />);
+    render(<EnginesPanel recording={false} whisperModel="large-v3" hasHfToken />);
     expect(await screen.findByText("Belum dipasang")).toBeInTheDocument();
     expect(screen.getByText(/Rekaman tetap bisa dilakukan/)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("checkbox", { name: /pemisah pembicara/i }));
+    expect(screen.getByRole("checkbox", { name: /pemisah pembicara/i })).toBeChecked(); // on by default
     await userEvent.click(screen.getByRole("button", { name: /untuk NVIDIA GPU/ }));
     expect(bridge.installEngines).toHaveBeenCalledWith("cuda", true);
+  });
+  it("blocks installing with speaker separation until a Hugging Face token is saved, unless the user unticks it", async () => {
+    bridge.engines.mockResolvedValue(state());
+    render(<EnginesPanel recording={false} whisperModel="large-v3" />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Token Hugging Face wajib diisi");
+    expect(screen.getByRole("button", { name: /untuk NVIDIA GPU/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /untuk CPU/ })).toBeDisabled();
+    await userEvent.click(screen.getByRole("checkbox", { name: /pemisah pembicara/i }));
+    expect(screen.queryByText(/Token Hugging Face wajib diisi/)).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /untuk NVIDIA GPU/ }));
+    expect(bridge.installEngines).toHaveBeenCalledWith("cuda", false);
+  });
+  it("tells the user to press Save when the token was typed but not saved yet", async () => {
+    bridge.engines.mockResolvedValue(state());
+    render(<EnginesPanel recording={false} whisperModel="large-v3" hfTokenPending />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("belum disimpan");
   });
   it("offers Intel GPU (OpenVINO), recommends it when an Intel GPU is present, and installs the openvino kind", async () => {
     bridge.engines.mockResolvedValue(state({ pack: pack({ gpus: [{ vendor: "intel", name: "Intel(R) Arc(TM) Graphics" }] }) }));
     render(<EnginesPanel recording={false} whisperModel="large-v3" />);
     expect(await screen.findByText(/GPU Intel terdeteksi di komputer ini/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("checkbox", { name: /pemisah pembicara/i })); // opt out: no token in this test
     await userEvent.click(screen.getByRole("button", { name: /untuk Intel GPU/ }));
     expect(bridge.installEngines).toHaveBeenCalledWith("openvino", false);
   });
@@ -62,6 +79,7 @@ describe("engine pack panel", () => {
     bridge.engines.mockResolvedValue(state({ pack: pack({ gpus: [{ vendor: "amd", name: "AMD Radeon(TM) 860M Graphics" }] }) }));
     render(<EnginesPanel recording={false} whisperModel="large-v3" />);
     expect(await screen.findByText(/GPU AMD terdeteksi di komputer ini/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("checkbox", { name: /pemisah pembicara/i }));
     await userEvent.click(screen.getByRole("button", { name: /untuk GPU AMD \(Vulkan\)/ }));
     expect(bridge.installEngines).toHaveBeenCalledWith("vulkan", false);
   });
@@ -109,13 +127,13 @@ describe("engine pack panel", () => {
   it("a broken install is reported as such, not as success", async () => {
     bridge.engines.mockResolvedValue(state({ pack: pack({ asr: true, kind: "cpu" }) }));
     bridge.checkEngines.mockResolvedValue({ ok: false, error: "ImportError: libcudnn", cuda_devices: 0 });
-    render(<EnginesPanel recording={false} whisperModel="large-v3" />);
+    render(<EnginesPanel recording={false} whisperModel="large-v3" hasHfToken />);
     await userEvent.click(await screen.findByRole("button", { name: /Uji mesin/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("libcudnn");
   });
   it("shows why the last install failed", async () => {
     bridge.engines.mockResolvedValue(state({ job: { running: null, log: [], last_error: "gagal (exit 1): no matching distribution" } }));
-    render(<EnginesPanel recording={false} whisperModel="large-v3" />);
+    render(<EnginesPanel recording={false} whisperModel="large-v3" hasHfToken />);
     expect(await screen.findByRole("alert")).toHaveTextContent("no matching distribution");
   });
 });

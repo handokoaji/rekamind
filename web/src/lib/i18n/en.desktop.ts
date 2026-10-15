@@ -143,6 +143,12 @@ export const enDesktop: Record<string, string> = {
   "Unduhan saat ini: {done} MB{speed}": "Current download: {done} MB{speed}",
   "Menyiapkan paket… pemasangan beberapa GB bisa memakan waktu lama.": "Preparing packages… an install of several GB can take a long time.",
   "Unduhan hampir tidak bergerak: jaringan ke server paket sedang lambat. Pemasangan masih mencoba; Anda bisa menunggu atau membatalkan.": "The download has almost stopped: the network to the package server is slow. The install is still trying; you can wait or cancel.",
+  "Token Hugging Face sudah diisi tetapi belum disimpan. Klik Simpan di bagian bawah halaman, lalu pasang mesin.": "The Hugging Face token is filled in but not saved yet. Click Save at the bottom of the page, then install the engine.",
+  "Token Hugging Face wajib diisi untuk memasang pemisah pembicara.": "A Hugging Face token is required to install speaker separation.",
+  "Buat token (tipe Read) di huggingface.co/settings/tokens.": "Create a token (type Read) at huggingface.co/settings/tokens.",
+  "Buka halaman model pyannote/speaker-diarization-3.1 dan pyannote/segmentation-3.0 di Hugging Face, lalu setujui syaratnya.": "Open the pyannote/speaker-diarization-3.1 and pyannote/segmentation-3.0 model pages on Hugging Face and accept their terms.",
+  "Isi kolom “Token Hugging Face” di bagian bawah halaman ini, lalu klik Simpan.": "Fill in the “Token Hugging Face” field at the bottom of this page, then click Save.",
+  "Tidak memerlukan pemisah pembicara? Hilangkan centang di atas untuk memasang mesin tanpanya.": "Don't need speaker separation? Untick the box above to install the engine without it.",
   "Tampilkan log": "Show log",
   "Sembunyikan log": "Hide log",
 };

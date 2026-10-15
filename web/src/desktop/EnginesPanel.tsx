@@ -30,10 +30,11 @@ export function parseInstallProgress(lines: string[]): InstallProgress | null {
 
 /** Installs and verifies the speech engines. They are not in the installer: they are several GB and
  *  depend on the hardware, so the user picks once and sees real progress. */
-export function EnginesPanel({ recording, whisperModel }: { recording: boolean; whisperModel: string }) {
+export function EnginesPanel({ recording, whisperModel, hasHfToken = false, hfTokenPending = false }:
+  { recording: boolean; whisperModel: string; hasHfToken?: boolean; hfTokenPending?: boolean }) {
   const [state, setState] = useState<EngineState | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [diarize, setDiarize] = useState(false);
+  const [diarize, setDiarize] = useState(true);
   const [check, setCheck] = useState<EngineCheck | null>(null);
   const [lines, setLines] = useState<string[]>([]);
   const [showLog, setShowLog] = useState(false);
@@ -65,6 +66,10 @@ export function EnginesPanel({ recording, whisperModel }: { recording: boolean; 
   const running = state?.job.running ?? null;
   const progress = running ? parseInstallProgress(lines) : null;
   const failed = !running && !!state?.job.last_error;
+  // Speaker separation is on by default; it cannot work without a Hugging Face token, so installing with it is blocked
+  // until the token is saved (or the user explicitly opts out) instead of failing later as "one speaker".
+  const needsToken = diarize && !hasHfToken;
+  const blocked = recording || needsToken;
   const act = (fn: () => Promise<unknown>) => { setError(null); fn().then(refresh).catch((e: Error) => setError(e.message)); };
   const pack = state?.pack;
   const installed = !!pack?.asr;
@@ -98,11 +103,25 @@ export function EnginesPanel({ recording, whisperModel }: { recording: boolean; 
         <>
           <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-0.5 size-4 accent-[var(--primary)]" checked={diarize} onChange={(e) => setDiarize(e.target.checked)} />
             <span>{t("Sertakan pemisah pembicara (pyannote, tambahan ± beberapa GB; perlu token Hugging Face)")}</span></label>
+          {needsToken && (
+            <div role="alert" className="rounded-lg bg-warning-soft px-3 py-2 text-sm text-warning">
+              {hfTokenPending
+                ? <p>{t("Token Hugging Face sudah diisi tetapi belum disimpan. Klik Simpan di bagian bawah halaman, lalu pasang mesin.")}</p>
+                : <>
+                    <p className="font-medium">{t("Token Hugging Face wajib diisi untuk memasang pemisah pembicara.")}</p>
+                    <ol className="mt-1 list-decimal pl-5">
+                      <li>{t("Buat token (tipe Read) di huggingface.co/settings/tokens.")}</li>
+                      <li>{t("Buka halaman model pyannote/speaker-diarization-3.1 dan pyannote/segmentation-3.0 di Hugging Face, lalu setujui syaratnya.")}</li>
+                      <li>{t("Isi kolom “Token Hugging Face” di bagian bawah halaman ini, lalu klik Simpan.")}</li>
+                    </ol>
+                    <p className="mt-1">{t("Tidak memerlukan pemisah pembicara? Hilangkan centang di atas untuk memasang mesin tanpanya.")}</p>
+                  </>}
+            </div>)}
           <div className="flex flex-wrap gap-2">
-            <Button variant={installed ? "secondary" : "primary"} disabled={recording} onClick={() => act(() => desktop.installEngines("cpu", diarize))}><Download className="size-4" aria-hidden /> {installed ? t("Pasang ulang untuk CPU") : t("Pasang untuk CPU")}</Button>
-            <Button variant="secondary" disabled={recording} onClick={() => act(() => desktop.installEngines("cuda", diarize))}><Zap className="size-4" aria-hidden /> {installed ? t("Pasang ulang untuk NVIDIA GPU") : t("Pasang untuk NVIDIA GPU")}</Button>
-            <Button variant="secondary" disabled={recording} onClick={() => act(() => desktop.installEngines("vulkan", diarize))}><Zap className="size-4" aria-hidden /> {installed ? t("Pasang ulang untuk GPU AMD (Vulkan)") : t("Pasang untuk GPU AMD (Vulkan)")}</Button>
-            <Button variant="secondary" disabled={recording} onClick={() => act(() => desktop.installEngines("openvino", diarize))}><Zap className="size-4" aria-hidden /> {installed ? t("Pasang ulang untuk Intel GPU") : t("Pasang untuk Intel GPU")}</Button>
+            <Button variant={installed ? "secondary" : "primary"} disabled={blocked} onClick={() => act(() => desktop.installEngines("cpu", diarize))}><Download className="size-4" aria-hidden /> {installed ? t("Pasang ulang untuk CPU") : t("Pasang untuk CPU")}</Button>
+            <Button variant="secondary" disabled={blocked} onClick={() => act(() => desktop.installEngines("cuda", diarize))}><Zap className="size-4" aria-hidden /> {installed ? t("Pasang ulang untuk NVIDIA GPU") : t("Pasang untuk NVIDIA GPU")}</Button>
+            <Button variant="secondary" disabled={blocked} onClick={() => act(() => desktop.installEngines("vulkan", diarize))}><Zap className="size-4" aria-hidden /> {installed ? t("Pasang ulang untuk GPU AMD (Vulkan)") : t("Pasang untuk GPU AMD (Vulkan)")}</Button>
+            <Button variant="secondary" disabled={blocked} onClick={() => act(() => desktop.installEngines("openvino", diarize))}><Zap className="size-4" aria-hidden /> {installed ? t("Pasang ulang untuk Intel GPU") : t("Pasang untuk Intel GPU")}</Button>
             {installed && <Button variant="ghost" onClick={() => act(() => desktop.warmupModel())}>{t("Unduh model {model} sekarang", { model: whisperModel })}</Button>}
             {installed && <Button variant="ghost" onClick={() => { setCheck(null); desktop.checkEngines().then(setCheck).catch((e: Error) => setError(e.message)); }}><ShieldCheck className="size-4" aria-hidden /> {t("Uji mesin")}</Button>}
           </div>

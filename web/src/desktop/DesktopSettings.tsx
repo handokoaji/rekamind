@@ -65,7 +65,7 @@ export function DesktopSettings() {
 
       {s.mode === "local" && (
         <>
-          <EnginesPanel recording={recording} whisperModel={s.whisper_model} />
+          <EnginesPanel recording={recording} whisperModel={s.whisper_model} hasHfToken={view.has_hf_token} hfTokenPending={hfToken.trim() !== ""} />
           <fieldset className="flex flex-col gap-4 rounded-lg border border-border p-4">
             <legend className="px-1 text-sm font-semibold">{t("Pemrosesan di komputer ini")}</legend>
             <div className="grid gap-4 sm:grid-cols-2">
