@@ -1,0 +1,105 @@
+"""Long engine installs must be observable and robust, without changing what CPU/NVIDIA installs ask pip to do."""
+import io
+
+from rekamind_server import enginepack
+from rekamind_server.enginepack import (
+    ProgressReporter,
+    describe_environment,
+    mask_secrets,
+    tune_pip_args,
+)
+
+
+class Clock:
+    def __init__(self):
+        self.t = 1000.0
+
+    def __call__(self):
+        return self.t
+
+
+def test_credentials_in_urls_are_masked():
+    assert mask_secrets("https://user:s3cret@mirror.example/simple") == "https://***@mirror.example/simple"
+    assert mask_secrets("http://proxy:8080") == "http://proxy:8080"
+
+
+BASE = ["install", "--target", "/p", "--upgrade", "--only-binary=:all:", "--progress-bar", "off", "faster-whisper>=1.0"]
+
+
+def test_old_pip_keeps_the_original_arguments_plus_safe_timeouts():
+    a = tune_pip_args(BASE, (24, 0))
+    assert a[0] == "install" and a[1:5] == ["--timeout", "60", "--retries", "10"]
+    assert "--resume-retries" not in a and a[a.index("--progress-bar") + 1] == "off"  # an unknown option would break the install
+    assert a[5:] == BASE[1:]
+
+
+def test_new_pip_gets_resumable_downloads_and_raw_progress():
+    a = tune_pip_args(BASE, (25, 1))
+    assert "--resume-retries" in a and a[a.index("--progress-bar") + 1] == "raw"
+    assert a[0] == "install" and "faster-whisper>=1.0" in a and "--only-binary=:all:" in a  # nothing else changed
+    assert tune_pip_args(BASE, (26, 2))[tune_pip_args(BASE, (26, 2)).index("--resume-retries") + 1] == "5"
+
+
+def test_progress_lines_are_throttled_and_readable():
+    out, clock = io.StringIO(), Clock()
+    r = ProgressReporter(out, every=5.0, clock=clock)
+    r.write("Collecting nvidia-cudnn-cu12\n")
+    r.write("Progress 0 of 743000000\n")
+    for i in range(1, 6):  # a burst within one second prints nothing
+        clock.t += 0.2
+        r.write(f"Progress {i * 100_000} of 743000000\n")
+    assert out.getvalue() == "Collecting nvidia-cudnn-cu12\n"
+    clock.t += 5.0
+    r.write("Progress 10500000 of 743000000\n")
+    line = out.getvalue().splitlines()[-1]
+    assert line.startswith("  … 10 / 743 MB (1%)") and line.endswith("MB/s")
+    clock.t += 0.1
+    r.write("Progress 743000000 of 743000000\n")  # completion always prints
+    assert out.getvalue().splitlines()[-1].startswith("  … 743 / 743 MB (100%)")
+
+
+def test_a_stalled_download_warns_once_per_interval_and_never_when_idle():
+    out, clock = io.StringIO(), Clock()
+    r = ProgressReporter(out, stall=60.0, clock=clock)
+    assert r.check_stall() is False  # nothing downloading
+    r.write("Progress 1000000 of 500000000\n")
+    clock.t += 30
+    assert r.check_stall() is False
+    clock.t += 31
+    assert r.check_stall() is True and "Tidak ada kemajuan unduhan selama 61 dtk" in out.getvalue()
+    assert r.check_stall() is False  # not again immediately
+    clock.t += 61
+    r.write("Progress 2000000 of 500000000\n")  # moving again
+    clock.t += 30
+    assert r.check_stall() is False
+    r.write("Progress 500000000 of 500000000\n")
+    clock.t += 500
+    assert r.check_stall() is False  # finished downloads are not "stalled"
+
+
+def test_unrelated_output_passes_through_untouched():
+    out = io.StringIO()
+    r = ProgressReporter(out)
+    r.write("Successfully installed a b c\nWARNING: x\n")
+    assert out.getvalue() == "Successfully installed a b c\nWARNING: x\n"
+    r.write("Progress not-a-number\n")  # malformed progress is ignored, not fatal
+
+
+def test_diagnostics_show_sources_and_mask_proxy_credentials(monkeypatch):
+    monkeypatch.setenv("HTTPS_PROXY", "http://user:pw@proxy.kantor:3128")
+    monkeypatch.setenv("PIP_INDEX_URL", "https://mirror.example/simple")
+    lines: list[str] = []
+    describe_environment("cuda", log=lines.append, probe=False)
+    text = "\n".join(lines)
+    assert "pip " in text and "PIP_INDEX_URL=https://mirror.example/simple" in text
+    assert "user:pw" not in text and "HTTPS_PROXY=http://***@proxy.kantor:3128" in text
+
+
+def test_diagnostics_probe_never_raises_without_a_network(monkeypatch):
+    import socket
+
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: (_ for _ in ()).throw(OSError("no network")))
+    lines: list[str] = []
+    describe_environment("cpu", log=lines.append, probe=True)
+    assert any("pypi.org: GAGAL" in line for line in lines)
+    assert enginepack.pip_version() >= (0, 0)

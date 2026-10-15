@@ -11,7 +11,9 @@ import functools
 import importlib.util
 import json
 import os
+import re
 import sys
+import threading
 from pathlib import Path
 
 TORCH_INDEX = {
@@ -366,6 +368,137 @@ def selftest(fix: bool = True) -> dict:
     return out
 
 
+# ---- visibility and robustness of a long pip download ---------------------------------------------------------
+_SECRET_IN_URL = re.compile(r"(://)[^/@\s]+@")
+
+
+def mask_secrets(text: str) -> str:
+    """`https://user:pass@host` -> `https://***@host`."""
+    return _SECRET_IN_URL.sub(r"\1***@", text)
+
+
+def pip_version() -> tuple[int, int]:
+    try:
+        from pip import __version__
+
+        major, minor = (int(x) for x in __version__.split(".")[:2])
+        return major, minor
+    except Exception:  # noqa: BLE001 - unknown pip: behave conservatively
+        return (0, 0)
+
+
+def tune_pip_args(args: list[str], version: tuple[int, int]) -> list[str]:
+    """Longer timeouts/retries on every pip; on pip >= 25.1 also resumable downloads and machine-readable progress
+    (`--progress-bar raw`), which `ProgressReporter` turns into one line every few seconds. An older pip keeps
+    the original arguments exactly (an unknown option would make the whole install fail)."""
+    out = list(args)
+    out[1:1] = ["--timeout", "60", "--retries", "10"]  # args[0] is the "install" command
+    if version >= (25, 1):
+        i = out.index("--progress-bar")
+        out[i + 1] = "raw"
+        out[1:1] = ["--resume-retries", "5"]
+    return out
+
+
+class ProgressReporter:
+    """Wraps stdout while pip runs: turns pip's "Progress N of M" lines into a readable line every few seconds
+    (MB, percent, speed) and warns when a download makes no progress. A silent 700 MB download over a slow link is
+    indistinguishable from a hang, which is what users saw."""
+
+    def __init__(self, out, every: float = 5.0, stall: float = 60.0, clock=None):
+        import time
+
+        self._out, self._every, self._stall = out, every, stall
+        self._clock = clock or time.monotonic
+        self._last_print = self._last_change = self._last_warn = self._clock()
+        self._last_cur, self._last_print_cur, self._total, self._active = 0, 0, 0, False
+
+    def write(self, s: str) -> int:
+        for line in s.splitlines(keepends=True):
+            if line.startswith("Progress "):
+                self._progress(line)
+            else:
+                self._out.write(line)
+        return len(s)
+
+    def _progress(self, line: str) -> None:
+        try:
+            _, cur, _, tot = line.split()
+            cur, tot = int(cur), int(tot)
+        except ValueError:
+            return
+        now = self._clock()
+        if cur < self._last_cur:  # a new file started
+            self._last_print, self._last_print_cur, self._last_warn = now, 0, now
+        if cur > self._last_cur:
+            self._last_change = now
+        self._last_cur, self._total, self._active = cur, tot, cur < tot
+        if cur >= tot or now - self._last_print >= self._every:
+            dt = max(now - self._last_print, 1e-6)
+            speed = (cur - self._last_print_cur) / dt / 1e6
+            of_total = f" / {tot / 1e6:,.0f} MB ({cur * 100 // tot}%)" if tot else " MB"
+            self._out.write(f"  … {cur / 1e6:,.0f}{of_total}, {speed:.2f} MB/s\n")
+            self._last_print, self._last_print_cur = now, cur
+
+    def check_stall(self) -> bool:
+        """Called periodically from a watchdog thread; True (and a warning line) when a download has stood still."""
+        now = self._clock()
+        if self._active and now - self._last_change >= self._stall and now - self._last_warn >= self._stall:
+            self._last_warn = now
+            self._out.write(f"  ! Tidak ada kemajuan unduhan selama {int(now - self._last_change)} dtk "
+                            f"({self._last_cur / 1e6:,.0f} dari {self._total / 1e6:,.0f} MB). Jaringan ke server paket lambat "
+                            "atau terputus; pip masih mencoba. Lihat docs/INSTALL.md, bagian pemasangan lambat.\n")
+            return True
+        return False
+
+    def flush(self) -> None:
+        self._out.flush()
+
+    def __getattr__(self, name):
+        return getattr(self._out, name)
+
+
+def describe_environment(kind: str, log=print, probe: bool = True, with_diarize: bool = False) -> None:
+    """What a slow or failing install needs to be diagnosed: pip/Python, which package sources and proxies apply
+    (credentials masked), and how reachable the package hosts are from this machine right now."""
+    frozen = " (aplikasi terpasang)" if getattr(sys, "frozen", False) else ""
+    log(f"Diagnostik: pip {'.'.join(map(str, pip_version()))}, Python {sys.version_info.major}.{sys.version_info.minor}{frozen}, {sys.platform}")
+    envs = [f"{k}={mask_secrets(os.environ[k])}" for k in (
+        "PIP_INDEX_URL", "PIP_EXTRA_INDEX_URL", "PIP_FIND_LINKS", "PIP_CONFIG_FILE", "HTTP_PROXY", "HTTPS_PROXY",
+        "NO_PROXY", "http_proxy", "https_proxy") if os.environ.get(k)]
+    log("Variabel lingkungan pip/proxy: " + ("; ".join(envs) if envs else "tidak ada (bawaan: pypi.org)"))
+    cfgs = [str(p) for p in (Path(os.environ.get("APPDATA", "")) / "pip" / "pip.ini", Path.home() / ".pip" / "pip.conf",
+                             Path.home() / ".config" / "pip" / "pip.conf") if p.is_file()]
+    if cfgs:
+        log("Berkas konfigurasi pip: " + ", ".join(cfgs))
+    if not probe:
+        return
+    import socket
+    import ssl
+    import time
+
+    hosts = ["pypi.org", "files.pythonhosted.org"] + (["download.pytorch.org"] if kind == "openvino" or with_diarize else [])
+    results: dict[str, str] = {}
+
+    def one(host: str) -> None:
+        try:
+            t0 = time.monotonic()
+            ip = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)[0][4][0]
+            t1 = time.monotonic()
+            with socket.create_connection((host, 443), timeout=6) as s, ssl.create_default_context().wrap_socket(s, server_hostname=host):
+                results[host] = f"{ip}, DNS {t1 - t0:.2f} dtk, TLS {time.monotonic() - t1:.2f} dtk"
+        except Exception as e:  # noqa: BLE001 - diagnostics only
+            results[host] = f"GAGAL ({type(e).__name__}: {e})"
+
+    threads = [threading.Thread(target=one, args=(h,), daemon=True) for h in hosts]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(8)
+    for h in hosts:
+        log(f"  {h}: {results.get(h, 'tidak menjawab dalam 8 dtk')}")
+
+
 def install(kind: str, with_diarize: bool = False, pack: Path | None = None) -> int:
     """Run pip *inside this interpreter* (works from the frozen backend too). Output goes to stdout."""
     pack = pack or default_pack_dir()
@@ -388,7 +521,22 @@ def install(kind: str, with_diarize: bool = False, pack: Path | None = None) -> 
         if not with_diarize:  # nothing for pip to do
             (pack / "installed.json").write_text(json.dumps({"kind": kind, "diarize": False}), "utf-8")
             return 0
-    code = int(pip_main(pip_args(kind, pack, with_diarize, _bundled_pins())) or 0)
+    describe_environment(kind, log=lambda m: print(m, flush=True), with_diarize=with_diarize)
+    args = tune_pip_args(pip_args(kind, pack, with_diarize, _bundled_pins()), pip_version())
+    reporter = ProgressReporter(sys.stdout)
+    stop = threading.Event()
+
+    def watchdog() -> None:
+        while not stop.wait(15):
+            reporter.check_stall()
+
+    threading.Thread(target=watchdog, daemon=True).start()
+    real_stdout, sys.stdout = sys.stdout, reporter
+    try:
+        code = int(pip_main(args) or 0)
+    finally:
+        sys.stdout = real_stdout
+        stop.set()
     if code == 0:
         (pack / "installed.json").write_text(json.dumps({"kind": kind, "diarize": with_diarize}), "utf-8")
     return code

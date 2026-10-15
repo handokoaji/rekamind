@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+### Changed
+- Engine install is observable and more robust: a diagnostics block (pip version, package sources/proxies with credentials masked, host reachability), a progress line every few seconds with speed, a warning when a download stalls, longer timeouts/retries, and resumable downloads on pip >= 25.1. Arguments for CPU/NVIDIA installs are otherwise unchanged.
+
 ### Added
 - AMD GPU (integrated Radeon 680M/780M/860M and other Vulkan GPUs) transcription through whisper.cpp built with Vulkan: engine kind `vulkan` (*Pasang untuk GPU AMD (Vulkan)*), `whisper_device=vulkan`, program built by CI (`engine-assets` workflow) and downloaded with SHA-256 verification, ggml models from Hugging Face. **Experimental: tested with a fake program only, not verified on real hardware.**
 - Intel GPU (integrated Arc/Iris Xe, e.g. Core Ultra 7 155H) transcription through OpenVINO: new engine kind `openvino` in the engine pack (*Pasang untuk Intel GPU*), `whisper_device=intel`, GPU detection to recommend it, falls back to the CPU when the GPU cannot load the model. **Experimental: unit-tested with fakes only, not verified on real hardware.**

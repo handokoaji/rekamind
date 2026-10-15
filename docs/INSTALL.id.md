@@ -21,6 +21,22 @@ Pemisah pembicara (pyannote) opsional: centang saat memasang, isi token Hugging 
 Data aplikasi (Windows: `%LOCALAPPDATA%\\id.rekamind.desktop`): `recordings\\` (rekaman), `backend\\` (SQLite, model,
 `engine-pack\\`, `logs\\backend.log`). Menghapus folder `engine-pack` mengembalikan ke keadaan sebelum dipasang.
 
+## Pemasangan mesin lambat atau terputus
+
+Pemasangan mesin pertama mengunduh banyak: mesin CPU beberapa ratus MB, pemasangan **NVIDIA** menambah sekitar **1,3 GB** pustaka CUDA
+(cuDNN ≈ 740 MB dan cuBLAS ≈ 550 MB, dari `files.pythonhosted.org`), dan pemisah pembicara (pyannote) menambah PyTorch (beberapa GB).
+Di jaringan lambat ini memakan waktu lama; panel mesin kini menampilkan satu baris tiap beberapa detik (MB, persen, kecepatan) dan
+peringatan bila unduhan tidak maju selama semenit.
+
+- **Baca beberapa baris pertama log pemasangan** (Pengaturan → Mesin transkripsi). Isinya versi pip, sumber paket dan proxy yang berlaku
+  (kredensial disamarkan), dan seberapa cepat `pypi.org` / `files.pythonhosted.org` menjawab dari komputer ini. Sertakan di laporan bug.
+- **Batalkan lalu coba lagi**: unduhan dilanjutkan dari titik terakhir (pip 25.1 atau lebih baru, sudah dibundel di build terkini).
+- **Terminal bisa lebih cepat daripada aplikasi terpasang** bila pengaturan jaringan Anda hanya ada di sesi terminal itu. Aplikasi tidak
+  melihat variabel yang hanya diset di terminal. Setel sebagai **variabel lingkungan pengguna** (Windows: System Properties → Environment
+  Variables): `HTTPS_PROXY`, `PIP_INDEX_URL` (mirror paket yang lebih dekat, bila organisasi Anda punya), `PIP_FIND_LINKS` (di bawah). Lalu mulai ulang Rekamind.
+- **Offline / jaringan sangat lambat**: di mesin yang lebih cepat jalankan `pip download faster-whisper nvidia-cublas-cu12 "nvidia-cudnn-cu12==9.*" -d wheels --only-binary=:all: --platform win_amd64 --python-version 3.13`
+  (sesuaikan dengan sistem), salin folder `wheels`, setel `PIP_FIND_LINKS` ke folder itu, lalu pasang dari aplikasi.
+
 ## Server bersama (kantor)
 
 ### Tercepat: image siap-pakai (Portainer atau Docker biasa, tanpa build)

@@ -21,6 +21,22 @@ Speaker separation (pyannote) is optional: tick it during installation, enter a 
 App data (Windows: `%LOCALAPPDATA%\\id.rekamind.desktop`): `recordings\\` (recordings), `backend\\` (SQLite, models,
 `engine-pack\\`, `logs\\backend.log`). Deleting the `engine-pack` folder returns things to the state before installation.
 
+## Slow or interrupted engine install
+
+The first engine install downloads a lot: the CPU engine is a few hundred MB, an **NVIDIA** install adds about **1.3 GB** of
+CUDA libraries (cuDNN ≈ 740 MB and cuBLAS ≈ 550 MB, from `files.pythonhosted.org`), and speaker separation (pyannote) adds PyTorch
+(GBs). On a slow link this takes a long time; the engine panel now shows a line every few seconds (MB, percent, speed) and a warning
+when a download makes no progress for a minute.
+
+- **Read the first lines of the install log** (Pengaturan → Mesin transkripsi). They show the pip version, which package sources and
+  proxies apply (credentials masked), and how fast `pypi.org` / `files.pythonhosted.org` answer from this computer. Include them in a bug report.
+- **Cancel and try again**: downloads resume where they stopped (pip 25.1 or newer, bundled in current builds).
+- **A terminal can be faster than the installed app** if your network settings live only in that terminal session. The app does not see
+  variables set only in a terminal. Set them as **user environment variables** (Windows: System Properties → Environment Variables):
+  `HTTPS_PROXY`, `PIP_INDEX_URL` (a nearer package mirror, if your organisation has one), `PIP_FIND_LINKS` (below). Then restart Rekamind.
+- **Offline / very slow link**: on a faster machine run `pip download faster-whisper nvidia-cublas-cu12 "nvidia-cudnn-cu12==9.*" -d wheels --only-binary=:all: --platform win_amd64 --python-version 3.13`
+  (adjust for your system), copy the `wheels` folder, set `PIP_FIND_LINKS` to it and install from the app.
+
 ## Shared server (office)
 
 ### Fastest: prebuilt image (Portainer or plain Docker, nothing to build)
