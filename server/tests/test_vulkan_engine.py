@@ -25,7 +25,7 @@ if "-h" in a:
 get = lambda f: a[a.index(f) + 1]
 if os.environ.get("FAKE_FAIL"):
     print("ggml_vulkan: failed to init", file=sys.stderr); sys.exit(3)
-if not os.environ.get("FAKE_NO_GPU"):
+if not os.environ.get("FAKE_NO_GPU") and "-np" not in a:  # real whisper.cpp: -np silences the ggml_vulkan device log too
     print("ggml_vulkan: Found 2 Vulkan devices:", file=sys.stderr)
     print("ggml_vulkan: 0 = AMD Radeon(TM) 860M Graphics (AMD proprietary driver) | uma: 1 | fp16: 1", file=sys.stderr)
     print("ggml_vulkan: 1 = NVIDIA GeForce RTX 4060 (NVIDIA) | uma: 0 | fp16: 1", file=sys.stderr)
