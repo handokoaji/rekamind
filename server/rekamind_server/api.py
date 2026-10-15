@@ -11,6 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
+from pydantic import ValidationError
 from sqlalchemy import select, true, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -26,8 +27,18 @@ from .config import Settings
 from .db import init_db, make_engine, make_session_factory
 from .engines.base import Engines
 from .engines.registry import build_engines
-from .models import Job, Meeting, Participant, Segment, Task
+from .integrations import (
+    IntegrationError,
+    check_destination,
+    destination_urls,
+    normalize_config,
+    push_tasks,
+)
+from .models import Integration, Job, Meeting, Participant, Segment, Task, TaskLink
 from .schemas import (
+    IntegrationCreate,
+    IntegrationOut,
+    IntegrationPatch,
     JobBrief,
     JobOut,
     MeetingCreate,
@@ -36,6 +47,7 @@ from .schemas import (
     MeetingSummaryOut,
     ParticipantOut,
     ParticipantPatch,
+    PushBody,
     TaskOut,
     TaskPatch,
     TaskWithMeeting,
@@ -43,6 +55,7 @@ from .schemas import (
 from .storage import LocalStorage, S3Storage, Storage
 from .tz import label as tz_label
 from .tz import zone
+from .vault import Vault, VaultUnavailable, load_vault
 from .worker import Worker
 
 
@@ -122,6 +135,8 @@ def create_app(settings: Settings | None = None, *, engines: Engines | None = No
                 await db.execute(update(Meeting).where(Meeting.owner_id.is_(None)).values(owner_id=local.id))
                 await db.commit()
                 app.state.local_principal = auth_service.principal_of(local, "local")
+        app.state.vault = load_vault(settings)
+        app.state.push_locks = {}
         storage = build_storage(settings)
         if isinstance(storage, S3Storage) and settings.s3_create_bucket:
             await asyncio.to_thread(storage.ensure_bucket)
@@ -350,6 +365,126 @@ def create_app(settings: Settings | None = None, *, engines: Engines | None = No
                 raise HTTPException(409, "Belum ada transkrip. Proses rapat dari awal.")
             return await jobs.enqueue(request.app.state.sf, meeting_id, kind="extract")
         return await jobs.enqueue(request.app.state.sf, meeting_id)
+
+    # ------------------------------------------------------------------ integrations (always the caller's own)
+    def _allow_private() -> bool:
+        return settings.integrations_allow_private or settings.auth in ("local_token", "none")
+
+    def _vault(request: Request) -> Vault:
+        v = request.app.state.vault
+        if isinstance(v, VaultUnavailable):
+            raise HTTPException(503, str(v))
+        return v
+
+    async def _integration(db: AsyncSession, integration_id: str, user: Principal) -> Integration:
+        # Owner only. Not even a super admin may use or read someone else's tokens.
+        i = (await db.execute(select(Integration).where(Integration.id == integration_id, Integration.owner_id == user.id))).scalar()
+        if i is None:
+            raise HTTPException(404, "Integrasi tidak ditemukan")
+        return i
+
+    def _out(i: Integration) -> dict:
+        return {"id": i.id, "kind": i.kind, "name": i.name, "config": i.config, "has_secret": bool(i.secret_enc), "enabled": i.enabled}
+
+    async def _validated(kind: str, config: dict) -> dict:
+        try:
+            cfg = normalize_config(kind, config)
+            for url in destination_urls(kind, cfg):
+                await asyncio.to_thread(check_destination, url, allow_private=_allow_private())
+        except ValidationError as exc:
+            raise HTTPException(422, "; ".join(f"{'.'.join(map(str, e['loc']))}: {e['msg']}" for e in exc.errors())) from exc
+        except IntegrationError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        return cfg
+
+    @app.get("/api/integrations/status")
+    async def integrations_status(request: Request, _: User_):
+        v = request.app.state.vault
+        return {"available": isinstance(v, Vault), "reason": None if isinstance(v, Vault) else str(v), "allow_private": _allow_private()}
+
+    @app.get("/api/integrations", response_model=list[IntegrationOut])
+    async def list_integrations(db: Db, user: User_):
+        rows = (await db.execute(select(Integration).where(Integration.owner_id == user.id).order_by(Integration.created_at))).scalars().all()
+        return [_out(i) for i in rows]
+
+    @app.post("/api/integrations", status_code=201, response_model=IntegrationOut)
+    async def create_integration(body: IntegrationCreate, request: Request, db: Db, user: User_):
+        vault = _vault(request)
+        cfg = await _validated(body.kind, body.config)
+        i = Integration(owner_id=user.id, kind=body.kind, name=body.name.strip(), config=cfg,
+                        secret_enc=vault.seal(body.secret) if body.secret else None)
+        db.add(i)
+        await db.commit()
+        return _out(i)
+
+    @app.patch("/api/integrations/{integration_id}", response_model=IntegrationOut)
+    async def patch_integration(integration_id: str, body: IntegrationPatch, request: Request, db: Db, user: User_):
+        i = await _integration(db, integration_id, user)
+        if body.name is not None:
+            i.name = body.name.strip()
+        if body.config is not None:
+            i.config = await _validated(i.kind, body.config)
+        if body.secret is not None:
+            i.secret_enc = _vault(request).seal(body.secret) if body.secret else None
+        if body.enabled is not None:
+            i.enabled = body.enabled
+        await db.commit()
+        return _out(i)
+
+    @app.delete("/api/integrations/{integration_id}", status_code=204)
+    async def delete_integration(integration_id: str, db: Db, user: User_):
+        i = await _integration(db, integration_id, user)
+        await db.delete(i)  # links go with it; the issues already created stay where they are
+        await db.commit()
+
+    @app.post("/api/integrations/{integration_id}/test")
+    async def test_integration(integration_id: str, request: Request, db: Db, user: User_):
+        from .integrations import ADAPTERS, make_http
+
+        i = await _integration(db, integration_id, user)
+        secret = _vault(request).open(i.secret_enc) if i.secret_enc else None
+        try:
+            for url in destination_urls(i.kind, i.config):
+                await asyncio.to_thread(check_destination, url, allow_private=_allow_private())
+            async with make_http(getattr(request.app.state, "integration_transport", None)) as http:
+                message = await ADAPTERS[i.kind](http, i.config, secret).test()
+        except IntegrationError as exc:
+            return {"ok": False, "message": str(exc)}
+        return {"ok": True, "message": message}
+
+    @app.post("/api/meetings/{meeting_id}/push")
+    async def push_meeting_tasks(meeting_id: str, body: PushBody, request: Request, db: Db, user: User_):
+        m = await _meeting(db, meeting_id, user)
+        i = await _integration(db, body.integration_id, user)
+        if not i.enabled:
+            raise HTTPException(409, "Integrasi ini dinonaktifkan.")
+        confirmed = {t.id: t for t in m.tasks if t.status == "confirmed"}
+        if body.task_ids is None:
+            chosen = list(confirmed.values())
+        else:
+            unknown = [x for x in body.task_ids if x not in confirmed]
+            if unknown:
+                raise HTTPException(422, "Hanya task yang sudah dikonfirmasi di rapat ini yang boleh dikirim.")
+            chosen = [confirmed[x] for x in dict.fromkeys(body.task_ids)]
+        if not chosen:
+            raise HTTPException(422, "Belum ada task yang dikonfirmasi untuk dikirim.")
+        secret = _vault(request).open(i.secret_enc) if i.secret_enc else None
+        lock = request.app.state.push_locks.setdefault(i.id, asyncio.Lock())  # two clicks must not both create the issue
+        async with lock:
+            try:
+                results = await push_tasks(db, i, secret, m, chosen, tz=zone(settings.timezone), allow_private=_allow_private(),
+                                          transport=getattr(request.app.state, "integration_transport", None))
+            except IntegrationError as exc:
+                raise HTTPException(422, str(exc)) from exc
+        return {"integration": i.name, "results": results}
+
+    @app.get("/api/meetings/{meeting_id}/links")
+    async def meeting_links(meeting_id: str, db: Db, user: User_):
+        m = await _meeting(db, meeting_id, user)
+        rows = (await db.execute(select(TaskLink, Integration.name).join(Integration, Integration.id == TaskLink.integration_id)
+                                 .where(TaskLink.task_id.in_([t.id for t in m.tasks]), Integration.owner_id == user.id))).all()
+        return [{"task_id": link.task_id, "integration_id": link.integration_id, "integration": name, "external_id": link.external_id,
+                 "url": link.external_url, "state": link.state, "error": link.last_error} for link, name in rows]
 
     @app.get("/api/jobs/{job_id}", response_model=JobOut)
     async def get_job(job_id: str, db: Db, user: User_):

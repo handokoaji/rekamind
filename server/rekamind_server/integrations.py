@@ -18,7 +18,7 @@ import socket
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Literal
 from urllib.parse import quote, urlsplit
 from zoneinfo import ZoneInfo
@@ -356,3 +356,59 @@ ADAPTERS = {"webhook": WebhookAdapter, "github": GithubAdapter, "gitlab": Gitlab
 def make_http(transport: httpx.AsyncBaseTransport | None = None) -> httpx.AsyncClient:
     # follow_redirects=False: a destination must not bounce the request (and the token) to another host
     return httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=False, transport=transport)
+
+
+# ----------------------------------------------------------------------------- pushing
+from sqlalchemy import select  # noqa: E402
+from sqlalchemy.exc import IntegrityError  # noqa: E402
+from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
+
+from .models import Integration, TaskLink  # noqa: E402
+
+
+def destination_urls(kind: str, cfg: dict) -> list[str]:
+    return [cfg["url"]] if kind == "webhook" else [cfg["base_url"]]
+
+
+async def push_tasks(
+    db: AsyncSession, integration: Integration, secret: str | None, meeting: Meeting, tasks: list[Task], *,
+    tz: ZoneInfo | None = None, allow_private: bool, transport: httpx.AsyncBaseTransport | None = None,
+) -> list[dict]:
+    """Send these (already confirmed) tasks. One result per task; a failure on one never stops the others."""
+    if len(tasks) > MAX_TASKS_PER_PUSH:
+        raise IntegrationError(f"Maksimal {MAX_TASKS_PER_PUSH} task sekali kirim.")
+    cfg = integration.config
+    for url in destination_urls(integration.kind, cfg):
+        await asyncio.to_thread(check_destination, url, allow_private=allow_private)
+    people = {p.id: p for p in meeting.participants}
+    results: list[dict] = []
+    async with make_http(transport) as http:
+        adapter = ADAPTERS[integration.kind](http, cfg, secret)
+        for t in tasks:
+            payload = payload_of(t, meeting, people, tz)
+            digest = payload.digest()
+            link = (await db.execute(select(TaskLink).where(TaskLink.task_id == t.id, TaskLink.integration_id == integration.id))).scalar()
+            if link and link.state == "synced" and link.payload_hash == digest:
+                results.append({"task_id": t.id, "title": t.title, "status": "unchanged", "url": link.external_url, "error": None})
+                continue
+            try:
+                had = bool(link and link.external_id)
+                ref = (await adapter.update(payload, Ref(link.external_id, link.external_url)) if had else await adapter.create(payload))  # type: ignore[union-attr]
+                if link is None:
+                    link = TaskLink(task_id=t.id, integration_id=integration.id)
+                    db.add(link)
+                link.external_id, link.external_url, link.payload_hash = ref.external_id, ref.url, digest
+                link.state, link.last_error = "synced", None
+                link.pushed_at = datetime.now(UTC)
+                results.append({"task_id": t.id, "title": t.title, "status": "updated" if had else "created", "url": ref.url, "error": None})
+            except IntegrationError as exc:
+                if link is None:
+                    link = TaskLink(task_id=t.id, integration_id=integration.id, state="failed")
+                    db.add(link)
+                link.state, link.last_error = "failed", str(exc)[:500]
+                results.append({"task_id": t.id, "title": t.title, "status": "failed", "url": None, "error": str(exc)})
+            try:
+                await db.commit()  # keep what already went out, whatever happens to the next task
+            except IntegrityError:
+                await db.rollback()  # a concurrent push created the link first; its result stands
+    return results

@@ -72,3 +72,8 @@ export function usePatchTask(meetingId: string) {
     onSettled: invalidate,
   });
 }
+
+export const useIntegrationStatus = () => useQuery({ queryKey: ["integration-status"], queryFn: api.integrationStatus, staleTime: 60_000 });
+export const useIntegrations = () => useQuery({ queryKey: ["integrations"], queryFn: api.integrations });
+export const useLinks = (meetingId: string) => useQuery({ queryKey: ["links", meetingId], queryFn: () => api.links(meetingId) });
+

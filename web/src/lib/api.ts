@@ -1,5 +1,5 @@
 import type {
-  AdminUser, Capabilities, Me, Meeting, MeetingDetail, Participant, Role, Scope, Source, Task, TaskPatch, TaskStatus, TaskWithMeeting,
+  AdminUser, Capabilities, ExportFormat, Integration, IntegrationKind, IntegrationStatus, Me, Meeting, MeetingDetail, Participant, Role, Scope, PushResult, Source, Task, TaskLinkInfo, TaskPatch, TaskStatus, TaskWithMeeting,
 } from "./types";
 
 const KEY = "rekamind.backendUrl";
@@ -79,6 +79,25 @@ export const api = {
     if (status) p.set("status", status);
     if (scope === "all") p.set("scope", "all");
     return request<Meeting[]>("GET", `/meetings${p.size ? `?${p}` : ""}`);
+  },
+  integrationStatus: () => request<IntegrationStatus>("GET", "/integrations/status"),
+  integrations: () => request<Integration[]>("GET", "/integrations"),
+  createIntegration: (b: { kind: IntegrationKind; name: string; config: Record<string, unknown>; secret?: string }) => request<Integration>("POST", "/integrations", b),
+  patchIntegration: (id: string, b: { name?: string; config?: Record<string, unknown>; secret?: string; enabled?: boolean }) => request<Integration>("PATCH", `/integrations/${id}`, b),
+  deleteIntegration: (id: string) => request<void>("DELETE", `/integrations/${id}`),
+  testIntegration: (id: string) => request<{ ok: boolean; message: string }>("POST", `/integrations/${id}/test`),
+  push: (meetingId: string, integrationId: string, taskIds?: string[]) =>
+    request<{ integration: string; results: PushResult[] }>("POST", `/meetings/${meetingId}/push`, { integration_id: integrationId, task_ids: taskIds }),
+  links: (meetingId: string) => request<TaskLinkInfo[]>("GET", `/meetings/${meetingId}/links`),
+  /** Fetched with the same credentials as every other call (the desktop app uses a bearer token, not a cookie). */
+  exportMeeting: async (id: string, o: { format: ExportFormat; transcript: boolean; allTasks: boolean }): Promise<{ blob: Blob; filename: string }> => {
+    const q = new URLSearchParams({ format: o.format, transcript: String(o.transcript), tasks: o.allTasks ? "all" : "confirmed" });
+    let res: Response;
+    try { res = await fetch(`${getBackendUrl()}/api/meetings/${id}/export?${q}`, { headers: authHeaders() }); }
+    catch { throw new ApiError(0, "Tidak dapat terhubung ke server."); }
+    if (!res.ok) throw new ApiError(res.status, messageFrom(await res.json().catch(() => null), res.status));
+    const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? `rekamind.${o.format}`;
+    return { blob: await res.blob(), filename: name };
   },
   meeting: (id: string) => request<MeetingDetail>("GET", `/meetings/${id}`),
   createMeeting: (b: { title: string; language: string; local_user_name?: string | null }) =>

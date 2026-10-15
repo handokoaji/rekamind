@@ -1,6 +1,7 @@
 import { CheckCircle2, Server, XCircle } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { IntegrationsCard } from "../components/IntegrationsCard";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { isDesktop } from "../desktop/bridge";
@@ -63,6 +64,8 @@ export function SettingsPage() {
           <Button variant="primary" onClick={save} disabled={invalid || normalized === getBackendUrl()}>Simpan</Button>
         </div>
       </Card>}
+
+      <IntegrationsCard />
 
       <TimeZoneCard serverZone={caps.data?.timezone} serverLabel={caps.data?.timezone_label} />
 

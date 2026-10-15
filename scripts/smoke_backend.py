@@ -92,6 +92,18 @@ def main(exe: str) -> int:
                 break
             time.sleep(0.3)
         check(status in ("review", "done"), f"pipeline finished (status={status})")
+        # Word export pulls in python-docx + lxml (native code): the frozen build must carry them.
+        req = urllib.request.Request(f"{base}/api/meetings/{mid}/export?format=docx", headers={"Authorization": f"Bearer {TOKEN}"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            docx = r.read()
+        check(docx[:2] == b"PK" and len(docx) > 5000, f"exports a Word document ({len(docx)} bytes)")
+        req = urllib.request.Request(f"{base}/api/meetings/{mid}/export?format=md", headers={"Authorization": f"Bearer {TOKEN}"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            check(b"# Smoke" in r.read(), "exports Markdown")
+        cap = call(base, "GET", "/api/capabilities")[1]
+        check(cap.get("timezone") == "Asia/Jakarta" and cap.get("timezone_label") == "WIB", "time zone database is bundled (WIB)")
+        st = call(base, "GET", "/api/integrations/status")[1]
+        check(st["available"] is True, "integrations can encrypt tokens (local key created)")
     finally:
         p.terminate()
         try:

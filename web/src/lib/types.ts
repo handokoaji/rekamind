@@ -37,3 +37,11 @@ export interface AdminUser {
   invited: boolean; last_login_at: string | null; meetings: number;
 }
 export type Scope = "mine" | "all";
+
+export type IntegrationKind = "webhook" | "github" | "gitlab";
+export interface Integration { id: string; kind: IntegrationKind; name: string; config: Record<string, unknown>; has_secret: boolean; enabled: boolean }
+export interface IntegrationStatus { available: boolean; reason: string | null; allow_private: boolean }
+export interface PushResult { task_id: string; title: string; status: "created" | "updated" | "unchanged" | "failed"; url: string | null; error: string | null }
+export interface TaskLinkInfo { task_id: string; integration_id: string; integration: string; external_id: string | null; url: string | null; state: "synced" | "failed"; error: string | null }
+export type ExportFormat = "docx" | "md" | "json";
+

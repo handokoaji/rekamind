@@ -8,6 +8,8 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { usePlayer } from "../components/Player";
 import { StatusBadge } from "../components/StatusBadge";
+import { ExportDialog } from "../components/ExportDialog";
+import { PushPanel } from "../components/PushPanel";
 import { VirtualList } from "../components/VirtualList";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
@@ -156,6 +158,8 @@ function TasksTab({ m }: { m: MeetingDetail }) {
             : suggested.map((t) => <TaskCard key={t.id} t={t} m={m} onPatch={(p) => run(t.id, p)} />)}
         </section>)}
 
+      {confirmed.length > 0 && <PushPanel meetingId={m.id} confirmed={confirmed} />}
+
       {confirmed.length > 0 && (
         <section aria-labelledby="h-conf" className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -302,6 +306,7 @@ export function MeetingDetailPage() {
   const { data: m, error, isLoading, refetch } = useMeeting(id);
   const caps = useCapabilities();
   const process = useProcessMeeting();
+  const [exporting, setExporting] = useState(false); // before any early return: hooks must run in the same order every render
   const tab = params.get("tab") ?? "ringkasan";
 
   if (isLoading) return <div className="flex flex-col gap-4"><Skeleton className="h-10 w-2/3" /><Skeleton className="h-64" /></div>;
@@ -322,11 +327,13 @@ export function MeetingDetailPage() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 flex-1"><TitleEditor key={m.title} m={m} />
             <p className="mt-1.5 flex flex-wrap items-center gap-3 text-sm text-muted">{formatDateTime(m.started_at)} <StatusBadge status={m.status} /></p></div>
+          {(m.status === "review" || m.status === "done") && <Button onClick={() => setExporting(true)}><Download className="size-4" aria-hidden /> Ekspor</Button>}
           {canRun && <Button variant="primary" loading={process.isPending} onClick={() => process.mutate(m.id, { onError: (e) => toast.error(e.message) })}>
             {m.status === "failed" ? <RotateCcw className="size-4" aria-hidden /> : <Play className="size-4" aria-hidden />}{m.status === "failed" ? "Coba lagi" : "Proses sekarang"}</Button>}
         </div>
       </div>
 
+      <ExportDialog meetingId={m.id} open={exporting} onOpenChange={setExporting} />
       {(m.status === "queued" || m.status === "processing") && (
         <Card className="flex flex-col gap-3 p-6" aria-live="polite">
           <p className="font-medium">{stage}…</p>

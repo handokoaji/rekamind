@@ -170,3 +170,34 @@ class JobOut(_ORM):
     stage: str | None
     progress: int
     error: str | None
+
+
+# ---- integrations ------------------------------------------------------------
+
+class IntegrationCreate(BaseModel):
+    kind: Literal["webhook", "github", "gitlab"]
+    name: str = Field(min_length=1, max_length=80)
+    config: dict
+    secret: str | None = Field(default=None, max_length=500)  # GitHub/GitLab token, or the webhook signing secret
+
+
+class IntegrationPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    config: dict | None = None
+    secret: str | None = Field(default=None, max_length=500)  # "" removes it
+    enabled: bool | None = None
+
+
+class IntegrationOut(_ORM):
+    id: str
+    kind: str
+    name: str
+    config: dict
+    has_secret: bool
+    enabled: bool
+
+
+class PushBody(BaseModel):
+    integration_id: str
+    task_ids: list[str] | None = None  # default: every confirmed task of the meeting
+
