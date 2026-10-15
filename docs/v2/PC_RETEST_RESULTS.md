@@ -1,7 +1,48 @@
-# Hasil uji ulang di PC (Windows 11 + GTX 1080 Ti) , SEMENTARA
+# Hasil uji ulang di PC (Windows 11 + GTX 1080 Ti)
 
-Tanggal: 2026-10-15. Commit: `dda66df` (di atas `b2374c1`). GPU: GTX 1080 Ti 11 GB.
-Status: bagian otomatis selesai; butir yang butuh pemasangan installer dan tangan/telinga pengguna BELUM diuji.
+Tanggal: 2026-10-15. Commit uji: `dda66df` (di atas `b2374c1`) + perbaikan `install()` di sesi ini. GPU: GTX 1080 Ti 11 GB.
+Status: jalur utama lulus; butir yang butuh tangan/telinga pengguna (R3, R10, A5-A10, M1, T1-T4) BELUM diuji.
+Lihat "Laporan akhir" di bawah untuk ringkasan wajib.
+
+## Laporan akhir
+
+### (1) Temuan lama #1-#10
+
+| # | Temuan | Status | Bukti |
+|---|---|---|---|
+| 1 | pip beku gagal (distlib) | TERATASI, setelah perbaikan tambahan | Klaim awal tidak menutup `install()` (hanya `selftest`); gagal di PC, diperbaiki, lalu pasang CUDA+diarisasi lewat CLI dan UI sukses |
+| 2 | `discard()` menghapus rekaman berjalan | TERATASI di tes otomatis; uji manual R10 BELUM | `cargo test` semua lulus (controller 15) |
+| 3 | `av` 19 merusak faster-whisper | TERATASI | `av-16.1.0` di pack; transkripsi dari pack segar berjalan |
+| 4 | LLM gagal pada rapat panjang | TERATASI sebagian | Rapat 85 mnt: 9x 429 pulih sendiri, job `done`, 9 task. Tombol "Buat ulang ringkasan" tidak terpicu, jadi belum teruji |
+| 5 | `pickletools` hilang, diarisasi gagal | TERATASI | 4 pembicara dari backend beku, `missing_stdlib: []` |
+| 6 | Golden JSON CRLF | TERATASI | `cargo test` lulus, `eol=lf` |
+| 7 | Pack menimpa pustaka bundel | TIDAK DIVERIFIKASI langsung | Aplikasi berjalan normal setelah pack terpasang; tidak ada pemeriksaan versi `sqlalchemy`/`alembic`/`numpy` |
+| 8 | VRAM nyaris penuh di Pascal | TERATASI | `auto` -> `cuda`/`int8`; 3,3-4,2 GB, puncak 5,3 GB (diarisasi); dulu 10,75 GB |
+| 9 | Polling `/api/health` rapat | TERATASI | satu per 15 dtk (target: puluhan dalam 20 dtk pertama) |
+| 10 | `bench` tanpa pack, RSS 0 | TERATASI | `peak_rss_mb` 4124, memakai pack otomatis |
+
+### (2) Temuan baru (urut keparahan)
+
+1. [TINGGI, sudah diperbaiki] `install()` tidak memanggil `fix_distlib_for_frozen()`; `selftest` melapor ok padahal pemasangan nyata gagal. Uji `selftest` memberi rasa aman palsu.
+2. [SEDANG] Backend dijalankan ulang sendiri berkali-kali tanpa log shutdown/galat (08:31, 08:46, 08:48, 09:25, 09:36) sementara UI tidak restart. Penyebab belum diketahui; kemungkinan berkaitan dengan aksi di Pengaturan, belum diverifikasi. Bisa memutus pekerjaan yang sedang berjalan bila terjadi saat pemrosesan.
+3. [SEDANG] Unduhan model pertama (2,9 GB, ±6,5 mnt) tanpa progres di log/UI; terlihat seperti hang. Cache model aplikasi (`backend\models`) terpisah dari `~\.cache\huggingface`.
+4. [SEDANG] Peringatan `unauthenticated requests to the HF Hub`: token HF tidak sampai ke pemuatan model Whisper walau diarisasi berhasil.
+5. [RENDAH] Rekaman tanpa ucapan tetap memanggil Groq untuk ringkasan kosong; tampilkan "tidak ada ucapan terdeteksi".
+6. [RENDAH] CLI `engines` memakai pack di `~\.rekamind\engine-pack`, UI memakai folder data aplikasi; dua lokasi berbeda dan folder sisa `id.rekamind.desktop-test`.
+7. [RENDAH] `build_desktop.py` gagal dengan pesan samar bila `cargo` tidak di PATH; Playwright gagal bila `python` venv tidak aktif.
+
+### (3) Tidak bisa diuji
+
+R3 (Batalkan), R7 (OOM, opsional), R10 (rekaman berjalan tidak bisa dihapus), R12 (opsional, tanpa server Google),
+A5 (headset), A6 (mati paksa), A9 (kunci tersimpan setelah keluar), A10 (tray), M1 (mikrofon nyata),
+T1-T4 (tab Task), R5 dengan `mic.wav` (pembicara ME), kualitas hasil (akurasi teks/speaker/task).
+Butuh tangan, telinga, atau layar pengguna; tidak ada di sesi otomatis.
+
+### (4) Berkas untuk pengembang
+
+`backend.log`: `%LOCALAPPDATA%\id.rekamind.desktop\backend\logs\backend.log`. Keluaran `selftest`/`--no-fix` dan hasil
+`cargo test` ada di bagian Tabel di bawah. Kegagalan pemasangan asli: traceback `DistlibException` dari `wheel.py:33`
+(tercantum di bagian R2). Tidak ada screenshot galat.
 
 ## Tabel
 
