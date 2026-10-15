@@ -46,10 +46,17 @@ describe("engine pack panel", () => {
     await userEvent.click(screen.getByRole("button", { name: /untuk NVIDIA GPU/ }));
     expect(bridge.installEngines).toHaveBeenCalledWith("cuda", false);
   });
-  it("tells the user to press Save when the token was typed but not saved yet", async () => {
+  it("lets the user paste and save the token right in the notice, then unblocks installing", async () => {
     bridge.engines.mockResolvedValue(state());
-    render(<EnginesPanel recording={false} whisperModel="large-v3" hfTokenPending />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("belum disimpan");
+    bridge.setSecrets.mockResolvedValue({ has_hf_token: true });
+    const onSaved = vi.fn();
+    render(<EnginesPanel recording={false} whisperModel="large-v3" onTokenSaved={onSaved} />);
+    await screen.findByRole("alert");
+    expect(screen.getByRole("button", { name: "Simpan token" })).toBeDisabled(); // nothing typed yet
+    await userEvent.type(screen.getByLabelText("Tempel token Hugging Face"), "  hf_abc123  ");
+    await userEvent.click(screen.getByRole("button", { name: "Simpan token" }));
+    expect(bridge.setSecrets).toHaveBeenCalledWith({ hfToken: "hf_abc123" }); // trimmed
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith({ has_hf_token: true }));
   });
   it("offers Intel GPU (OpenVINO), recommends it when an Intel GPU is present, and installs the openvino kind", async () => {
     bridge.engines.mockResolvedValue(state({ pack: pack({ gpus: [{ vendor: "intel", name: "Intel(R) Arc(TM) Graphics" }] }) }));

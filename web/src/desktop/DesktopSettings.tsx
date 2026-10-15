@@ -1,5 +1,5 @@
 import { Keyboard, Monitor } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
@@ -22,6 +22,22 @@ export function DesktopSettings() {
   const recording = state?.phase === "recording";
 
   useEffect(() => { void desktop.settings().then((v) => { setView(v); setS(v.settings); }).catch((e: Error) => setError(e.message)); }, []);
+
+  // A finished install that included speaker separation switches it on in the shell; mirror that here
+  // (only that field, so nothing the user is typing is overwritten) and say so.
+  const sRef = useRef(s); sRef.current = s;
+  useEffect(() => {
+    let off: (() => void) | undefined; let dead = false;
+    void import("@tauri-apps/api/event").then(({ listen }) => listen<string | null>("engines://done", (e) => {
+      if (e.payload) return;
+      void desktop.settings().then((v) => {
+        setView(v);
+        const cur = sRef.current;
+        if (cur && cur.diarizer !== v.settings.diarizer) { setS({ ...cur, diarizer: v.settings.diarizer }); toast.success(t("Pemisah pembicara diaktifkan otomatis.")); }
+      }).catch(() => undefined);
+    })).then((u) => { off = u; if (dead) u(); }).catch(() => undefined);
+    return () => { dead = true; off?.(); };
+  }, []);
   if (!s || !view) return <Card className="h-40 animate-pulse" aria-hidden />;
   const set = <K extends keyof S>(k: K, v: S[K]) => setS((p) => (p ? { ...p, [k]: v } : p));
 
@@ -65,7 +81,7 @@ export function DesktopSettings() {
 
       {s.mode === "local" && (
         <>
-          <EnginesPanel recording={recording} whisperModel={s.whisper_model} hasHfToken={view.has_hf_token} hfTokenPending={hfToken.trim() !== ""} />
+          <EnginesPanel recording={recording} whisperModel={s.whisper_model} hasHfToken={view.has_hf_token} onTokenSaved={setView} />
           <fieldset className="flex flex-col gap-4 rounded-lg border border-border p-4">
             <legend className="px-1 text-sm font-semibold">{t("Pemrosesan di komputer ini")}</legend>
             <div className="grid gap-4 sm:grid-cols-2">
