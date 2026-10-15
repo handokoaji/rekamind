@@ -10,8 +10,8 @@ Butir yang butuh klik UI / rekaman / idle ditandai TIDAK BISA DIUJI.
 
 | # | Status | Bukti singkat |
 |---|---|---|
-| N1 | **GAGAL (versi pyannote, via CLI `install cuda --diarize`)** | Macet 0,01-0,2 MB/s pada `nvidia_cuda_nvrtc_cu12` (76 MB), dua kali (197 dtk lalu dibatalkan). Tanpa pyannote: LULUS (32 dtk, dari cache). UI tidak diuji. |
-| N2 | LULUS (pasang bersih tanpa pyannote) | `check`: `{"ok": true, "cuda_devices": 1, "ctranslate2": "4.8.3", "faster_whisper": "1.2.1"}`; `status`: `kind: cuda`, `asr: true`, `gpus: [nvidia GTX 1080 Ti]`. |
+| N1 | **SEBAGIAN** | CLI `install cuda --diarize` (cache dingin): macet 0,01-0,2 MB/s pada `nvidia_cuda_nvrtc_cu12` (76 MB), dua kali. Dari aplikasi (dijalankan pengguna, `engines install cuda --diarize`, cache hangat): selesai dalam ±4 menit, pack ±7 GB, `installed.json` `{"kind":"cuda","diarize":true}`, tidak ada `Errno 22`. Blok Diagnostik/progres dari UI belum disalin. |
+| N2 | LULUS (tanpa dan dengan pyannote) | Pack aplikasi `id.rekamind.desktopackend\engine-pack` dengan pyannote: `check ok:true`, `status diarize:true`. Pack bersih CLI: `check`: `{"ok": true, "cuda_devices": 1, "ctranslate2": "4.8.3", "faster_whisper": "1.2.1"}`; `status`: `kind: cuda`, `asr: true`, `gpus: [nvidia GTX 1080 Ti]`. |
 | N3 | TIDAK BISA DIUJI | Tidak ada rekaman Indonesia >= 3 menit; transkripsi/VRAM belum diukur. |
 | N4 | LULUS sebagai pembanding | Blok Diagnostik identik, dan CLI sama lambatnya dengan jalur yang sama (lihat jawaban di bawah). |
 | N5 | LULUS (pembanding) | pip 25.0.1 biasa: wheel nvrtc 76 MB dalam 16 dtk. `curl` ke `files.pythonhosted.org`: 5,7 MB/s. `curl` ke `pypi.nvidia.com`: 28 KB/s. |
@@ -44,15 +44,18 @@ Belum dibuktikan bahwa itu lambat di jaringan lain.
 1. **[Tinggi] Pemasangan NVIDIA + pyannote macet** karena wheel `nvidia-*` diambil dari `pypi.nvidia.com` lewat indeks PyTorch.
    Peringatan "Tidak ada kemajuan" tidak muncul karena byte masih mengalir pelan. Ide (tidak diterapkan): pasang paket `nvidia-*`
    dari PyPI saja (langkah terpisah tanpa extra index) sebelum torch, atau tetapkan `--index-url` PyPI dan `-f`/`--extra-index-url` hanya untuk `torch*`.
-2. **[Tinggi, belum direproduksi] `engines check` GAGAL pada pack lama** (6,9 GB, `kind: cuda`, diarize: true):
+2. **[Sedang, tidak lagi muncul] `engines check` GAGAL pada pack lama** (6,9 GB, `kind: cuda`, diarize: true):
    `AttributeError: module 'ctranslate2' has no attribute 'StorageView'` sementara `engines status` melapor `asr: true`.
    Pack sudah saya hapus sebelum penyebabnya diselidiki, jadi tidak bisa direproduksi. Pack bersih tanpa pyannote lulus.
-   Perlu diuji ulang setelah `--diarize` bisa selesai. `status` tidak memverifikasi impor ctranslate2.
+   Setelah pemasangan ulang dengan pyannote dari aplikasi, `check` LULUS, jadi tidak tereproduksi. `status` tetap tidak memverifikasi impor ctranslate2.
 3. **[Sedang] Peringatan macet** (60 dtk tanpa kemajuan) tidak menangkap unduhan yang menetes (<0,05 MB/s). Pertimbangkan ambang kecepatan.
-4. **[Rendah] Uji tergantung cache pip**: N8/N9 dan install tanpa pyannote berasal dari cache, bukan ukuran unduhan nyata.
+4. **[Rendah] Sampah `%TEMP%`**: ratusan folder `pip-unpack-*`/`pip-metadata-*` (beberapa 528 MB) tertinggal dari pemasangan yang dibunuh.
+5. **[Rendah] Uji tergantung cache pip**: pemasangan dari aplikasi lancar karena wheel `nvidia-*` sudah tercache dari percobaan sebelumnya, sehingga masalah `pypi.nvidia.com` tersamarkan. N1 pada mesin tanpa cache belum diuji.
+6. **[Rendah] Dua folder pack**: CLI memakai `~\.rekamind\engine-pack`, aplikasi `%LOCALAPPDATA%\id.rekamind.desktopackend\engine-pack`. Uji CLI tidak mewakili pack aplikasi.
+7. (lama, digabung ke 5): N8/N9 dan install tanpa pyannote berasal dari cache, bukan ukuran unduhan nyata.
 
 ## Keputusan
 
-**NO-GO (sementara).** N1 (pyannote) GAGAL dan N3 belum terukur. Jalur CPU/NVIDIA tanpa pyannote tidak rusak (N2, N8, N9, N10 LULUS).
+**NO-GO (sementara).** N3 belum terukur dan N1 pada cache dingin masih macet di `pypi.nvidia.com`. Jalur CPU/NVIDIA tanpa pyannote tidak rusak (N2, N8, N9, N10 LULUS).
 Yang perlu dilakukan sebelum merge: (a) perbaiki sumber `nvidia-*` untuk `--diarize`, (b) ulangi N1 dan reproduksi temuan 2,
 (c) jalankan N3 dan butir GUI (N7, N11-N13) secara manual.
