@@ -123,8 +123,8 @@ impl Settings {
             }
             _ => return Err("Mode harus 'local' atau 'remote'.".into()),
         }
-        if !["auto", "cuda", "cpu", "intel"].contains(&self.whisper_device.as_str()) {
-            return Err("Perangkat Whisper harus auto, cuda, cpu, atau intel.".into());
+        if !["auto", "cuda", "cpu", "intel", "vulkan"].contains(&self.whisper_device.as_str()) {
+            return Err("Perangkat Whisper harus auto, cuda, cpu, intel, atau vulkan.".into());
         }
         if !["none", "pyannote"].contains(&self.diarizer.as_str()) {
             return Err("Pemisah pembicara harus 'none' atau 'pyannote'.".into());

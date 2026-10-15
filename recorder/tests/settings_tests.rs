@@ -267,6 +267,10 @@ fn processing_choices_are_validated() {
         !bad(&|s| s.whisper_device = "intel".into()),
         "Intel GPU (OpenVINO) is a valid device"
     );
+    assert!(
+        !bad(&|s| s.whisper_device = "vulkan".into()),
+        "Vulkan (whisper.cpp) is a valid device"
+    );
     assert!(bad(&|s| s.diarizer = "magic".into()));
     assert!(bad(&|s| s.whisper_model = "  ".into()));
     assert!(bad(&|s| s.llm_model = String::new()));

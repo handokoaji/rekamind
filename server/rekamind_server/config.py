@@ -70,7 +70,9 @@ class Settings(BaseSettings):
     engines: str = "none"
     # ASR
     whisper_model: str = "large-v3"
-    whisper_device: str = "auto"  # auto | cuda | cpu | intel (OpenVINO; "auto" follows the installed engine pack)
+    whisper_device: str = "auto"  # auto | cuda | cpu | intel (OpenVINO) | vulkan (whisper.cpp; AMD/any Vulkan GPU); "auto" follows the installed engine pack
+    whispercpp_quant: str = "q5_0"  # vulkan engine: model quantisation (q5_0 ~ 1 GB for large-v3); "none" = full precision
+    vulkan_device: int = 0  # vulkan engine: which Vulkan device (whisper-cli -dev); 0 is usually the integrated GPU on a laptop with one
     openvino_device: str = "GPU"  # OpenVINO device for "intel": GPU (iGPU) | CPU | AUTO; falls back to CPU if the GPU cannot load it
     whisper_compute_type: str = "auto"
     glossary: str = ""  # comma/newline separated names and jargon, fed to Whisper as a prompt

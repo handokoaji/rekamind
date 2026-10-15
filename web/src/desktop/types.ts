@@ -18,17 +18,18 @@ export interface UiState {
 export interface DesktopSettings {
   mode: "local" | "remote"; server: string; local_program: string; local_args: string[]; local_port: number;
   language: "id" | "en"; local_user_name: string; auto_process: boolean; hotkey: string;
-  whisper_model: string; whisper_device: "auto" | "cuda" | "cpu" | "intel"; diarizer: "none" | "pyannote";
+  whisper_model: string; whisper_device: "auto" | "cuda" | "cpu" | "intel" | "vulkan"; diarizer: "none" | "pyannote";
   llm_base_url: string; llm_model: string; glossary: string;
 }
 export interface SettingsView { settings: DesktopSettings; server_url: string; auth_token: string | null; recordings_dir: string; hotkey_error: string | null;
   has_llm_key: boolean; has_hf_token: boolean; bundled_backend: boolean; backend_dir: string }
 export interface GpuInfo { vendor: "intel" | "nvidia" | "amd" | "other"; name: string }
-export interface PackStatus { pack_dir: string; asr: boolean; diarize: boolean; kind: "cpu" | "cuda" | "openvino" | null; python: string; gpus?: GpuInfo[] }
+export interface PackStatus { pack_dir: string; asr: boolean; diarize: boolean; kind: "cpu" | "cuda" | "openvino" | "vulkan" | null; python: string; gpus?: GpuInfo[] }
 /** `last_error`: undefined/null = no job finished yet; "" never happens; null inside = ok. */
 export interface EngineJob { running: string | null; log: string[]; last_error: string | null | undefined }
 export interface EngineState { pack: PackStatus; job: EngineJob }
-export interface EngineCheck { ok: boolean; error: string | null; cuda_devices: number; ctranslate2?: string; faster_whisper?: string; openvino?: string; ov_devices?: string[]; intel_gpu?: boolean }
+export interface EngineCheck { ok: boolean; error: string | null; cuda_devices: number; ctranslate2?: string; faster_whisper?: string; openvino?: string; ov_devices?: string[]; intel_gpu?: boolean;
+  whispercpp?: string | null; vulkan_devices?: string[]; gpu?: boolean; model_cached?: string | null }
 export interface LoginResult { email: string; token: string; remembered: boolean }
 
 const PHASES: Phase[] = ["idle", "recording", "uploading", "done", "needs_attention"];

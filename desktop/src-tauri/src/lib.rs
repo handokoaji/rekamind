@@ -470,8 +470,8 @@ fn start_engine_job(app: AppHandle, label: String, args: Vec<String>) -> Result<
 
 #[tauri::command]
 fn engines_install(app: AppHandle, kind: String, diarize: bool) -> Result<(), String> {
-    if !["cpu", "cuda", "openvino"].contains(&kind.as_str()) {
-        return Err("Jenis pemasangan harus cpu, cuda, atau openvino.".into());
+    if !["cpu", "cuda", "openvino", "vulkan"].contains(&kind.as_str()) {
+        return Err("Jenis pemasangan harus cpu, cuda, openvino, atau vulkan.".into());
     }
     let mut args = vec!["install".to_string(), kind.clone()];
     if diarize {

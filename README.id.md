@@ -231,7 +231,7 @@ Ukuran unduhan pasti bergantung pada versi pustaka saat Anda memasang; periksa r
 |---|---|
 | **CPU** (apa pun) | Didukung. Diuji. |
 | **GPU NVIDIA** (CUDA) | Didukung. Diuji di satu PC (Windows 11, GTX 1080 Ti). |
-| **GPU AMD** (ROCm, Vulkan, DirectML) | **Belum didukung.** Pemasang mesin hanya menawarkan CPU dan NVIDIA CUDA. Komputer AMD berjalan di CPU. Belum pernah diuji dengan GPU AMD. |
+| **GPU AMD** (terintegrasi Radeon 680M/780M/860M, mis. Ryzen 7 7735HS, 8845HS, Ryzen AI 7 350, dan GPU lain yang mendukung Vulkan) | **Eksperimental, lewat Vulkan (whisper.cpp)** (*Pasang untuk GPU AMD (Vulkan)*; tidak ada di beta.1). Program native kecil diunduh sesuai kebutuhan; model memakai berkas ggml terkuantisasi (±1 GB untuk large-v3). **Belum diverifikasi di perangkat keras nyata**; target pertama Ryzen AI 7 350 (Radeon 860M). ROCm dan DirectML tidak dipakai. |
 | **GPU Intel** (terintegrasi Arc/Iris Xe, mis. Core Ultra 7 155H) | **Eksperimental, lewat OpenVINO** (*Pasang untuk Intel GPU*; tidak ada di beta.1). Dibangun dari jalur yang terbukti di v1 pada Core Ultra 7 155H, tetapi **belum diverifikasi di v2 pada perangkat keras nyata**. Model besar butuh beberapa GB RAM saat konversi sekali-jalan; rapat pertama lebih lambat karenanya. |
 | **NPU Intel** | Belum didukung (dievaluasi di v1: tidak andal pada ucapan nyata). |
 
@@ -297,7 +297,7 @@ besar di [docs/INSTALL.id.md](docs/INSTALL.id.md).
 | Ringkasan gagal, transkrip ada | Kunci API salah atau kena batas pemakaian. Transkrip tetap tersimpan; klik **Buat ulang ringkasan** setelah diperbaiki. |
 | Tidak ada suara rapat (hanya mikrofon) | Windows: pastikan ada perangkat output aktif. Linux: pasang `pulseaudio-utils`/`pipewire-pulse`. |
 | `Ctrl+Alt+R` tidak bereaksi | Bentrok dengan aplikasi lain. Ganti di Pengaturan. |
-| Lambat di komputer GPU AMD | Wajar: GPU AMD tidak dipakai; transkripsi berjalan di CPU. |
+| Lambat di komputer GPU AMD/Intel | Periksa **Uji mesin**: bila tidak menampilkan GPU, mesin kembali ke CPU (perbarui driver grafis). Mesin eksperimental juga bisa lebih lambat dari harapan. |
 | GPU kehabisan memori | Rekamind otomatis turun ke mode lebih hemat, lalu CPU. Tutup aplikasi GPU lain. |
 
 Log backend ada di folder data aplikasi: `backend\logs\backend.log` (Windows: `%LOCALAPPDATA%\id.rekamind.desktop`; lokasi persis di Linux tertera di Pengaturan → folder backend).
@@ -314,7 +314,7 @@ Dinyatakan apa adanya supaya Anda tahu apa yang sedang diuji:
   merekam, ekspor Word di aplikasi Word asli, dan penyimpanan di Credential Manager masih dalam pengujian manual.
 - **GitHub, GitLab, Google login, dan S3/MinIO asli** baru diuji dengan server tiruan/otomatis, belum dengan layanan
   sungguhan.
-- **GPU**: CPU dan NVIDIA CUDA didukung; **GPU Intel eksperimental** (OpenVINO, belum diverifikasi di v2); **GPU AMD belum didukung dan belum pernah diuji.**
+- **GPU**: CPU dan NVIDIA CUDA didukung; **GPU Intel eksperimental** (OpenVINO, belum diverifikasi di v2); **GPU AMD eksperimental** (Vulkan / whisper.cpp, belum diverifikasi).
 - **Kualitas** transkrip, pemisahan pembicara, dan ekstraksi task belum diukur pada banyak jenis audio. Tinjau
   hasilnya, terutama nama dan tenggat.
 - **Bahasa:** antarmuka tersedia dalam Indonesia dan Inggris; ringkasan dan task yang dihasilkan hanya berbahasa Indonesia. Pesan dari server atau perekam Rust (mis. sebagian teks galat) belum diterjemahkan.
@@ -325,10 +325,10 @@ Dinyatakan apa adanya supaya Anda tahu apa yang sedang diuji:
 Direncanakan untuk rilis berikutnya (**belum dikerjakan**; dicatat supaya Anda tahu arahnya, tanpa urutan pasti):
 
 - **GPU Intel**: dukungan eksperimental sudah diimplementasikan (OpenVINO); naik status setelah terverifikasi di perangkat keras nyata.
-- **Akselerasi GPU AMD terintegrasi** lewat Vulkan (whisper.cpp), dengan target **Radeon 780M** (Ryzen 7 8845HS) dan **Radeon 860M** (Ryzen AI 7 350). iGPU yang lebih kecil seperti Vega pada Ryzen 5 5600G tidak dicakup (manfaat diperkirakan kecil). Pengelola tidak punya perangkat AMD, jadi ini baru dirilis setelah ada yang bisa mengujinya: **relawan penguji dipersilakan** (buka issue).
+- **GPU AMD**: dukungan eksperimental sudah diimplementasikan (Vulkan / whisper.cpp) dan sedang diuji di Ryzen AI 7 350. iGPU lama/kecil seperti Vega pada Ryzen 5 5600G tidak ditargetkan (manfaat diperkirakan kecil). **Relawan penguji dengan mesin AMD lain dipersilakan** (buka issue).
 - **Lebih banyak bahasa antarmuka** selain Indonesia dan Inggris, serta pilihan bahasa keluaran ringkasan dan task.
 
-Sampai saat itu, komputer Intel dan AMD berjalan di CPU (lihat [Dukungan GPU](#dukungan-gpu)).
+Komputer tanpa GPU yang didukung berjalan di CPU (lihat [Dukungan GPU](#dukungan-gpu)).
 
 ## 🛠️ Untuk pengembang
 

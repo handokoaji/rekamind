@@ -7,10 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Planned (not implemented)
-- AMD integrated GPU (Radeon 780M / 860M) via Vulkan (whisper.cpp). Needs a hardware tester before release.
 
 ### Added
+- AMD GPU (integrated Radeon 680M/780M/860M and other Vulkan GPUs) transcription through whisper.cpp built with Vulkan: engine kind `vulkan` (*Pasang untuk GPU AMD (Vulkan)*), `whisper_device=vulkan`, program built by CI (`engine-assets` workflow) and downloaded with SHA-256 verification, ggml models from Hugging Face. **Experimental: tested with a fake program only, not verified on real hardware.**
 - Intel GPU (integrated Arc/Iris Xe, e.g. Core Ultra 7 155H) transcription through OpenVINO: new engine kind `openvino` in the engine pack (*Pasang untuk Intel GPU*), `whisper_device=intel`, GPU detection to recommend it, falls back to the CPU when the GPU cannot load the model. **Experimental: unit-tested with fakes only, not verified on real hardware.**
 
 ## [0.4.0-beta.1] - 2026-10-15

@@ -58,6 +58,24 @@ describe("engine pack panel", () => {
     expect(screen.getByText(/GPU Intel terdeteksi\./)).toBeInTheDocument();
     expect(screen.getByText(/Perangkat: CPU, GPU/)).toBeInTheDocument();
   });
+  it("offers AMD GPU (Vulkan), recommends it for an AMD GPU, and installs the vulkan kind", async () => {
+    bridge.engines.mockResolvedValue(state({ pack: pack({ gpus: [{ vendor: "amd", name: "AMD Radeon(TM) 860M Graphics" }] }) }));
+    render(<EnginesPanel recording={false} whisperModel="large-v3" />);
+    expect(await screen.findByText(/GPU AMD terdeteksi di komputer ini/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /untuk GPU AMD \(Vulkan\)/ }));
+    expect(bridge.installEngines).toHaveBeenCalledWith("vulkan", false);
+  });
+  it("reports the Vulkan device on 'Uji mesin', and asks for the model first when none is cached", async () => {
+    bridge.engines.mockResolvedValue(state({ pack: pack({ asr: true, kind: "vulkan" }) }));
+    bridge.checkEngines.mockResolvedValueOnce({ ok: true, error: null, cuda_devices: 0, whispercpp: "v1.9.5", vulkan_devices: [], gpu: false, model_cached: null });
+    render(<EnginesPanel recording={false} whisperModel="large-v3" />);
+    expect(await screen.findByText(/Terpasang · GPU \(Vulkan\)/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Uji mesin/ }));
+    expect(await screen.findByText(/Program terpasang; unduh model dulu/)).toBeInTheDocument();
+    bridge.checkEngines.mockResolvedValueOnce({ ok: true, error: null, cuda_devices: 0, whispercpp: "v1.9.5", vulkan_devices: ["AMD Radeon(TM) 860M Graphics"], gpu: true, model_cached: "ggml-large-v3-q5_0.bin" });
+    await userEvent.click(screen.getByRole("button", { name: /Uji mesin/ }));
+    expect(await screen.findByText(/GPU terdeteksi: AMD Radeon\(TM\) 860M Graphics/)).toBeInTheDocument();
+  });
   it("cannot start an install while recording", async () => {
     bridge.engines.mockResolvedValue(state());
     render(<EnginesPanel recording={true} whisperModel="large-v3" />);

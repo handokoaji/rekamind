@@ -1,5 +1,13 @@
 /** English text for desktop, keyed by the Indonesian source string passed to t(). */
 export const enDesktop: Record<string, string> = {
+  "GPU AMD (Vulkan)": "AMD GPU (Vulkan)",
+  "Pasang untuk GPU AMD (Vulkan)": "Install for AMD GPU (Vulkan)",
+  "Pasang ulang untuk GPU AMD (Vulkan)": "Reinstall for AMD GPU (Vulkan)",
+  "GPU AMD terdeteksi di komputer ini. Pilih “Pasang untuk GPU AMD (Vulkan)” agar transkripsi lebih cepat dari CPU (eksperimental).": "An AMD GPU was detected on this computer. Choose “Install for AMD GPU (Vulkan)” to transcribe faster than on the CPU (experimental).",
+  "Mesin berfungsi (whisper.cpp {version}).": "Engine works (whisper.cpp {version}).",
+  "Program terpasang; unduh model dulu agar GPU bisa dipastikan.": "Program installed; download the model first so the GPU can be confirmed.",
+  "GPU terdeteksi: {name}.": "GPU detected: {name}.",
+  "Tidak ada perangkat Vulkan; memakai CPU (lebih lambat).": "No Vulkan device; using the CPU (slower).",
   "Intel GPU (OpenVINO)": "Intel GPU (OpenVINO)",
   "Pasang untuk Intel GPU": "Install for Intel GPU",
   "Pasang ulang untuk Intel GPU": "Reinstall for Intel GPU",

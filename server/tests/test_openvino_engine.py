@@ -200,15 +200,28 @@ def test_status_reports_kind_and_gpus(monkeypatch, tmp_path):
 
 
 def test_detect_gpus_never_raises_and_reads_linux_vendor_ids(monkeypatch, tmp_path):
-    enginepack.detect_gpus.cache_clear()
     monkeypatch.setattr(sys, "platform", "linux")
     drm = tmp_path / "drm" / "card0" / "device"
     drm.mkdir(parents=True)
     (drm / "vendor").write_text("0x8086\n")
     real_path = enginepack.Path
     monkeypatch.setattr(enginepack, "Path", lambda p: real_path(str(p).replace("/sys/class/drm", str(tmp_path / "drm"))))
-    assert enginepack.detect_gpus() == [{"vendor": "intel", "name": "intel 0x8086"}]
-    enginepack.detect_gpus.cache_clear()
+    assert enginepack._detect_gpus() == [{"vendor": "intel", "name": "intel 0x8086"}]
     monkeypatch.setattr(enginepack, "Path", lambda p: (_ for _ in ()).throw(OSError("boom")))
-    assert enginepack.detect_gpus() == []
+    assert enginepack._detect_gpus() == []
+
+
+def test_gpu_detection_is_cached_on_disk_so_status_stays_fast(monkeypatch, tmp_path):
+    monkeypatch.setenv("REKAMIND_DATA_DIR", str(tmp_path))
+    calls = []
+    monkeypatch.setattr(enginepack, "_detect_gpus", lambda: calls.append(1) or [{"vendor": "amd", "name": "AMD Radeon(TM) 860M Graphics"}])
+    enginepack.detect_gpus.cache_clear()
+    assert enginepack.detect_gpus()[0]["vendor"] == "amd"
+    enginepack.detect_gpus.cache_clear()  # a new process: only the file remembers
+    assert enginepack.detect_gpus()[0]["name"].startswith("AMD Radeon") and len(calls) == 1
+    # an old cache is refreshed
+    f = tmp_path / "gpus.json"
+    f.write_text(json.dumps({"platform": sys.platform, "at": 0, "gpus": []}))
+    enginepack.detect_gpus.cache_clear()
+    assert enginepack.detect_gpus()[0]["vendor"] == "amd" and len(calls) == 2
     enginepack.detect_gpus.cache_clear()

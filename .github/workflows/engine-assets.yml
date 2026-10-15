@@ -1,0 +1,176 @@
+name: Engine assets (whisper.cpp Vulkan)
+
+# Builds `whisper-cli` with the Vulkan backend from a pinned whisper.cpp release (the project publishes no
+# prebuilt Vulkan binaries) and publishes it, with a manifest holding the SHA-256, on the rolling release
+# `engine-assets`. The desktop app downloads it on demand (Pengaturan -> Mesin transkripsi -> GPU Vulkan).
+# Run manually; rerun to rebuild or to move to a newer whisper.cpp tag.
+on:
+  workflow_dispatch:
+    inputs:
+      whispercpp_tag:
+        description: "whisper.cpp release tag to build"
+        default: "v1.9.5"
+        required: true
+  push:
+    paths: [".github/workflows/engine-assets.yml"]
+    branches: ["feat/**"]  # build (and smoke test) on feature branches, but only publish from a manual run
+
+permissions:
+  contents: write
+
+env:
+  WHISPERCPP_TAG: ${{ github.event.inputs.whispercpp_tag || 'v1.9.5' }}
+
+jobs:
+  models:
+    # The default models must exist on Hugging Face under the exact file names the app will ask for.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check model files
+        run: |
+          base=https://huggingface.co/ggerganov/whisper.cpp/resolve/main
+          fail=0
+          for f in ggml-large-v3-q5_0.bin ggml-large-v3.bin ggml-large-v3-turbo-q5_0.bin ggml-large-v3-turbo.bin ggml-medium-q5_0.bin ggml-small-q5_1.bin ggml-small.bin ggml-tiny.bin; do
+            code=$(curl -sL -o /dev/null -I -w '%{http_code}' "$base/$f")
+            echo "$code  $f"
+            case "$f" in ggml-large-v3-q5_0.bin|ggml-large-v3.bin|ggml-tiny.bin) [ "$code" = 200 ] || fail=1;; esac
+          done
+          exit $fail
+
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, key: windows-x64, exe: whisper-cli.exe }
+          - { os: ubuntu-22.04, key: linux-x64, exe: whisper-cli }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get whisper.cpp
+        shell: bash
+        run: |
+          git clone --depth 1 --branch "$WHISPERCPP_TAG" https://github.com/ggml-org/whisper.cpp src
+          echo "WHISPERCPP_COMMIT=$(git -C src rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      # ---- Vulkan SDK (headers, loader library, glslc shader compiler) ----
+      - name: Vulkan SDK (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $v = (Invoke-RestMethod "https://vulkan.lunarg.com/sdk/latest/windows.txt").Trim()
+          Write-Host "Vulkan SDK $v"
+          curl.exe -L -o "$env:RUNNER_TEMP\vulkan-sdk.exe" "https://sdk.lunarg.com/sdk/download/$v/windows/VulkanSDK-$v-Installer.exe"
+          & "$env:RUNNER_TEMP\vulkan-sdk.exe" --accept-licenses --default-answer --confirm-command install
+          Add-Content $env:GITHUB_ENV "VULKAN_SDK=C:\VulkanSDK\$v"
+          Add-Content $env:GITHUB_ENV "VULKAN_SDK_VERSION=$v"
+          Add-Content $env:GITHUB_PATH "C:\VulkanSDK\$v\Bin"
+      - name: Vulkan SDK (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc >/dev/null
+          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
+          sudo apt-get update
+          sudo apt-get install -y vulkan-sdk cmake build-essential mesa-vulkan-drivers vulkan-tools
+          echo "VULKAN_SDK_VERSION=$(dpkg-query -W -f='${Version}' vulkan-sdk)" >> "$GITHUB_ENV"
+
+      - name: Build whisper-cli (Vulkan)
+        shell: bash
+        run: |
+          # Static runtime and no OpenMP: the program must start on a machine that has only the GPU driver.
+          args=(-DGGML_VULKAN=1 -DGGML_OPENMP=OFF -DBUILD_SHARED_LIBS=OFF -DWHISPER_BUILD_TESTS=OFF
+                -DWHISPER_BUILD_SERVER=OFF -DCMAKE_BUILD_TYPE=Release)
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            args+=(-DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded)
+          else
+            args+=("-DCMAKE_EXE_LINKER_FLAGS=-static-libstdc++ -static-libgcc")
+          fi
+          cmake -S src -B build "${args[@]}"
+          cmake --build build --config Release -j 4 --target whisper-cli
+          find build -name 'whisper-cli*' -type f | head
+
+      - name: Collect
+        shell: bash
+        run: |
+          mkdir -p out/pkg
+          exe=$(find build -name '${{ matrix.exe }}' -type f | head -n1)
+          test -n "$exe"
+          cp "$exe" out/pkg/
+          cp src/LICENSE out/pkg/LICENSE-whisper.cpp
+          cat > out/pkg/BUILD_INFO.json <<EOF
+          {"whispercpp_tag": "$WHISPERCPP_TAG", "whispercpp_commit": "$WHISPERCPP_COMMIT",
+           "vulkan_sdk": "${VULKAN_SDK_VERSION:-unknown}", "platform": "${{ matrix.key }}",
+           "built_at": "$(date -u +%FT%TZ)", "repo_commit": "${{ github.sha }}"}
+          EOF
+          cat out/pkg/BUILD_INFO.json
+
+      - name: Smoke test, program starts
+        shell: bash
+        run: |
+          set +e
+          ./out/pkg/${{ matrix.exe }} -h > help.txt 2>&1
+          code=$?
+          head -5 help.txt
+          # -h exits 0 or 1 depending on the build; a missing DLL / crash gives another code (or 127 / 0xC0000135).
+          [ "$code" = 0 ] || [ "$code" = 1 ]
+
+      - name: Smoke test, Vulkan backend transcribes (Linux, software Vulkan driver)
+        if: runner.os == 'Linux'
+        run: |
+          python3 - <<'PY'
+          import math, struct, wave
+          with wave.open("tone.wav", "wb") as w:
+              w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000)
+              w.writeframes(b"".join(struct.pack("<h", int(8000 * math.sin(2 * math.pi * 220 * i / 16000))) for i in range(16000 * 3)))
+          PY
+          curl -fL -o tiny.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin
+          ./out/pkg/whisper-cli -m tiny.bin -f tone.wav -l en -oj -of result -dev 0 -sns > run.out 2> run.err || { cat run.err; exit 1; }
+          cat run.err | grep -i vulkan | head
+          grep -qi "ggml_vulkan" run.err
+          test -f result.json && python3 -c "import json;d=json.load(open('result.json'));print(list(d))"
+
+      - name: Package
+        shell: bash
+        run: |
+          cd out/pkg
+          if [ "$RUNNER_OS" = "Windows" ]; then 7z a -tzip ../whisper-cli-vulkan-${{ matrix.key }}.zip . ; else zip -r ../whisper-cli-vulkan-${{ matrix.key }}.zip . ; fi
+          cd ..
+          python3 - <<'PY'
+          import hashlib, json, os
+          f = "whisper-cli-vulkan-${{ matrix.key }}.zip"
+          h = hashlib.sha256(open(f, "rb").read()).hexdigest()
+          json.dump({"key": "${{ matrix.key }}", "file": f, "sha256": h, "size": os.path.getsize(f)}, open("asset-${{ matrix.key }}.json", "w"))
+          print(f, h)
+          PY
+      - uses: actions/upload-artifact@v4
+        with: { name: "asset-${{ matrix.key }}", path: "out/*.zip\nout/asset-*.json", if-no-files-found: error }
+
+  publish:
+    needs: [models, build]
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: dl, pattern: "asset-*", merge-multiple: true }
+      - name: Manifest
+        run: |
+          python3 - <<'PY'
+          import glob, json
+          assets = {}
+          base = "https://github.com/${{ github.repository }}/releases/download/engine-assets"
+          for p in glob.glob("dl/asset-*.json"):
+              a = json.load(open(p))
+              assets[a["key"]] = {"url": f"{base}/{a['file']}", "sha256": a["sha256"], "size": a["size"]}
+          json.dump({"schema": 1, "whispercpp": {"version": "${{ env.WHISPERCPP_TAG }}", "assets": assets}}, open("dl/manifest.json", "w"), indent=2)
+          print(open("dl/manifest.json").read())
+          PY
+      - name: Publish (rolling release "engine-assets")
+        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+        run: |
+          notes="Native engine programs downloaded on demand by the Rekamind desktop app (not for manual download). whisper.cpp ${WHISPERCPP_TAG}, Vulkan backend, MIT licence. Each file's SHA-256 is in manifest.json."
+          if gh release view engine-assets >/dev/null 2>&1; then
+            gh release upload engine-assets dl/*.zip dl/manifest.json --clobber
+            gh release edit engine-assets --notes "$notes"
+          else
+            gh release create engine-assets dl/*.zip dl/manifest.json --prerelease --title "Engine assets" --notes "$notes" --target "${{ github.sha }}"
+          fi

@@ -19,8 +19,9 @@ TORCH_INDEX = {
     "cuda": "https://download.pytorch.org/whl/cu126",
     # OpenVINO exports Whisper through torch/transformers once; the CPU wheel is all it needs.
     "openvino": "https://download.pytorch.org/whl/cpu",
+    "vulkan": "https://download.pytorch.org/whl/cpu",  # only used when speaker separation (pyannote) is added
 }
-KINDS = ("cpu", "cuda", "openvino")
+KINDS = ("cpu", "cuda", "openvino", "vulkan")
 # Pins follow the v1 README (torch 2.13 / cu126); ctranslate2 comes in through faster-whisper.
 PACKAGES = {
     # av<17: faster-whisper 1.2.x calls av.open(..., metadata_errors=...), which av 17+ rejects
@@ -82,7 +83,9 @@ def status(pack: Path | None = None) -> dict:
             meta = {}
     return {
         "pack_dir": str(pack),
-        "asr": _has("faster_whisper") or (meta.get("kind") == "openvino" and _has("openvino") and _has("optimum")),
+        "asr": _has("faster_whisper")
+        or (meta.get("kind") == "openvino" and _has("openvino") and _has("optimum"))
+        or (meta.get("kind") == "vulkan" and _vulkan_installed(pack)),
         "diarize": _has("pyannote.audio") or _has("pyannote"),
         "kind": meta.get("kind"),  # "cpu" | "cuda" | "openvino" | None
         "gpus": detect_gpus(),
@@ -93,8 +96,36 @@ def status(pack: Path | None = None) -> dict:
 _VENDORS = {"0x8086": "intel", "0x10de": "nvidia", "0x1002": "amd"}
 
 
+GPU_CACHE_SECONDS = 24 * 3600
+
+
+def _gpu_cache_file() -> Path:
+    return Path(os.environ.get("REKAMIND_DATA_DIR") or Path.home() / ".rekamind") / "gpus.json"
+
+
 @functools.lru_cache(maxsize=1)
 def detect_gpus() -> list[dict]:
+    """`_detect_gpus` with a one-day file cache: the desktop app asks for `engines status` in a fresh process each
+    time, and a PowerShell call on every refresh would slow the engine panel for everybody (also NVIDIA/CPU users)."""
+    import time
+
+    f = _gpu_cache_file()
+    try:
+        c = json.loads(f.read_text("utf-8"))
+        if c.get("platform") == sys.platform and time.time() - float(c.get("at", 0)) < GPU_CACHE_SECONDS:
+            return list(c["gpus"])
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    gpus = _detect_gpus()
+    try:
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(json.dumps({"platform": sys.platform, "at": time.time(), "gpus": gpus}), "utf-8")
+    except OSError:
+        pass
+    return gpus
+
+
+def _detect_gpus() -> list[dict]:
     """Which GPUs does this computer have? ([{"vendor": "intel|nvidia|amd|other", "name": str}]). Used only to
     recommend an engine kind: it imports nothing heavy and never raises."""
     out: list[dict] = []
@@ -122,6 +153,12 @@ def detect_gpus() -> list[dict]:
     except Exception:  # noqa: BLE001 - a recommendation must never break "status"
         return out
     return out
+
+
+def _vulkan_installed(pack: Path) -> bool:
+    from . import engine_assets
+
+    return engine_assets.find_binary(pack) is not None
 
 
 def _bundled_pins() -> list[str]:
@@ -165,12 +202,71 @@ def _check_openvino(out: dict) -> dict:
     return out
 
 
+def _check_vulkan(out: dict, pack: Path | None) -> dict:
+    """The program must start (a missing DLL or a blocked executable shows up here), and, when a model is already
+    cached, a one-second run reports which Vulkan device it would use (a Radeon iGPU shows as e.g. "AMD Radeon(TM) 860M")."""
+    import struct
+    import subprocess
+    import tempfile
+    import wave
+
+    from . import engine_assets
+    from .engines.whispercpp import parse_devices
+
+    pack = pack or default_pack_dir()
+    exe = engine_assets.find_binary(pack)
+    if exe is None:
+        out["error"] = "whisper-cli tidak ditemukan di engine-pack (pasang ulang mesin GPU Vulkan)."
+        return out
+    flags = {"creationflags": 0x08000000} if sys.platform == "win32" else {}
+    try:
+        r = subprocess.run([str(exe), "-h"], capture_output=True, text=True, timeout=30, **flags)  # noqa: S603
+    except (OSError, subprocess.SubprocessError) as e:
+        out["error"] = f"whisper-cli tidak bisa dijalankan: {type(e).__name__}: {e}"
+        return out
+    out.update(ok=True, whispercpp_binary=str(exe), vulkan_devices=[], gpu=False, model_cached=None)
+    info = exe.parent / "BUILD_INFO.json"
+    try:
+        out["whispercpp"] = json.loads(info.read_text("utf-8")).get("whispercpp_tag")
+    except (OSError, ValueError):
+        pass
+    if r.returncode not in (0, 1):  # -h exits 0 or 1 depending on the build; anything else is a crash
+        out.update(ok=False, error=f"whisper-cli -h berhenti dengan kode {r.returncode}: {(r.stderr or '')[-300:]}")
+        return out
+    model = None
+    for name in ("tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"):
+        model = model or engine_assets.existing_model(name, "q5_0") or engine_assets.existing_model(name, "")
+    if model is None:
+        out["note"] = "Belum ada model terunduh: perangkat GPU baru bisa dipastikan setelah model diunduh (Unduh model)."
+        return out
+    out["model_cached"] = model.name
+    with tempfile.TemporaryDirectory() as d:
+        wav = Path(d) / "probe.wav"
+        with wave.open(str(wav), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(16000)
+            w.writeframes(struct.pack("<h", 0) * 16000)
+        try:
+            p = subprocess.run([str(exe), "-m", str(model), "-f", str(wav), "-l", "id", "-np"],  # noqa: S603
+                               capture_output=True, text=True, timeout=300, **flags)
+            out["vulkan_devices"] = parse_devices(p.stderr or "")
+            out["gpu"] = bool(out["vulkan_devices"])
+            if p.returncode != 0:
+                out.update(ok=False, error=f"Uji transkripsi gagal (kode {p.returncode}): {(p.stderr or '')[-300:]}")
+        except (OSError, subprocess.SubprocessError) as e:
+            out.update(ok=False, error=f"Uji transkripsi gagal: {type(e).__name__}: {e}")
+    return out
+
+
 def check(pack: Path | None = None) -> dict:
     """Actually import the engines (unlike `status`) so a broken install is caught here, not mid-meeting."""
     activate(pack)
     out: dict = {"ok": False, "cuda_devices": 0, "error": None}
     if _kind(pack) == "openvino":
         return _check_openvino(out)
+    if _kind(pack) == "vulkan":
+        return _check_vulkan(out, pack)
     try:
         import ctranslate2
         import faster_whisper
@@ -202,8 +298,9 @@ def check(pack: Path | None = None) -> dict:
 def pip_args(kind: str, pack: Path, with_diarize: bool, pins: list[str] | None = None) -> list[str]:
     if kind not in KINDS:
         raise ValueError("kind harus 'cpu', 'cuda' atau 'openvino'")
-    # The OpenVINO path does not use faster-whisper at all.
-    pkgs = list(PACKAGES["openvino"] if kind == "openvino" else PACKAGES["asr"])
+    # The OpenVINO path does not use faster-whisper; the Vulkan path is a native program and installs no Python
+    # package for transcription at all (only speaker separation, when asked for, is pip-installed).
+    pkgs = [] if kind == "vulkan" else list(PACKAGES["openvino"] if kind == "openvino" else PACKAGES["asr"])
     if kind == "cuda":
         pkgs += PACKAGES["cuda_runtime"]
     if with_diarize:
@@ -279,6 +376,18 @@ def install(kind: str, with_diarize: bool = False, pack: Path | None = None) -> 
         main as pip_main,  # bundled with the frozen backend
     )
 
+    if kind == "vulkan":
+        from . import engine_assets
+
+        try:
+            exe = engine_assets.install_program(pack, log=lambda m: print(m, flush=True))
+            print(f"whisper-cli terpasang: {exe}", flush=True)
+        except engine_assets.AssetError as e:
+            print(f"GAGAL: {e}", flush=True)
+            return 1
+        if not with_diarize:  # nothing for pip to do
+            (pack / "installed.json").write_text(json.dumps({"kind": kind, "diarize": False}), "utf-8")
+            return 0
     code = int(pip_main(pip_args(kind, pack, with_diarize, _bundled_pins())) or 0)
     if code == 0:
         (pack / "installed.json").write_text(json.dumps({"kind": kind, "diarize": with_diarize}), "utf-8")
@@ -288,6 +397,13 @@ def install(kind: str, with_diarize: bool = False, pack: Path | None = None) -> 
 def warmup(model: str, pack: Path | None = None) -> int:
     """Download the Whisper weights now (instead of at the first meeting). Needs the pack installed."""
     activate(pack)
+    if _kind(pack) == "vulkan":
+        from . import engine_assets
+
+        quant = os.environ.get("REKAMIND_WHISPERCPP_QUANT", "q5_0")
+        path = engine_assets.ensure_model(model, quant, log=lambda m: print(m, flush=True))
+        print(f"Model siap: {path}", flush=True)
+        return 0
     if _kind(pack) == "openvino":
         from .engines.openvino import prepare_model
 

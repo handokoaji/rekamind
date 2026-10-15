@@ -13,6 +13,17 @@ def use_openvino(settings: Settings) -> bool:
     return enginepack.installed_kind() == "openvino"
 
 
+def use_vulkan(settings: Settings) -> bool:
+    """Explicitly ("vulkan"), or automatically when the installed engine pack is the Vulkan (whisper.cpp) one."""
+    if settings.whisper_device == "vulkan":
+        return True
+    if settings.whisper_device != "auto":
+        return False
+    from .. import enginepack
+
+    return enginepack.installed_kind() == "vulkan"
+
+
 def build_engines(settings: Settings) -> Engines | None:
     """Wire concrete engines from settings. Heavy imports stay inside the branches so
     a server running only the API/queue never pays for torch or ctranslate2."""
@@ -40,7 +51,15 @@ def build_engines(settings: Settings) -> Engines | None:
     from .llm import OpenAiCompatExtractor
     from .whisper import FasterWhisperTranscriber
 
-    if use_openvino(settings):
+    if use_vulkan(settings):
+        from .. import enginepack
+        from .whispercpp import WhisperCppTranscriber
+
+        enginepack.activate()
+        transcriber = WhisperCppTranscriber(enginepack.default_pack_dir(), settings.whisper_model,
+                                            settings.whispercpp_quant, settings.vulkan_device)
+        transcriber_label = f"whisper.cpp Vulkan {settings.whisper_model} ({settings.whispercpp_quant})"
+    elif use_openvino(settings):
         from .openvino import OpenVinoTranscriber
 
         transcriber = OpenVinoTranscriber(settings.whisper_model, settings.openvino_device)

@@ -8,7 +8,7 @@ import { desktop } from "./bridge";
 import type { EngineCheck, EngineState } from "./types";
 import { t } from "../lib/i18n";
 
-const KIND_LABEL = { cpu: "CPU", cuda: "NVIDIA GPU", openvino: "Intel GPU" } as const;
+const KIND_LABEL = { cpu: "CPU", cuda: "NVIDIA GPU", openvino: "Intel GPU", vulkan: "GPU (Vulkan)" } as const;
 
 /** Installs and verifies the speech engines. They are not in the installer: they are several GB and
  *  depend on the hardware, so the user picks once and sees real progress. */
@@ -49,6 +49,7 @@ export function EnginesPanel({ recording, whisperModel }: { recording: boolean; 
   const installed = !!pack?.asr;
   const hasIntel = !!pack?.gpus?.some((g) => g.vendor === "intel");
   const hasNvidia = !!pack?.gpus?.some((g) => g.vendor === "nvidia");
+  const hasAmd = !!pack?.gpus?.some((g) => g.vendor === "amd");
 
   return (
     <section aria-labelledby="engines-h" className="flex flex-col gap-4 rounded-lg border border-border p-4">
@@ -69,6 +70,9 @@ export function EnginesPanel({ recording, whisperModel }: { recording: boolean; 
       {!running && hasIntel && !hasNvidia && !installed && (
         <p className="text-sm">{t("GPU Intel terdeteksi di komputer ini. Pilih “Pasang untuk Intel GPU” agar transkripsi lebih cepat dari CPU (eksperimental).")}</p>
       )}
+      {!running && hasAmd && !hasNvidia && !installed && (
+        <p className="text-sm">{t("GPU AMD terdeteksi di komputer ini. Pilih “Pasang untuk GPU AMD (Vulkan)” agar transkripsi lebih cepat dari CPU (eksperimental).")}</p>
+      )}
       {!running && (
         <>
           <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-0.5 size-4 accent-[var(--primary)]" checked={diarize} onChange={(e) => setDiarize(e.target.checked)} />
@@ -76,6 +80,7 @@ export function EnginesPanel({ recording, whisperModel }: { recording: boolean; 
           <div className="flex flex-wrap gap-2">
             <Button variant={installed ? "secondary" : "primary"} disabled={recording} onClick={() => act(() => desktop.installEngines("cpu", diarize))}><Download className="size-4" aria-hidden /> {installed ? t("Pasang ulang untuk CPU") : t("Pasang untuk CPU")}</Button>
             <Button variant="secondary" disabled={recording} onClick={() => act(() => desktop.installEngines("cuda", diarize))}><Zap className="size-4" aria-hidden /> {installed ? t("Pasang ulang untuk NVIDIA GPU") : t("Pasang untuk NVIDIA GPU")}</Button>
+            <Button variant="secondary" disabled={recording} onClick={() => act(() => desktop.installEngines("vulkan", diarize))}><Zap className="size-4" aria-hidden /> {installed ? t("Pasang ulang untuk GPU AMD (Vulkan)") : t("Pasang untuk GPU AMD (Vulkan)")}</Button>
             <Button variant="secondary" disabled={recording} onClick={() => act(() => desktop.installEngines("openvino", diarize))}><Zap className="size-4" aria-hidden /> {installed ? t("Pasang ulang untuk Intel GPU") : t("Pasang untuk Intel GPU")}</Button>
             {installed && <Button variant="ghost" onClick={() => act(() => desktop.warmupModel())}>{t("Unduh model {model} sekarang", { model: whisperModel })}</Button>}
             {installed && <Button variant="ghost" onClick={() => { setCheck(null); desktop.checkEngines().then(setCheck).catch((e: Error) => setError(e.message)); }}><ShieldCheck className="size-4" aria-hidden /> {t("Uji mesin")}</Button>}
@@ -96,7 +101,9 @@ export function EnginesPanel({ recording, whisperModel }: { recording: boolean; 
 
       {check && (
         check.ok
-          ? check.openvino
+          ? check.vulkan_devices
+            ? <p role="status" className="text-sm text-success">{t("Mesin berfungsi (whisper.cpp {version}).", { version: check.whispercpp ?? "" })} {check.model_cached === null ? t("Program terpasang; unduh model dulu agar GPU bisa dipastikan.") : check.gpu ? t("GPU terdeteksi: {name}.", { name: (check.vulkan_devices ?? []).join(", ") }) : t("Tidak ada perangkat Vulkan; memakai CPU (lebih lambat).")}</p>
+            : check.openvino
             ? <p role="status" className="text-sm text-success">{t("Mesin berfungsi (OpenVINO {version}).", { version: check.openvino })} {check.intel_gpu ? t("GPU Intel terdeteksi.") : t("GPU Intel tidak terdeteksi; memakai CPU (lebih lambat).")} <span className="text-muted">{t("Perangkat: {list}", { list: (check.ov_devices ?? []).join(", ") })}</span></p>
             : <p role="status" className="text-sm text-success">{t("Mesin berfungsi (faster-whisper {version}).", { version: check.faster_whisper ?? "" })} {check.cuda_devices > 0 ? t("GPU NVIDIA terdeteksi: {n}.", { n: check.cuda_devices }) : t("GPU NVIDIA tidak terdeteksi; memakai CPU (lebih lambat).")}</p>
           : <p role="alert" className="text-sm text-danger">{t("Mesin terpasang tetapi tidak bisa dimuat: {err}", { err: check.error ?? "" })}</p>

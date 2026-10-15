@@ -39,7 +39,7 @@ export const desktop = {
   ensureBackend: () => invoke<void>("backend_ensure"),
   engines: () => invoke<EngineState>("engines_status"),
   checkEngines: () => invoke<EngineCheck>("engines_check"),
-  installEngines: (kind: "cpu" | "cuda" | "openvino", diarize: boolean) => invoke<void>("engines_install", { kind, diarize }),
+  installEngines: (kind: "cpu" | "cuda" | "openvino" | "vulkan", diarize: boolean) => invoke<void>("engines_install", { kind, diarize }),
   warmupModel: () => invoke<void>("engines_warmup"),
   cancelEngines: () => invoke<void>("engines_cancel"),
   /** undefined leaves a secret alone; "" removes it. */

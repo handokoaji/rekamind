@@ -173,7 +173,7 @@ Every file comes with `SHA256SUMS.txt`. All releases: [Releases](https://github.
 **The installers are not code-signed** (beta). Windows SmartScreen will show "Windows protected your PC": click
 **More info → Run anyway**. This is normal for apps without a paid certificate; compare the checksum if in doubt.
 
-**Not supported yet:** macOS, ARM machines, and **AMD GPUs for acceleration** (Intel GPU: experimental) (see
+**Not supported yet:** macOS and ARM machines. **Intel and AMD GPU acceleration is experimental** (see [GPU support](#gpu-support))
 [GPU support](#gpu-support)).
 
 ## 🚀 Guide: from install to first use
@@ -240,7 +240,7 @@ library versions at install time; check your disk space and connection.
 |---|---|
 | **CPU** (any) | Supported. Tested. |
 | **NVIDIA GPU** (CUDA) | Supported. Tested on one PC (Windows 11, GTX 1080 Ti). |
-| **AMD GPU** (ROCm, Vulkan, DirectML) | **Not supported.** The engine installer only offers CPU and NVIDIA CUDA. An AMD machine runs on the CPU. Never tested with an AMD GPU. |
+| **AMD GPU** (integrated Radeon 680M/780M/860M, e.g. Ryzen 7 7735HS, 8845HS, Ryzen AI 7 350, and other Vulkan-capable GPUs) | **Experimental, via Vulkan (whisper.cpp)** (*Install for AMD GPU (Vulkan)*; not in beta.1). A small native program is downloaded on demand; models are the quantised ggml files (~1 GB for large-v3). **Not yet verified on real hardware**; the first target is the Ryzen AI 7 350 (Radeon 860M). ROCm and DirectML are not used. |
 | **Intel GPU** (integrated Arc/Iris Xe, e.g. Core Ultra 7 155H) | **Experimental, via OpenVINO** (*Install for Intel GPU*; not in beta.1). Built on the path validated in v1 on a Core Ultra 7 155H, but **not yet verified in v2 on real hardware**. Large models need several GB of RAM during the one-time conversion; the first meeting is slower because of it. |
 | **Intel NPU** | Not supported (evaluated in v1: unreliable on real speech). |
 
@@ -306,7 +306,7 @@ environment variables (not through the UI). Full steps, variables and the securi
 | No meeting audio (microphone only) | Windows: make sure an active output device exists. Linux: install `pulseaudio-utils` / `pipewire-pulse`. |
 | `Ctrl+Alt+R` does nothing | Conflicts with another app. Change it in Settings. |
 | GPU out of memory | Rekamind automatically falls back to a lighter mode, then to CPU. Close other GPU apps. |
-| Slow on an AMD GPU machine | Expected: AMD GPUs are not used; transcription runs on the CPU. |
+| Slow on an AMD/Intel GPU machine | Check **Uji mesin**: if it shows no GPU, the engine fell back to the CPU (update the graphics driver). Experimental engines may also be slower than expected. |
 
 Backend log lives in the app data folder: `backend\logs\backend.log` (Windows: `%LOCALAPPDATA%\id.rekamind.desktop`;
 on Linux the exact location is shown in Settings → backend folder).
@@ -322,7 +322,7 @@ Stated plainly so you know what is being tested:
   tested on Linux; the desktop shell is only built in CI.
 - **Windows**: tested on one PC (Windows 11, GTX 1080 Ti). Long recordings with the window closed, force-kill during
   recording, Word export in real Microsoft Word, and Credential Manager storage are still being tested manually.
-- **GPU**: CPU and NVIDIA CUDA are supported; **Intel GPU is experimental** (OpenVINO, unverified in v2); **AMD GPUs are not supported and have never been tested.**
+- **GPU**: CPU and NVIDIA CUDA are supported; **Intel GPU is experimental** (OpenVINO, unverified in v2); AMD GPU (Vulkan) is experimental and unverified.
 - **Real GitHub, GitLab, Google sign-in and S3/MinIO** have only been tested against mock/automated servers.
 - **Quality** of transcripts, speaker separation and task extraction has not been measured across many kinds of
   audio. Review the output, especially names and deadlines.
@@ -334,10 +334,10 @@ Stated plainly so you know what is being tested:
 Planned for the next releases (**not implemented yet**; listed so you know what to expect, and in no firm order):
 
 - **Intel GPU**: experimental support is implemented (OpenVINO); it graduates once verified on real hardware.
-- **AMD integrated GPU acceleration** through Vulkan (whisper.cpp), targeting the **Radeon 780M** (Ryzen 7 8845HS) and the **Radeon 860M** (Ryzen AI 7 350). Smaller iGPUs such as the Vega in a Ryzen 5 5600G are out of scope (little benefit expected). The maintainers have no AMD hardware, so this ships only once someone with such a machine can test it: **volunteer testers welcome** (open an issue).
+- **AMD GPU**: experimental support is implemented (Vulkan / whisper.cpp) and is being tested on a Ryzen AI 7 350. Older/smaller iGPUs such as the Vega in a Ryzen 5 5600G are not targeted (little benefit expected). **Volunteer testers with other AMD machines welcome** (open an issue).
 - **More interface languages** beyond Indonesian and English, and a choice of output language for summaries and tasks.
 
-Until then, Intel and AMD machines run on the CPU (see [GPU support](#gpu-support)).
+Machines without a supported GPU run on the CPU (see [GPU support](#gpu-support)).
 
 ## 🛠️ For developers
 
