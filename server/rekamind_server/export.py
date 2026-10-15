@@ -25,12 +25,13 @@ TaskFilter = Literal["confirmed", "all"]
 PRIORITY = {"low": "Rendah", "medium": "Sedang", "high": "Tinggi"}
 STATUS = {"suggested": "Disarankan (belum ditinjau)", "confirmed": "Dikonfirmasi", "rejected": "Ditolak"}
 
-_XML_BAD = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff￾￿]")
+# Code points XML 1.0 cannot carry: C0 controls except tab/LF/CR, lone surrogates, U+FFFE and U+FFFF.
+_XML_BAD = dict.fromkeys((*range(0x00, 0x09), 0x0B, 0x0C, *range(0x0E, 0x20), *range(0xD800, 0xE000), 0xFFFE, 0xFFFF))
 
 
 def clean(text: str | None) -> str:
     """Control characters (a stray byte from ASR or the LLM) make python-docx raise; drop them."""
-    return _XML_BAD.sub("", text or "")
+    return (text or "").translate(_XML_BAD)
 
 
 def clock(ms: int | None) -> str:

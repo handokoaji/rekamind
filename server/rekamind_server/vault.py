@@ -12,7 +12,9 @@ import hashlib
 import os
 from pathlib import Path
 
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import Fernet, InvalidToken, MultiFernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 from .config import Settings
 
@@ -24,10 +26,17 @@ class VaultUnavailable(RuntimeError):
 
 
 class Vault:
-    def __init__(self, passphrase: str):
-        if len(passphrase) < MIN_KEY_CHARS:
+    def __init__(self, key_material: str):
+        if len(key_material) < MIN_KEY_CHARS:
             raise VaultUnavailable(f"REKAMIND_SECRET_KEY harus minimal {MIN_KEY_CHARS} karakter acak")
-        self._f = Fernet(base64.urlsafe_b64encode(hashlib.sha256(passphrase.encode()).digest()))
+        material = key_material.encode()
+        # The key is random (os.urandom, or a generated REKAMIND_SECRET_KEY), never a human password, so a fast
+        # extract-and-expand KDF is the right tool; a slow password hash would add nothing. New tokens use HKDF.
+        current = HKDF(algorithm=hashes.SHA256(), length=32, salt=None, info=b"rekamind-vault-v2").derive(material)
+        # Tokens sealed before v2 used a plain SHA-256 of the key. Keep them readable (decrypt-only: MultiFernet
+        # always seals with the first key), otherwise every saved GitHub/GitLab/webhook secret would be lost.
+        legacy = hashlib.sha256(material).digest()
+        self._f = MultiFernet([Fernet(base64.urlsafe_b64encode(current)), Fernet(base64.urlsafe_b64encode(legacy))])
 
     def seal(self, plain: str) -> str:
         return self._f.encrypt(plain.encode()).decode()

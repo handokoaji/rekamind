@@ -86,14 +86,14 @@ def test_unrelated_output_passes_through_untouched():
     r.write("Progress not-a-number\n")  # malformed progress is ignored, not fatal
 
 
-def test_diagnostics_show_sources_and_mask_proxy_credentials(monkeypatch):
+def test_diagnostics_name_the_pip_proxy_variables_but_never_log_their_values(monkeypatch):
     monkeypatch.setenv("HTTPS_PROXY", "http://user:pw@proxy.kantor:3128")
     monkeypatch.setenv("PIP_INDEX_URL", "https://mirror.example/simple")
     lines: list[str] = []
     describe_environment("cuda", log=lines.append, probe=False)
     text = "\n".join(lines)
-    assert "pip " in text and "PIP_INDEX_URL=https://mirror.example/simple" in text
-    assert "user:pw" not in text and "HTTPS_PROXY=http://***@proxy.kantor:3128" in text
+    assert "pip " in text and "PIP_INDEX_URL" in text and "HTTPS_PROXY" in text
+    assert "user:pw" not in text and "proxy.kantor" not in text and "mirror.example" not in text
 
 
 def test_diagnostics_probe_never_raises_without_a_network(monkeypatch):
