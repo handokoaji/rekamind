@@ -24,7 +24,7 @@ export interface DesktopSettings {
 export interface SettingsView { settings: DesktopSettings; server_url: string; auth_token: string | null; recordings_dir: string; hotkey_error: string | null;
   has_llm_key: boolean; has_hf_token: boolean; bundled_backend: boolean; backend_dir: string }
 export interface GpuInfo { vendor: "intel" | "nvidia" | "amd" | "other"; name: string }
-export interface PackStatus { pack_dir: string; asr: boolean; diarize: boolean; kind: "cpu" | "cuda" | "openvino" | "vulkan" | null; python: string; gpus?: GpuInfo[] }
+export interface PackStatus { pack_dir: string; asr: boolean; diarize: boolean; kind: "cpu" | "cuda" | "openvino" | "vulkan" | null; python: string; gpus?: GpuInfo[]; build?: string }
 /** `last_error`: undefined/null = no job finished yet; "" never happens; null inside = ok. */
 export interface EngineJob { running: string | null; log: string[]; last_error: string | null | undefined }
 export interface EngineState { pack: PackStatus; job: EngineJob }

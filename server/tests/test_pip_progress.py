@@ -244,3 +244,12 @@ def test_the_backend_numpy_stays_compatible_with_the_openvino_stack():
     text = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text()
     line = next(entry for entry in text.splitlines() if '"numpy' in entry)
     assert "<2.5" in line, line
+
+
+def test_build_is_named_in_the_diagnostics_status_and_health(client_factory=None):
+    import rekamind_server
+
+    assert rekamind_server.build_id()  # "dev" from a checkout, the commit in a built installer
+    lines: list[str] = []
+    describe_environment("cpu", log=lines.append, probe=False)
+    assert lines[0].startswith(f"Rekamind {rekamind_server.__version__}, build ")

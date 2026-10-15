@@ -16,7 +16,7 @@ from sqlalchemy import select, true, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from . import __version__, export, jobs, trash
+from . import __version__, build_id, export, jobs, trash
 from .audio import UnsupportedAudio, is_wav, to_wav_16k_mono
 from .auth import routes as auth_routes
 from .auth import service as auth_service
@@ -222,7 +222,7 @@ def create_app(settings: Settings | None = None, *, engines: Engines | None = No
     # ---- public ---------------------------------------------------------------------------------
     @app.get("/api/health")
     async def health():
-        return {"status": "ok", "version": __version__}
+        return {"status": "ok", "version": __version__, "build": build_id()}
 
     # ---- everything below needs a signed-in user --------------------------------------------------
     @app.get("/api/capabilities")

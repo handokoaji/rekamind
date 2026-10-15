@@ -1,5 +1,6 @@
 /** English text for desktop, keyed by the Indonesian source string passed to t(). */
 export const enDesktop: Record<string, string> = {
+  "Build: {build}": "Build: {build}",
   "GPU AMD (Vulkan)": "AMD GPU (Vulkan)",
   "Pasang untuk GPU AMD (Vulkan)": "Install for AMD GPU (Vulkan)",
   "Pasang ulang untuk GPU AMD (Vulkan)": "Reinstall for AMD GPU (Vulkan)",

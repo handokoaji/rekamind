@@ -91,6 +91,7 @@ def status(pack: Path | None = None) -> dict:
         "diarize": _has("pyannote.audio") or _has("pyannote"),
         "kind": meta.get("kind"),  # "cpu" | "cuda" | "openvino" | None
         "gpus": detect_gpus(),
+        "build": __import__("rekamind_server").build_id(),
         "python": f"{sys.version_info.major}.{sys.version_info.minor}",
     }
 
@@ -504,6 +505,9 @@ def describe_environment(kind: str, log=print, probe: bool = True, with_diarize:
     """What a slow or failing install needs to be diagnosed: pip/Python, which package sources and proxies apply
     (credentials masked), and how reachable the package hosts are from this machine right now."""
     frozen = " (aplikasi terpasang)" if getattr(sys, "frozen", False) else ""
+    from . import __version__, build_id
+
+    log(f"Rekamind {__version__}, build {build_id()}")
     log(f"Diagnostik: pip {'.'.join(map(str, pip_version()))}, Python {sys.version_info.major}.{sys.version_info.minor}{frozen}, {sys.platform}")
     envs = [f"{k}={mask_secrets(os.environ[k])}" for k in (
         "PIP_INDEX_URL", "PIP_EXTRA_INDEX_URL", "PIP_FIND_LINKS", "PIP_CONFIG_FILE", "HTTP_PROXY", "HTTPS_PROXY",
@@ -603,6 +607,11 @@ def _run_pip(kind: str, pack: Path, with_diarize: bool, pip_main, pins: list[str
 def warmup(model: str, pack: Path | None = None) -> int:
     """Download the Whisper weights now (instead of at the first meeting). Needs the pack installed."""
     activate(pack)
+    # Hugging Face: use the user's token when there is one (faster, higher limits) and silence the Windows symlink
+    # warning (it only means the cache uses more disk space), which otherwise buries the real progress in the log.
+    if os.environ.get("REKAMIND_HF_TOKEN"):
+        os.environ.setdefault("HF_TOKEN", os.environ["REKAMIND_HF_TOKEN"])
+    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
     if _kind(pack) == "vulkan":
         from . import engine_assets
 

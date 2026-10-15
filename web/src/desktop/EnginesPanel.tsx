@@ -110,6 +110,7 @@ export function EnginesPanel({ recording, whisperModel }: { recording: boolean; 
       )}
       {state?.job.last_error && !running && <p role="alert" className="text-sm text-danger">{t("Pemasangan terakhir gagal: {err}", { err: state.job.last_error ?? "" })}</p>}
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+      {pack?.build && <p className="text-xs text-muted">{t("Build: {build}", { build: pack.build })}</p>}
       <p className="text-xs text-muted">{t("Lokasi:")} <code className="rounded bg-bg px-1.5 py-0.5">{pack?.pack_dir ?? "…"}</code></p>
     </section>
   );

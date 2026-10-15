@@ -28,6 +28,22 @@ def run(cmd: list[str], cwd: Path) -> None:
     subprocess.run(cmd, cwd=cwd, check=True)
 
 
+def write_buildinfo() -> str:
+    """Record the commit in the package before freezing, so a user's log and the engine panel name the exact build."""
+    import os
+
+    sha = (os.environ.get("GITHUB_SHA") or "")[:7]
+    if not sha:
+        try:
+            sha = subprocess.run(["git", "rev-parse", "--short=7", "HEAD"], cwd=ROOT, capture_output=True, text=True,  # noqa: S607
+                                 check=True).stdout.strip()
+        except (OSError, subprocess.CalledProcessError):
+            sha = "unknown"
+    (ROOT / "server" / "rekamind_server" / "_buildinfo.py").write_text(f'COMMIT = "{sha}"\n', encoding="utf-8")
+    print(f"build {sha}", flush=True)
+    return sha
+
+
 def require_tools() -> bool:
     """Say what is missing before a 5-minute build dies with a cryptic error halfway."""
     missing = []
@@ -57,6 +73,7 @@ def main() -> int:
         run([NPM, "ci"], ROOT / "web")
         run([NPM, "run", "build"], ROOT / "web")
     if not a.skip_freeze:
+        write_buildinfo()
         dist, work = ROOT / "server" / "build" / "dist", ROOT / "server" / "build" / "work"
         run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--distpath", str(dist), "--workpath", str(work),
              "packaging/rekamind-backend.spec"], ROOT / "server")

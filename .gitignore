@@ -31,3 +31,6 @@ desktop/src-tauri/gen/
 # bundled backend (built by scripts/build_desktop.py)
 desktop/src-tauri/resources/
 server/build/
+
+# written by scripts/build_desktop.py
+server/rekamind_server/_buildinfo.py
