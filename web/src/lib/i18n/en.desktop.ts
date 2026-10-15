@@ -1,5 +1,13 @@
 /** English text for desktop, keyed by the Indonesian source string passed to t(). */
 export const enDesktop: Record<string, string> = {
+  "Intel GPU (OpenVINO)": "Intel GPU (OpenVINO)",
+  "Pasang untuk Intel GPU": "Install for Intel GPU",
+  "Pasang ulang untuk Intel GPU": "Reinstall for Intel GPU",
+  "GPU Intel terdeteksi di komputer ini. Pilih “Pasang untuk Intel GPU” agar transkripsi lebih cepat dari CPU (eksperimental).": "An Intel GPU was detected on this computer. Choose “Install for Intel GPU” to transcribe faster than on the CPU (experimental).",
+  "Mesin berfungsi (OpenVINO {version}).": "Engine works (OpenVINO {version}).",
+  "GPU Intel terdeteksi.": "Intel GPU detected.",
+  "GPU Intel tidak terdeteksi; memakai CPU (lebih lambat).": "No Intel GPU detected; using the CPU (slower).",
+  "Perangkat: {list}": "Devices: {list}",
   "Pengaturan disimpan.": "Settings saved.",
   "Gagal menyimpan": "Could not save",
   "Aplikasi desktop": "Desktop app",

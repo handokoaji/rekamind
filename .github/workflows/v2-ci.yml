@@ -2,7 +2,7 @@ name: v2 CI
 
 on:
   push:
-    branches: ["v2/**"]
+    branches: ["v2/**", "feat/**"]  # feature branches also build installers (artifacts) for hardware testing
   pull_request:
     paths: ["server/**", "web/**", "docker-compose.yml", ".github/workflows/v2-ci.yml"]
 

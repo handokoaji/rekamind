@@ -13,7 +13,7 @@
 4. Fill in **Layanan ringkasan** (Summary service) (e.g. a Groq API key). The key is stored in the system credential store.
 5. The speech models are downloaded when the first meeting is processed, or click **Unduh model sekarang** (Download models now).
 
-> **GPU support:** only CPU and NVIDIA CUDA are offered. **AMD (and Intel) GPUs are not supported and have never been tested**; those machines run on the CPU.
+> **GPU support:** CPU and NVIDIA CUDA are supported. **Intel GPU** (integrated, e.g. Core Ultra 7 155H) is **experimental** through OpenVINO: choose **Pasang untuk Intel GPU** (Install for Intel GPU), then **Uji mesin**; it should list `GPU` among the devices. Not yet verified in v2 on real hardware. The first meeting converts the model (minutes, several GB of RAM) and caches it. The glossary is not applied on this engine. **AMD GPUs are not supported and have never been tested**; those machines run on the CPU.
 
 Speaker separation (pyannote) is optional: tick it during installation, enter a Hugging Face token, and accept the terms of the
 `pyannote/speaker-diarization-3.1` model on your Hugging Face account.

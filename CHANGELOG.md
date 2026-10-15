@@ -5,6 +5,11 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Intel GPU (integrated Arc/Iris Xe, e.g. Core Ultra 7 155H) transcription through OpenVINO: new engine kind `openvino` in the engine pack (*Pasang untuk Intel GPU*), `whisper_device=intel`, GPU detection to recommend it, falls back to the CPU when the GPU cannot load the model. **Experimental: unit-tested with fakes only, not verified on real hardware.**
+
 ## [0.4.0-beta.1] - 2026-10-15
 
 First release of the v2 generation (pre-release, for testing). Replaces the v1 (Tkinter) app; not compatible with it.

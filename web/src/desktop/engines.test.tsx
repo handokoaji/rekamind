@@ -35,6 +35,29 @@ describe("engine pack panel", () => {
     await userEvent.click(screen.getByRole("button", { name: /untuk NVIDIA GPU/ }));
     expect(bridge.installEngines).toHaveBeenCalledWith("cuda", true);
   });
+  it("offers Intel GPU (OpenVINO), recommends it when an Intel GPU is present, and installs the openvino kind", async () => {
+    bridge.engines.mockResolvedValue(state({ pack: pack({ gpus: [{ vendor: "intel", name: "Intel(R) Arc(TM) Graphics" }] }) }));
+    render(<EnginesPanel recording={false} whisperModel="large-v3" />);
+    expect(await screen.findByText(/GPU Intel terdeteksi di komputer ini/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /untuk Intel GPU/ }));
+    expect(bridge.installEngines).toHaveBeenCalledWith("openvino", false);
+  });
+  it("does not nag about Intel when an NVIDIA GPU is present", async () => {
+    bridge.engines.mockResolvedValue(state({ pack: pack({ gpus: [{ vendor: "intel", name: "UHD" }, { vendor: "nvidia", name: "RTX" }] }) }));
+    render(<EnginesPanel recording={false} whisperModel="large-v3" />);
+    await screen.findByText("Belum dipasang");
+    expect(screen.queryByText(/GPU Intel terdeteksi di komputer ini/)).toBeNull();
+  });
+  it("labels an OpenVINO pack and reports the Intel GPU on 'Uji mesin'", async () => {
+    bridge.engines.mockResolvedValue(state({ pack: pack({ asr: true, kind: "openvino" }) }));
+    bridge.checkEngines.mockResolvedValue({ ok: true, error: null, cuda_devices: 0, openvino: "2025.3", ov_devices: ["CPU", "GPU"], intel_gpu: true });
+    render(<EnginesPanel recording={false} whisperModel="large-v3" />);
+    expect(await screen.findByText(/Terpasang · Intel GPU/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Uji mesin/ }));
+    expect(await screen.findByText(/Mesin berfungsi \(OpenVINO 2025.3\)/)).toBeInTheDocument();
+    expect(screen.getByText(/GPU Intel terdeteksi\./)).toBeInTheDocument();
+    expect(screen.getByText(/Perangkat: CPU, GPU/)).toBeInTheDocument();
+  });
   it("cannot start an install while recording", async () => {
     bridge.engines.mockResolvedValue(state());
     render(<EnginesPanel recording={true} whisperModel="large-v3" />);

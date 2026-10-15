@@ -173,7 +173,7 @@ Every file comes with `SHA256SUMS.txt`. All releases: [Releases](https://github.
 **The installers are not code-signed** (beta). Windows SmartScreen will show "Windows protected your PC": click
 **More info → Run anyway**. This is normal for apps without a paid certificate; compare the checksum if in doubt.
 
-**Not supported yet:** macOS, ARM machines, and **AMD or Intel GPUs for acceleration** (see
+**Not supported yet:** macOS, ARM machines, and **AMD GPUs for acceleration** (Intel GPU: experimental) (see
 [GPU support](#gpu-support)).
 
 ## 🚀 Guide: from install to first use
@@ -223,7 +223,7 @@ Open **Pengaturan → Mesin transkripsi → Pasang** (Settings → Transcription
 
 | Choice | For | Download size |
 |---|---|---|
-| **CPU** | Every computer, including AMD/Intel GPU machines. Slower. | smaller |
+| **CPU** | Every computer, including AMD GPU machines. Slower. | smaller |
 | **NVIDIA GPU** | NVIDIA cards with enough VRAM (in our test `large-v3` used 3.3 to 4.2 GB). Much faster. | larger (CUDA libraries) |
 
 There is a progress bar and a cancel button. When it finishes click **Uji mesin** (Test engine); it should say
@@ -241,7 +241,8 @@ library versions at install time; check your disk space and connection.
 | **CPU** (any) | Supported. Tested. |
 | **NVIDIA GPU** (CUDA) | Supported. Tested on one PC (Windows 11, GTX 1080 Ti). |
 | **AMD GPU** (ROCm, Vulkan, DirectML) | **Not supported.** The engine installer only offers CPU and NVIDIA CUDA. An AMD machine runs on the CPU. Never tested with an AMD GPU. |
-| **Intel GPU / NPU** | **Not supported** in v2 and not tested. |
+| **Intel GPU** (integrated Arc/Iris Xe, e.g. Core Ultra 7 155H) | **Experimental, via OpenVINO** (*Install for Intel GPU*; not in beta.1). Built on the path validated in v1 on a Core Ultra 7 155H, but **not yet verified in v2 on real hardware**. Large models need several GB of RAM during the one-time conversion; the first meeting is slower because of it. |
+| **Intel NPU** | Not supported (evaluated in v1: unreliable on real speech). |
 
 ### Step 4: Set up the summary service
 
@@ -305,7 +306,7 @@ environment variables (not through the UI). Full steps, variables and the securi
 | No meeting audio (microphone only) | Windows: make sure an active output device exists. Linux: install `pulseaudio-utils` / `pipewire-pulse`. |
 | `Ctrl+Alt+R` does nothing | Conflicts with another app. Change it in Settings. |
 | GPU out of memory | Rekamind automatically falls back to a lighter mode, then to CPU. Close other GPU apps. |
-| Slow on an AMD/Intel GPU machine | Expected: those GPUs are not used; transcription runs on the CPU. |
+| Slow on an AMD GPU machine | Expected: AMD GPUs are not used; transcription runs on the CPU. |
 
 Backend log lives in the app data folder: `backend\logs\backend.log` (Windows: `%LOCALAPPDATA%\id.rekamind.desktop`;
 on Linux the exact location is shown in Settings → backend folder).
@@ -321,7 +322,7 @@ Stated plainly so you know what is being tested:
   tested on Linux; the desktop shell is only built in CI.
 - **Windows**: tested on one PC (Windows 11, GTX 1080 Ti). Long recordings with the window closed, force-kill during
   recording, Word export in real Microsoft Word, and Credential Manager storage are still being tested manually.
-- **GPU**: only CPU and NVIDIA CUDA exist. **AMD and Intel GPUs are not supported and have never been tested.**
+- **GPU**: CPU and NVIDIA CUDA are supported; **Intel GPU is experimental** (OpenVINO, unverified in v2); **AMD GPUs are not supported and have never been tested.**
 - **Real GitHub, GitLab, Google sign-in and S3/MinIO** have only been tested against mock/automated servers.
 - **Quality** of transcripts, speaker separation and task extraction has not been measured across many kinds of
   audio. Review the output, especially names and deadlines.
@@ -332,7 +333,7 @@ Stated plainly so you know what is being tested:
 
 Planned for the next releases (**not implemented yet**; listed so you know what to expect, and in no firm order):
 
-- **Intel GPU acceleration**, including integrated GPUs such as the one in the Intel Core Ultra 7 155H.
+- **Intel GPU**: experimental support is implemented (OpenVINO); it graduates once verified on real hardware.
 - **AMD GPU acceleration**, including integrated AMD GPUs, when an AMD GPU is present.
 - **More interface languages** beyond Indonesian and English, and a choice of output language for summaries and tasks.
 

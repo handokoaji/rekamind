@@ -7,13 +7,20 @@ from a normal Python install (`python -m rekamind_server.enginepack status`).
 """
 from __future__ import annotations
 
+import functools
 import importlib.util
 import json
 import os
 import sys
 from pathlib import Path
 
-TORCH_INDEX = {"cpu": "https://download.pytorch.org/whl/cpu", "cuda": "https://download.pytorch.org/whl/cu126"}
+TORCH_INDEX = {
+    "cpu": "https://download.pytorch.org/whl/cpu",
+    "cuda": "https://download.pytorch.org/whl/cu126",
+    # OpenVINO exports Whisper through torch/transformers once; the CPU wheel is all it needs.
+    "openvino": "https://download.pytorch.org/whl/cpu",
+}
+KINDS = ("cpu", "cuda", "openvino")
 # Pins follow the v1 README (torch 2.13 / cu126); ctranslate2 comes in through faster-whisper.
 PACKAGES = {
     # av<17: faster-whisper 1.2.x calls av.open(..., metadata_errors=...), which av 17+ rejects
@@ -22,6 +29,8 @@ PACKAGES = {
     "diarize": ["pyannote.audio>=4.0", "soundfile>=0.12"],
     # faster-whisper on NVIDIA needs the CUDA 12 runtime libraries next to it.
     "cuda_runtime": ["nvidia-cublas-cu12", "nvidia-cudnn-cu12==9.*"],
+    # Intel GPU / iGPU (and Intel CPU) through OpenVINO: the optimum-intel path validated in v1 on a Core Ultra 7 155H.
+    "openvino": ["openvino>=2025.0", "optimum-intel[openvino]>=1.20", "transformers>=4.45", "torch", "soundfile>=0.12", "av>=12,<17"],
 }
 
 
@@ -42,7 +51,7 @@ def activate(pack: Path | None = None) -> Path:
         sys.path.append(p)
     if sys.platform == "win32" and pack.is_dir():
         # Native DLLs (torch, ctranslate2, cuDNN) are no longer found through PATH on Python 3.8+.
-        for d in [pack / "torch" / "lib", pack / "ctranslate2", *pack.glob("nvidia/*/bin")]:
+        for d in [pack / "torch" / "lib", pack / "ctranslate2", pack / "openvino" / "libs", *pack.glob("nvidia/*/bin")]:
             if d.is_dir():
                 os.add_dll_directory(str(d))
                 os.environ["PATH"] = str(d) + os.pathsep + os.environ.get("PATH", "")
@@ -73,11 +82,46 @@ def status(pack: Path | None = None) -> dict:
             meta = {}
     return {
         "pack_dir": str(pack),
-        "asr": _has("faster_whisper"),
+        "asr": _has("faster_whisper") or (meta.get("kind") == "openvino" and _has("openvino") and _has("optimum")),
         "diarize": _has("pyannote.audio") or _has("pyannote"),
-        "kind": meta.get("kind"),  # "cpu" | "cuda" | None
+        "kind": meta.get("kind"),  # "cpu" | "cuda" | "openvino" | None
+        "gpus": detect_gpus(),
         "python": f"{sys.version_info.major}.{sys.version_info.minor}",
     }
+
+
+_VENDORS = {"0x8086": "intel", "0x10de": "nvidia", "0x1002": "amd"}
+
+
+@functools.lru_cache(maxsize=1)
+def detect_gpus() -> list[dict]:
+    """Which GPUs does this computer have? ([{"vendor": "intel|nvidia|amd|other", "name": str}]). Used only to
+    recommend an engine kind: it imports nothing heavy and never raises."""
+    out: list[dict] = []
+    try:
+        if sys.platform == "win32":
+            import subprocess
+
+            cmd = ["powershell", "-NoProfile", "-NonInteractive", "-Command",  # noqa: S607 - fixed command
+                   "Get-CimInstance Win32_VideoController | ForEach-Object { $_.Name }"]
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=15, creationflags=0x08000000)  # noqa: S603
+            names = [n.strip() for n in r.stdout.splitlines() if n.strip()]
+        elif sys.platform.startswith("linux"):
+            names = []
+            for dev in sorted(Path("/sys/class/drm").glob("card[0-9]*/device")):
+                vendor = (dev / "vendor").read_text().strip() if (dev / "vendor").is_file() else ""
+                if vendor in _VENDORS:
+                    out.append({"vendor": _VENDORS[vendor], "name": f"{_VENDORS[vendor]} {vendor}"})
+            return out
+        else:
+            return out
+        for n in names:
+            low = n.lower()
+            vendor = "nvidia" if "nvidia" in low else "amd" if ("amd" in low or "radeon" in low) else "intel" if "intel" in low else "other"
+            out.append({"vendor": vendor, "name": n})
+    except Exception:  # noqa: BLE001 - a recommendation must never break "status"
+        return out
+    return out
 
 
 def _bundled_pins() -> list[str]:
@@ -93,10 +137,40 @@ def _bundled_pins() -> list[str]:
     return pins
 
 
+def installed_kind(pack: Path | None = None) -> str | None:
+    """"cpu" | "cuda" | "openvino" | None: reads the marker only (no imports, no GPU probing)."""
+    return _kind(pack)
+
+
+def _kind(pack: Path | None) -> str | None:
+    marker = (pack or default_pack_dir()) / "installed.json"
+    try:
+        return json.loads(marker.read_text("utf-8")).get("kind")
+    except (OSError, ValueError):
+        return None
+
+
+def _check_openvino(out: dict) -> dict:
+    """Import the OpenVINO stack and report which devices it sees (an Intel iGPU shows up as "GPU")."""
+    try:
+        import openvino as ov
+        import optimum.intel.openvino  # noqa: F401 - the import is the test
+        import transformers
+
+        devices = list(ov.Core().available_devices)
+        out.update(ok=True, openvino=ov.__version__, transformers=transformers.__version__,
+                   ov_devices=devices, intel_gpu=any(d.startswith("GPU") for d in devices))
+    except Exception as e:  # noqa: BLE001 - report, never crash the caller
+        out["error"] = f"{type(e).__name__}: {e}"
+    return out
+
+
 def check(pack: Path | None = None) -> dict:
     """Actually import the engines (unlike `status`) so a broken install is caught here, not mid-meeting."""
     activate(pack)
     out: dict = {"ok": False, "cuda_devices": 0, "error": None}
+    if _kind(pack) == "openvino":
+        return _check_openvino(out)
     try:
         import ctranslate2
         import faster_whisper
@@ -126,9 +200,10 @@ def check(pack: Path | None = None) -> dict:
 
 
 def pip_args(kind: str, pack: Path, with_diarize: bool, pins: list[str] | None = None) -> list[str]:
-    if kind not in TORCH_INDEX:
-        raise ValueError("kind harus 'cpu' atau 'cuda'")
-    pkgs = list(PACKAGES["asr"])
+    if kind not in KINDS:
+        raise ValueError("kind harus 'cpu', 'cuda' atau 'openvino'")
+    # The OpenVINO path does not use faster-whisper at all.
+    pkgs = list(PACKAGES["openvino"] if kind == "openvino" else PACKAGES["asr"])
     if kind == "cuda":
         pkgs += PACKAGES["cuda_runtime"]
     if with_diarize:
@@ -140,7 +215,7 @@ def pip_args(kind: str, pack: Path, with_diarize: bool, pins: list[str] | None =
             "--no-warn-conflicts",
             # Only pyannote needs torch. faster-whisper (ctranslate2) does not, and querying the extra index
             # for every package would slow the install and fail wherever download.pytorch.org is blocked.
-            *(["--extra-index-url", TORCH_INDEX[kind]] if with_diarize else []),
+            *(["--extra-index-url", TORCH_INDEX[kind]] if (with_diarize or kind == "openvino") else []),
             *pkgs, *(pins or [])]
 
 
@@ -213,6 +288,13 @@ def install(kind: str, with_diarize: bool = False, pack: Path | None = None) -> 
 def warmup(model: str, pack: Path | None = None) -> int:
     """Download the Whisper weights now (instead of at the first meeting). Needs the pack installed."""
     activate(pack)
+    if _kind(pack) == "openvino":
+        from .engines.openvino import prepare_model
+
+        print(f"Mengonversi model {model} ke OpenVINO (sekali saja; beberapa menit dan beberapa GB memori) …", flush=True)
+        path = prepare_model(model, log=lambda m: print(m, flush=True))
+        print(f"Model siap: {path}", flush=True)
+        return 0
     import threading
 
     from faster_whisper.utils import download_model
@@ -253,7 +335,7 @@ def main(argv: list[str]) -> int:
     st = sub.add_parser("selftest")
     st.add_argument("--no-fix", action="store_true", help="skip the frozen-loader fix (reproduces the Windows failure)")
     i = sub.add_parser("install")
-    i.add_argument("kind", choices=["cpu", "cuda"])
+    i.add_argument("kind", choices=list(KINDS))
     i.add_argument("--diarize", action="store_true")
     w = sub.add_parser("warmup")
     w.add_argument("model", nargs="?", default="large-v3")

@@ -70,7 +70,8 @@ class Settings(BaseSettings):
     engines: str = "none"
     # ASR
     whisper_model: str = "large-v3"
-    whisper_device: str = "auto"  # auto | cuda | cpu
+    whisper_device: str = "auto"  # auto | cuda | cpu | intel (OpenVINO; "auto" follows the installed engine pack)
+    openvino_device: str = "GPU"  # OpenVINO device for "intel": GPU (iGPU) | CPU | AUTO; falls back to CPU if the GPU cannot load it
     whisper_compute_type: str = "auto"
     glossary: str = ""  # comma/newline separated names and jargon, fed to Whisper as a prompt
     # Diarization: none | pyannote

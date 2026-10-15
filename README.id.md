@@ -218,7 +218,7 @@ Buka **Pengaturan → Mesin transkripsi → Pasang**.
 
 | Pilihan | Untuk | Ukuran unduhan |
 |---|---|---|
-| **CPU** | Semua komputer, termasuk yang ber-GPU AMD/Intel. Lebih lambat. | unduhan lebih kecil |
+| **CPU** | Semua komputer, termasuk yang ber-GPU AMD. Lebih lambat. | unduhan lebih kecil |
 | **NVIDIA GPU** | Kartu NVIDIA dengan VRAM cukup (pada uji kami model `large-v3` memakai 3,3 sampai 4,2 GB). Jauh lebih cepat. | lebih besar (pustaka CUDA) |
 
 Ada progres dan tombol batal. Setelah selesai klik **Uji mesin**; harus muncul "Terpasang". Model suara
@@ -232,7 +232,8 @@ Ukuran unduhan pasti bergantung pada versi pustaka saat Anda memasang; periksa r
 | **CPU** (apa pun) | Didukung. Diuji. |
 | **GPU NVIDIA** (CUDA) | Didukung. Diuji di satu PC (Windows 11, GTX 1080 Ti). |
 | **GPU AMD** (ROCm, Vulkan, DirectML) | **Belum didukung.** Pemasang mesin hanya menawarkan CPU dan NVIDIA CUDA. Komputer AMD berjalan di CPU. Belum pernah diuji dengan GPU AMD. |
-| **GPU / NPU Intel** | **Belum didukung** di v2 dan belum diuji. |
+| **GPU Intel** (terintegrasi Arc/Iris Xe, mis. Core Ultra 7 155H) | **Eksperimental, lewat OpenVINO** (*Pasang untuk Intel GPU*; tidak ada di beta.1). Dibangun dari jalur yang terbukti di v1 pada Core Ultra 7 155H, tetapi **belum diverifikasi di v2 pada perangkat keras nyata**. Model besar butuh beberapa GB RAM saat konversi sekali-jalan; rapat pertama lebih lambat karenanya. |
+| **NPU Intel** | Belum didukung (dievaluasi di v1: tidak andal pada ucapan nyata). |
 
 > Pemisah pembicara (pyannote) bersifat opsional dan perlu token Hugging Face. Tanpa itu, semua suara dianggap satu
 > pembicara per jalur (mikrofon = Anda). Lihat [INSTALL.id.md](docs/INSTALL.id.md).
@@ -296,7 +297,7 @@ besar di [docs/INSTALL.id.md](docs/INSTALL.id.md).
 | Ringkasan gagal, transkrip ada | Kunci API salah atau kena batas pemakaian. Transkrip tetap tersimpan; klik **Buat ulang ringkasan** setelah diperbaiki. |
 | Tidak ada suara rapat (hanya mikrofon) | Windows: pastikan ada perangkat output aktif. Linux: pasang `pulseaudio-utils`/`pipewire-pulse`. |
 | `Ctrl+Alt+R` tidak bereaksi | Bentrok dengan aplikasi lain. Ganti di Pengaturan. |
-| Lambat di komputer GPU AMD/Intel | Wajar: GPU itu tidak dipakai; transkripsi berjalan di CPU. |
+| Lambat di komputer GPU AMD | Wajar: GPU AMD tidak dipakai; transkripsi berjalan di CPU. |
 | GPU kehabisan memori | Rekamind otomatis turun ke mode lebih hemat, lalu CPU. Tutup aplikasi GPU lain. |
 
 Log backend ada di folder data aplikasi: `backend\logs\backend.log` (Windows: `%LOCALAPPDATA%\id.rekamind.desktop`; lokasi persis di Linux tertera di Pengaturan → folder backend).
@@ -313,7 +314,7 @@ Dinyatakan apa adanya supaya Anda tahu apa yang sedang diuji:
   merekam, ekspor Word di aplikasi Word asli, dan penyimpanan di Credential Manager masih dalam pengujian manual.
 - **GitHub, GitLab, Google login, dan S3/MinIO asli** baru diuji dengan server tiruan/otomatis, belum dengan layanan
   sungguhan.
-- **GPU**: hanya CPU dan NVIDIA CUDA yang ada. **GPU AMD dan Intel belum didukung dan belum pernah diuji.**
+- **GPU**: CPU dan NVIDIA CUDA didukung; **GPU Intel eksperimental** (OpenVINO, belum diverifikasi di v2); **GPU AMD belum didukung dan belum pernah diuji.**
 - **Kualitas** transkrip, pemisahan pembicara, dan ekstraksi task belum diukur pada banyak jenis audio. Tinjau
   hasilnya, terutama nama dan tenggat.
 - **Bahasa:** antarmuka tersedia dalam Indonesia dan Inggris; ringkasan dan task yang dihasilkan hanya berbahasa Indonesia. Pesan dari server atau perekam Rust (mis. sebagian teks galat) belum diterjemahkan.
@@ -323,7 +324,7 @@ Dinyatakan apa adanya supaya Anda tahu apa yang sedang diuji:
 
 Direncanakan untuk rilis berikutnya (**belum dikerjakan**; dicatat supaya Anda tahu arahnya, tanpa urutan pasti):
 
-- **Akselerasi GPU Intel**, termasuk GPU terintegrasi seperti pada Intel Core Ultra 7 155H.
+- **GPU Intel**: dukungan eksperimental sudah diimplementasikan (OpenVINO); naik status setelah terverifikasi di perangkat keras nyata.
 - **Akselerasi GPU AMD**, termasuk GPU AMD terintegrasi, bila GPU AMD tersedia.
 - **Lebih banyak bahasa antarmuka** selain Indonesia dan Inggris, serta pilihan bahasa keluaran ringkasan dan task.
 

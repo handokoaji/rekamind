@@ -2,6 +2,17 @@ from ..config import Settings
 from .base import Engines
 
 
+def use_openvino(settings: Settings) -> bool:
+    """Explicitly ("intel"), or automatically when the installed engine pack is the OpenVINO one."""
+    if settings.whisper_device == "intel":
+        return True
+    if settings.whisper_device != "auto":
+        return False
+    from .. import enginepack
+
+    return enginepack.installed_kind() == "openvino"
+
+
 def build_engines(settings: Settings) -> Engines | None:
     """Wire concrete engines from settings. Heavy imports stay inside the branches so
     a server running only the API/queue never pays for torch or ctranslate2."""
@@ -29,8 +40,15 @@ def build_engines(settings: Settings) -> Engines | None:
     from .llm import OpenAiCompatExtractor
     from .whisper import FasterWhisperTranscriber
 
-    transcriber = FasterWhisperTranscriber(settings.whisper_model, settings.whisper_device,
-                                           settings.whisper_compute_type, settings.glossary)
+    if use_openvino(settings):
+        from .openvino import OpenVinoTranscriber
+
+        transcriber = OpenVinoTranscriber(settings.whisper_model, settings.openvino_device)
+        transcriber_label = f"OpenVINO whisper {settings.whisper_model} ({settings.openvino_device})"
+    else:
+        transcriber = FasterWhisperTranscriber(settings.whisper_model, settings.whisper_device,
+                                               settings.whisper_compute_type, settings.glossary)
+        transcriber_label = f"faster-whisper {settings.whisper_model} ({settings.whisper_device})"
     if settings.diarizer == "pyannote":
         from .pyannote import PyannoteDiarizer
 
@@ -50,7 +68,7 @@ def build_engines(settings: Settings) -> Engines | None:
             getattr(e, "release", lambda: None)()
 
     return Engines(transcriber, diarizer, extractor, {
-        "transcriber": f"faster-whisper {settings.whisper_model} ({settings.whisper_device})",
+        "transcriber": transcriber_label,
         "diarizer": settings.diarizer,
         "extractor": f"{settings.llm_model} @ {settings.llm_base_url}",
     }, release=release)
