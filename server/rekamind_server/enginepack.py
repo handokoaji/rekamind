@@ -298,6 +298,11 @@ def check(pack: Path | None = None) -> dict:
     return out
 
 
+def torch_find_links(kind: str) -> list[str]:
+    base = TORCH_INDEX[kind].rstrip("/")
+    return [a for pkg in ("torch", "torchaudio") for a in ("--find-links", f"{base}/{pkg}/")]
+
+
 def pip_args(kind: str, pack: Path, with_diarize: bool, pins: list[str] | None = None) -> list[str]:
     if kind not in KINDS:
         raise ValueError("kind harus 'cpu', 'cuda' atau 'openvino'")
@@ -315,7 +320,10 @@ def pip_args(kind: str, pack: Path, with_diarize: bool, pins: list[str] | None =
             "--no-warn-conflicts",
             # Only pyannote needs torch. faster-whisper (ctranslate2) does not, and querying the extra index
             # for every package would slow the install and fail wherever download.pytorch.org is blocked.
-            *(["--extra-index-url", TORCH_INDEX[kind]] if (with_diarize or kind == "openvino") else []),
+            # torch/torchaudio come from the wheel pages (--find-links), NOT --extra-index-url: that index also
+            # lists every nvidia-* dependency with a link to pypi.nvidia.com, which pip then preferred, and that
+            # host crawled at ~0.01 MB/s on the test network. With find-links the nvidia wheels come from PyPI.
+            *(torch_find_links(kind) if (with_diarize or kind == "openvino") else []),
             *pkgs, *(pins or [])]
 
 

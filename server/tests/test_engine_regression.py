@@ -34,11 +34,11 @@ def test_pip_install_arguments_for_cpu_and_cuda_are_unchanged(tmp_path, kind, ex
     a = enginepack.pip_args(kind, tmp_path, False)
     assert "faster-whisper>=1.0" in a and "av>=12,<17" in a
     assert not any(x in a for x in ("openvino>=2025.0", "torch"))
-    assert ("--extra-index-url" in a) is expected_extra  # torch's index only when speaker separation is added
+    assert ("--find-links" in a) is expected_extra  # torch's index only when speaker separation is added
     cuda_libs = {"nvidia-cublas-cu12", "nvidia-cudnn-cu12==9.*"}
     assert (cuda_libs <= set(a)) is (kind == "cuda")
     with_pyannote = enginepack.pip_args(kind, tmp_path, True)
-    assert "pyannote.audio>=4.0" in with_pyannote and "--extra-index-url" in with_pyannote
+    assert "pyannote.audio>=4.0" in with_pyannote and "--find-links" in with_pyannote and "--extra-index-url" not in with_pyannote
 
 
 def test_status_and_check_for_cpu_cuda_markers_use_the_original_paths(monkeypatch, tmp_path):

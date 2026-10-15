@@ -183,7 +183,7 @@ def test_pip_args_for_openvino_use_the_openvino_stack_not_faster_whisper(tmp_pat
     a = enginepack.pip_args("openvino", tmp_path, False)
     assert "openvino>=2025.0" in a and "torch" in a
     assert not any("faster-whisper" in x for x in a)
-    assert "--extra-index-url" in a  # torch comes from the CPU wheel index
+    assert "--find-links" in a and "--extra-index-url" not in a  # torch comes from the CPU wheel pages
     assert "pyannote.audio>=4.0" in enginepack.pip_args("openvino", tmp_path, True)
     with pytest.raises(ValueError):
         enginepack.pip_args("rocm", tmp_path, False)
