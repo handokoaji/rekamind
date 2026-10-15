@@ -53,14 +53,14 @@ Images are published on GitHub Container Registry with every release:
 | `ghcr.io/handokoaji/rekamind-server:<version>-cuda` | Same, **transcribes on an NVIDIA GPU** (CUDA 12; host needs the NVIDIA driver + NVIDIA Container Toolkit). Use [`docker-compose.image-gpu.yml`](../docker-compose.image-gpu.yml). Intended for cards such as an RTX 4060 (8 GB); not yet verified on real hardware. |
 | `ghcr.io/handokoaji/rekamind-server:<version>` | API only: record/upload/view/export. **Does not process meetings.** |
 
-`<version>` is e.g. `0.4.0-beta.1`; `beta` / `beta-cpu` / `beta-cuda` always point to the newest beta. The `-cpu` image defaults to the `small` Whisper model (accept slower processing to use a larger one); `-cuda` defaults to `large-v3`. AMD/Intel GPUs are not supported (use `-cpu`). Speaker separation (pyannote) is not included in the images.
+`<version>` is e.g. `0.4.0-beta.2`; `beta` / `beta-cpu` / `beta-cuda` always point to the newest beta. The `-cpu` image defaults to the `small` Whisper model (accept slower processing to use a larger one); `-cuda` defaults to `large-v3`. AMD/Intel GPUs are not supported (use `-cpu`). Speaker separation (pyannote) is not included in the images.
 
 1. Create a Google OAuth client ([AUTH.md](AUTH.md)).
 2. **Portainer:** *Stacks → Add stack → Web editor*, paste [`docker-compose.image.yml`](../docker-compose.image.yml), fill the environment variables (`REKAMIND_PUBLIC_URL`, `REKAMIND_GOOGLE_CLIENT_ID`, `REKAMIND_GOOGLE_CLIENT_SECRET`, `REKAMIND_SUPERADMINS`, and `REKAMIND_LLM_API_KEY` for summaries), **Deploy**.
    **Plain Docker:** `docker compose -f docker-compose.image.yml up -d` with those variables in a `.env` file.
 3. Put an HTTPS reverse proxy in front (see below) and point the desktop app to it (**Server terpisah** / Remote server).
 
-> **If the pull is denied:** the package may be *private*. For `v0.4.0-beta.1` it was verified to be public (anonymous pull works). If it is private for you, the repository owner sets it to **Public** (GitHub → profile → Packages → `rekamind-server` → Package settings → Change visibility). The image has only been built and started in CI/sandbox so far; transcription inside the container has not been verified against a real meeting (beta).
+> **If the pull is denied:** the package may be *private*. For `v0.4.0-beta.2` it was verified to be public (anonymous pull works). If it is private for you, the repository owner sets it to **Public** (GitHub → profile → Packages → `rekamind-server` → Package settings → Change visibility). The image has only been built and started in CI/sandbox so far; transcription inside the container has not been verified against a real meeting (beta).
 
 ### Build it yourself
 
