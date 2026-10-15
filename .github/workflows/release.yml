@@ -1,0 +1,120 @@
+name: Release
+
+# Dipicu tag v*. Tag berakhiran -alpha.N / -beta.N / -rc.N menjadi PRE-RELEASE (bukan "latest").
+# Setiap installer dibangun dari kode pada tag, lulus smoke test backend beku, lalu diunggah dengan
+# nama tetap + SHA256SUMS.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag: { description: "Tag yang akan dirilis ulang (mis. v0.4.0-beta.1)", required: true }
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ env.TAG }}" }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - name: Versi semua berkas sama dengan tag
+        run: python scripts/set_version.py --check "${TAG#v}"
+      - name: Catatan rilis ada
+        run: test -s "docs/release-notes/${TAG}.md"
+
+  build:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            bundles: nsis
+            exe: desktop/src-tauri/resources/backend/rekamind-backend.exe
+            glob: "desktop/src-tauri/target/release/bundle/nsis/*-setup.exe"
+            name: Rekamind-Windows-x64-setup.exe
+          - os: ubuntu-22.04
+            bundles: deb
+            exe: desktop/src-tauri/resources/backend/rekamind-backend
+            glob: "desktop/src-tauri/target/release/bundle/deb/*.deb"
+            name: Rekamind-Linux-x64.deb
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ env.TAG }}" }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: "web/package-lock.json\ndesktop/package-lock.json" }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: "desktop/src-tauri" }
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libasound2-dev patchelf
+      - run: pip install -e "server[dev]" pyinstaller
+      - run: python scripts/build_desktop.py --bundles ${{ matrix.bundles }}
+      - name: Smoke test backend beku (harus lulus sebelum dirilis)
+        run: python scripts/smoke_backend.py ${{ matrix.exe }}
+      - name: Beri nama tetap
+        shell: bash
+        run: |
+          mkdir -p out
+          f=$(ls ${{ matrix.glob }} | head -n1)
+          cp "$f" "out/${{ matrix.name }}"
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with: { name: "installer-${{ matrix.os }}", path: "out/*", if-no-files-found: error }
+
+  # AppImage dicoba terpisah: kegagalannya tidak boleh menggagalkan rilis .exe / .deb.
+  appimage:
+    needs: verify
+    runs-on: ubuntu-22.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ env.TAG }}" }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: "web/package-lock.json\ndesktop/package-lock.json" }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: "desktop/src-tauri" }
+      - run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libasound2-dev patchelf
+      - run: pip install -e "server[dev]" pyinstaller
+      - run: python scripts/build_desktop.py --bundles appimage
+      - run: python scripts/smoke_backend.py desktop/src-tauri/resources/backend/rekamind-backend
+      - run: |
+          mkdir -p out
+          cp "$(ls desktop/src-tauri/target/release/bundle/appimage/*.AppImage | head -n1)" out/Rekamind-Linux-x64.AppImage
+      - uses: actions/upload-artifact@v4
+        with: { name: installer-appimage, path: out/*, if-no-files-found: error }
+
+  publish:
+    needs: [build, appimage]
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ env.TAG }}" }
+      - uses: actions/download-artifact@v4
+        with: { path: dl, merge-multiple: true }
+      - name: Checksum
+        run: cd dl && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: Terbitkan (pre-release bila versi memiliki -alpha/-beta/-rc)
+        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+        run: |
+          flag=""
+          case "$TAG" in *-alpha.*|*-beta.*|*-rc.*) flag="--prerelease";; esac
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dl/* --clobber
+          else
+            gh release create "$TAG" dl/* $flag --title "Rekamind $TAG" --notes-file "docs/release-notes/${TAG}.md" --verify-tag
+          fi

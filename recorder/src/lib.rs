@@ -1,3 +1,5 @@
+// Newer clippy suggests `as_chunks` (needs a recent rustc); `chunks_exact` is clear and works on older toolchains.
+#![allow(unknown_lints, clippy::chunks_exact_to_as_chunks)]
 //! Rekamind recorder: capture the microphone and the computer's own audio and write them to
 //! disk as 16 kHz mono WAV. Nothing else happens while a meeting is running -- no speech
 //! recognition, no voice detection, no network -- so it can sit next to a video call and a

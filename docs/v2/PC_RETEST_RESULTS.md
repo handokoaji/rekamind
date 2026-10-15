@@ -91,7 +91,7 @@ tidak mencakup `install()`. Belum diverifikasi: apakah tombol UI memakai jalur s
 | R11 bench | LULUS | `large-v3`, `auto` -> `cuda`/`int8`, `peak_rss_mb` 4124, realtime_factor 0,019 |
 | VRAM puncak (R4, sebagian) | LULUS | 3076 MiB total GPU (dulu 10,75 GB) pada rekaman 60 dtk |
 
-Catatan: CLI memakai pack di `C:\Users\aji\.rekamind\engine-pack` (bukan folder data aplikasi). Tombol UI belum dicoba,
+Catatan: CLI memakai pack di `C:\Users\<pengguna>\.rekamind\engine-pack` (bukan folder data aplikasi). Tombol UI belum dicoba,
 jadi progres, batalkan (R3) dan lokasi pack yang dipakai app belum terverifikasi. Ada juga folder sisa
 `id.rekamind.desktop-test\backend\engine-pack` dari uji sebelumnya.
 
