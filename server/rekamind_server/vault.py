@@ -26,10 +26,10 @@ class VaultUnavailable(RuntimeError):
 
 
 class Vault:
-    def __init__(self, passphrase: str):
-        if len(passphrase) < MIN_KEY_CHARS:
+    def __init__(self, key_material: str):
+        if len(key_material) < MIN_KEY_CHARS:
             raise VaultUnavailable(f"REKAMIND_SECRET_KEY harus minimal {MIN_KEY_CHARS} karakter acak")
-        material = passphrase.encode()
+        material = key_material.encode()
         # The key is random (os.urandom, or a generated REKAMIND_SECRET_KEY), never a human password, so a fast
         # extract-and-expand KDF is the right tool; a slow password hash would add nothing. New tokens use HKDF.
         current = HKDF(algorithm=hashes.SHA256(), length=32, salt=None, info=b"rekamind-vault-v2").derive(material)
