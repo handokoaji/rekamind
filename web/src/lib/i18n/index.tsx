@@ -5,7 +5,7 @@ import { enPages } from "./en.pages";
 
 /**
  * Interface language. Indonesian is the source language: the code holds the Indonesian text and
- * `t("teks Indonesia")` returns it as is, or its English entry when English is selected. A missing
+ * `t(<teks Indonesia>)` returns it as is, or its English entry when English is selected. A missing
  * English entry falls back to the Indonesian text (a guard test fails the build for that).
  * Placeholders: t("Kirim {n} task", { n: 3 }).
  */
