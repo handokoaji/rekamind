@@ -76,8 +76,10 @@ def scenario_b(cmd: list[str], kind: str, timeout: int) -> list[str]:
         closed = threading.Event()
 
         def reader() -> None:
+            # The first progress line, in the current format ("  ... ") or the old one with an ellipsis: cp1252 byte 0x85, or
+            # UTF-8. The app's old reader stopped at the first line that was not valid UTF-8, i.e. exactly there.
             for line in iter(p.stdout.readline, b""):
-                if line.startswith(b"  ... "):
+                if line.startswith((b"  ... ", b"  \x85 ", b"  \xe2\x80\xa6 ")):
                     seen.set()
                     break
             time.sleep(1)
@@ -87,6 +89,8 @@ def scenario_b(cmd: list[str], kind: str, timeout: int) -> list[str]:
         threading.Thread(target=reader, daemon=True).start()
         code = p.wait(timeout=timeout)
         print(f"B (reader closed the pipe after the first progress line: {seen.is_set()}): exit {code}, marker {marker(data)}", flush=True)
+        if code == 120:
+            print("B: exit code 120 = the interpreter could not flush stdout into the closed pipe (the NVIDIA PC symptom)", flush=True)
         if not seen.is_set():
             problems.append("B: never reached a progress line, so the dead-reader case was not exercised")
         if code != 0:

@@ -44,6 +44,11 @@ jobs:
             echo "### Old build ${OLD_REF:0:7}: smoke exit code $code (non-zero = the smoke sees the old bug)"
             echo '```'; tail -40 control.log; echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          if grep -q "B: exit code" control.log; then
+            echo "Dead-reader failure reproduced on the old build (scenario B)."
+          else
+            echo "::warning::The old build failed only on the A checks (non-UTF-8 lines), not on the dead-reader scenario B."
+          fi
           if [ "$code" = 0 ]; then
             echo "::error::The smoke PASSED on the old build: it cannot detect the Errno 22 failure, or the old build is not the failing one."
             exit 1
