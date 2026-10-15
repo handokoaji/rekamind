@@ -1,0 +1,51 @@
+name: Engine install control (old build must FAIL the smoke)
+
+# Negative control for scripts/smoke_engine_install.py. It freezes the backend of an OLD commit that is known to break the
+# engine install on Windows (Errno 22 / exit 120) and runs the CURRENT smoke against it. The smoke must report failures;
+# if it passes, either the smoke cannot see the bug or the bug is not what we think. Run by hand or by editing this file.
+on:
+  workflow_dispatch:
+    inputs:
+      old_ref: { description: "commit of the old build", default: "8fe8a936fe29158e499d875e9c0d2662a2933008", required: true }
+  push:
+    branches: ["feat/**"]
+    paths: [".github/workflows/engine-install-control.yml"]
+
+env:
+  OLD_REF: ${{ github.event.inputs.old_ref || '8fe8a936fe29158e499d875e9c0d2662a2933008' }}
+
+jobs:
+  control:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: new }
+      - uses: actions/checkout@v4
+        with: { ref: "${{ env.OLD_REF }}", path: old }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: "old/web/package-lock.json" }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - run: pip install -e "old/server[dev]" pyinstaller
+      - name: Build the old web UI and freeze the old backend
+        shell: bash
+        run: |
+          cd old/web && npm ci && npm run build && cd ../server
+          python -m PyInstaller --noconfirm --distpath build/dist --workpath build/work packaging/rekamind-backend.spec
+          ls build/dist/rekamind-backend | head -3
+      - name: Run the CURRENT smoke against the OLD backend (expected to fail)
+        shell: bash
+        run: |
+          set +e
+          python new/scripts/smoke_engine_install.py old/server/build/dist/rekamind-backend/rekamind-backend.exe 2>&1 | tee control.log
+          code=${PIPESTATUS[0]}
+          echo "smoke exit code against the old build: $code"
+          {
+            echo "### Old build ${OLD_REF:0:7}: smoke exit code $code (non-zero = the smoke sees the old bug)"
+            echo '```'; tail -40 control.log; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" = 0 ]; then
+            echo "::error::The smoke PASSED on the old build: it cannot detect the Errno 22 failure, or the old build is not the failing one."
+            exit 1
+          fi
+          echo "Control OK: the smoke fails on the old build, as it must."
