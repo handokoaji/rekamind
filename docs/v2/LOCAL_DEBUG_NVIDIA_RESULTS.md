@@ -52,3 +52,20 @@ A/B 30 detik, TTS ke speaker, skenario identik (`--no-mic`):
 - **Perilaku desain, bukan bug:** saat merekam, backend lokal sengaja dimatikan (`controller.rs:282`) dan tidak boleh dinyalakan
   (`controller.rs:228`), sehingga UI menampilkan "Tidak dapat terhubung ke server" selama rekaman. Pesannya menyesatkan; perlu teks UX terpisah.
 - Belum dijalankan: `pytest server`, `ruff check`, rekaman 10 menit; instalasi A1-A3 (cache dingin pypi.nvidia.com) tidak diuji.
+
+## Pembaruan: temuan dan perbaikan lanjutan (sesi yang sama)
+| Temuan | Bukti | Perbaikan |
+|---|---|---|
+| Pemasangan `--diarize` macet 0,01 MB/s | `pip download -v`: dengan `--extra-index-url` PyTorch, `nvidia-cuda-nvrtc-cu12` diunduh dari `pypi.nvidia.com`; jaringan sehat (6,6 MB/s ke `files.pythonhosted.org`) | `--find-links` halaman wheel `torch`/`torchaudio`; `--dry-run`: 0 unduhan dari `pypi.nvidia.com` (belum diuji dari cache dingin) |
+| Hasil 1 pembicara | `settings.json`: `diarizer = none` (bawaan) | Centang pemisah pembicara aktif bawaan, pasang diblokir sampai token HF tersimpan, sukses pasang mengaktifkan `pyannote` |
+| 3 orang terdeteksi 2 | Rekaman yang sama: otomatis 2 pembicara; `num_speakers=3` memberi 3 (43/38/19%) | Petunjuk `num_speakers` per rapat (migrasi 0004, tab Pembicara) |
+| "4 pembicara" untuk 3 orang | DB: peserta `UNKNOWN` (1 segmen 0 dtk) + sisa peserta lama | Segmen di celah dapat pembicara terdekat; peserta tanpa ucapan dihapus saat proses ulang; kartu hanya menghitung pembicara nyata |
+| Satu segmen berisi 2 suara | 40-47 dari ~210 segmen ASR menimpa >1 pembicara | Pemotongan di pergantian pembicara (timestamp per kata; giliran min. 3 kata dan 1 dtk) |
+| Rapat tanpa task tersangkut "Perlu ditinjau" | `done` hanya tercapai lewat perubahan task (`api.py`) | `done` bila tidak ada task dan ringkasan tidak gagal |
+| Ringkasan kosong disimpan sebagai "selesai" | Groq `200 OK` tetapi `overview` kosong, 0 task | Jawaban kosong diulang, lalu error yang bisa dicoba lagi; jawaban mentah dicatat di log |
+| Player tidak memutar | Log: `GET .../audio/speaker 401` (`<audio src>` tak bisa mengirim bearer) | Audio diambil dengan token lalu diputar dari blob; kartu "Dengarkan rekaman" |
+| "Pemrosesan gagal ... get_cuda_device_count" | Installer lokal dibangun dengan Python 3.14, pack `cp313`; `engines status` melapor `python: 3.14` | Bangun dengan Python 3.13 (kesalahan build lokal, bukan bug repo) |
+
+Masih terbuka: mik headset MH752 hampir tidak menghasilkan sinyal (puncak 5-6/32768; Windows 100% dan tidak mute, izin privasi Allow, jadi
+kemungkinan mute/gain fisik di perangkat); penyebab LLM sesekali menjawab `{}` belum diketahui (kini diulang dan dicatat); unduhan cache dingin
+dengan `--find-links`; dua tes server lama yang gagal (`test_force_utf8...` CRLF Windows, `test_repo_versions_are_in_sync`) tidak terkait.

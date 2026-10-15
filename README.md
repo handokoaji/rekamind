@@ -102,8 +102,9 @@ is sent anywhere before you decide.
 <td width="50%" valign="top">
 
 ### Per-speaker transcript
-Microphone and system audio are separated, speakers are recognised and can be named. Long transcripts stay smooth
-(virtualised list).
+Microphone and system audio are separated, speakers are recognised and can be named. A sentence spoken by two people is
+cut where the voice changes. If the app merged similar voices, tell it how many people spoke and separate again. Long
+transcripts stay smooth (virtualised list). Every recording can be played back from the meeting page.
 
 </td>
 <td width="50%" valign="top">
@@ -217,6 +218,11 @@ Recording uses PulseAudio or PipeWire (through `parec`). On PipeWire systems mak
 
 You can already record at this point, even before the AI engine is installed. Recordings wait safely.
 
+> **While recording**, the app shows one calm screen (timer, microphone and speaker levels, **Stop**). The meeting list,
+> tasks and settings are hidden on purpose: the processing engine is switched off during a meeting so nothing heavy
+> competes with the recording, and it comes back when you stop. If a level bar stays at *Hening* (silent), that source is
+> not capturing sound: check the mute switch and input volume of your microphone or headset.
+
 ### Step 3: Install the transcription engine (once)
 
 Open **Pengaturan → Mesin transkripsi → Pasang** (Settings → Transcription engine → Install).
@@ -231,8 +237,11 @@ There is a progress bar and a cancel button. When it finishes click **Uji mesin*
 **Unduh model ... sekarang** (Download model now) to avoid waiting later. The exact download size depends on the
 library versions at install time; check your disk space and connection.
 
-> Speaker separation (pyannote) is optional and needs a Hugging Face token. Without it every track is treated as one
-> speaker (microphone = you). See [INSTALL.md](docs/INSTALL.md).
+**Speaker separation** (who said what) is ticked by default. It needs a free **Hugging Face token**, so the install
+buttons stay disabled until you paste one in the notice shown there (it is stored in the system credential store).
+Untick the box to install without it: every sound from the computer is then treated as one speaker. When an install
+that includes speaker separation finishes, the app switches the setting on for you. Step-by-step guide for the token:
+**[docs/API_KEYS.md](docs/API_KEYS.md)**. More detail: [INSTALL.md](docs/INSTALL.md).
 
 #### GPU support
 
@@ -251,7 +260,9 @@ free tier with usage limits). Under **Pengaturan → Layanan ringkasan** (Settin
 
 - **API key**: created in your provider account. Stored in Windows Credential Manager or Linux Secret Service, **not**
   in a settings file.
-- The address and model are pre-filled for Groq; change them to use another provider (OpenAI, OpenRouter, a local server).
+- The address and model are pre-filled for Groq, but **Groq is not required**: any OpenAI-compatible service works
+  (OpenAI, OpenRouter, Ollama or another server you run). Examples and how to get a key:
+  [docs/API_KEYS.md](docs/API_KEYS.md).
 
 > Privacy: only the **transcript text** is sent to this provider, never audio. If the text must not leave your
 > organisation, point it at a model you run yourself, or skip this step (the transcript is still produced).
@@ -263,8 +274,25 @@ If **Proses otomatis** is off, open the meeting → **Proses sekarang** (Process
 
 1. **Ringkasan** (Summary): read the decisions and the flow of the meeting.
 2. **Pembicara** (Speakers): name them (Rina, Dewi, ...), then **reprocess** so task assignees link to names.
+   Detected the wrong number of people? In the same tab pick the real **Jumlah pembicara** (number of speakers) and
+   click **Pisahkan ulang** (Separate again). Similar voices are sometimes merged otherwise.
 3. **Task**: check each task (the play button on the evidence quote plays that part of the recording), edit if
    needed, then **Konfirmasi** (Confirm).
+
+At the top of every meeting, **Dengarkan rekaman** (Listen to the recording) plays the computer audio or the
+microphone, even when the transcript is empty.
+
+#### What each status means
+
+| Status | When | What to do |
+|---|---|---|
+| **Sedang merekam** (Recording) | The recording is running | Nothing; stop it first |
+| **Siap diproses** (Ready) | Saved, not processed yet | **Proses sekarang**; install the engine first if asked |
+| **Menunggu giliran** (Queued) | Waiting for another meeting | Wait; you can close the window |
+| **Sedang diproses** (Processing) | Transcript, speakers, summary being made | Wait for the progress bar |
+| **Perlu ditinjau** (Needs review) | There are tasks to confirm or reject, or the summary failed | Decide each task; or **Buat ulang ringkasan** |
+| **Selesai** (Done) | Nothing left to review (all tasks decided, or none were found) | Export or send tasks |
+| **Gagal** (Failed) | Processing hit an error (message in the red card) | Fix the cause, then **Coba lagi** |
 
 ### Step 6: Export or send
 
@@ -303,6 +331,10 @@ environment variables (not through the UI). Full steps, variables and the securi
 | SmartScreen blocks the installer | The beta installer is unsigned. **More info → Run anyway**. |
 | "Engine not installed" | Finish **Step 3**, then **Uji mesin**. |
 | Summary failed but transcript exists | Wrong API key or usage limit hit. The transcript is kept; click **Buat ulang ringkasan** (Regenerate summary) once fixed. |
+| The install button is greyed out | Speaker separation is ticked and no Hugging Face token is saved. Paste the token in the notice (guide: [docs/API_KEYS.md](docs/API_KEYS.md)) or untick the box. |
+| Only one speaker, or too few | Set **Pengaturan → Pemisah pembicara** to *pyannote* (done automatically after installing with it). If similar voices were merged, set **Jumlah pembicara** in the meeting's Speakers tab and separate again. |
+| "Tidak dapat terhubung ke server" while recording | Expected: the local engine is off during a meeting. It returns when you stop. |
+| The microphone is silent | The level bar says *Hening*. Check the headset's mute switch, the input volume and **Settings → Sound → Input** in Windows. |
 | No meeting audio (microphone only) | Windows: make sure an active output device exists. Linux: install `pulseaudio-utils` / `pipewire-pulse`. |
 | `Ctrl+Alt+R` does nothing | Conflicts with another app. Change it in Settings. |
 | GPU out of memory | Rekamind automatically falls back to a lighter mode, then to CPU. Close other GPU apps. |

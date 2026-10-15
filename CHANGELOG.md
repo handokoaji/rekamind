@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Recordings were choppy and transcripts came out empty on Windows** (`wasapi_backend.rs`): the `wasapi` crate reads a single ~10 ms packet per call, but the recorder called it once per 100 ms poll, so only ~10% of the audio was kept and the pacer padded the rest with silence; the VAD then removed all of it. It now drains every ready packet per poll (`drain_packets`, bounded).
+- Installing speaker separation could stall at ~0.01 MB/s: `--extra-index-url` PyTorch made pip prefer `pypi.nvidia.com` for every `nvidia-*` wheel. `torch`/`torchaudio` now come from the PyTorch wheel pages (`--find-links`) and the `nvidia-*` packages from PyPI.
+- A meeting with no tasks stayed in *Perlu ditinjau* forever (the only way out was deciding a task). It now finishes as *Selesai*; a failed summary still stays in review with its retry button.
+- An all-empty JSON answer from the summary service was saved as a blank summary and shown as done. It is now retried and, if still empty, reported as an error with *Buat ulang ringkasan*.
+- Three people were heard as two (and "UNKNOWN" counted as a speaker): the speaker count can be given as a hint, segments in a gap between turns take the nearest speaker, and speakers with nothing said are dropped when a meeting is reprocessed.
+- The language switcher's popup was unreadable on hover (white text on white); it is now two buttons, and `<option>` colours are explicit everywhere.
+- The audio player never played in the desktop app: an `<audio src>` cannot send the bearer token, so the server answered 401. Audio is now fetched with the token and played from a blob.
+
+### Added
+- **Number of speakers** hint per meeting (*Jumlah pembicara* / *Pisahkan ulang*), stored on the meeting (migration 0004) and passed to pyannote.
+- A sentence spoken by two people is cut where the voice changes (word timestamps; a turn needs at least 3 words and 1 second).
+- **Dengarkan rekaman** card on every meeting: play the computer audio or the microphone, even with an empty transcript.
+- While recording with the local engine, one focused screen replaces the meeting list, tasks and settings (they cannot work then).
+- Speaker separation is ticked by default when installing the engine; installing is blocked until a Hugging Face token is saved (it can be pasted in the notice), and a successful install with it turns the setting on.
+- Engine install shows a download progress bar with speed and a stall warning; the raw log is hidden behind *Tampilkan log*.
+- `docs/API_KEYS.md` / `docs/API_KEYS.id.md`: step-by-step guide for a Hugging Face token and for a Groq key or any OpenAI-compatible summary service.
+
 
 ### Fixed
 - Intel GPU (OpenVINO) engine install failed with `ResolutionImpossible`: `optimum-intel[openvino]` needs `nncf`, which caps numpy below 2.5, while the frozen backend shipped numpy 2.5.4 and the install pinned to it, so pip fell back to ancient releases needing an unpublished OpenVINO build. The backend now requires `numpy<2.5`, the install retries once without the numpy/av pins on `ResolutionImpossible`, and CI resolves every engine kind with the real pip (`scripts/check_engine_pack_resolves.py`). Only affects the unreleased Intel/AMD branches.

@@ -102,8 +102,9 @@ ada yang dikirim ke mana pun sebelum Anda memutuskan.
 <td width="50%" valign="top">
 
 ### Transkrip per pembicara
-Mikrofon dan suara sistem dipisah, lalu pembicara dikenali dan bisa Anda beri nama. Transkrip panjang tetap
-mulus (daftar virtual).
+Mikrofon dan suara sistem dipisah, lalu pembicara dikenali dan bisa Anda beri nama. Kalimat yang diucapkan dua orang
+dipotong di titik pergantian suara. Bila aplikasi menggabungkan suara yang mirip, beri tahu jumlah orangnya lalu pisahkan
+ulang. Transkrip panjang tetap mulus (daftar virtual). Setiap rekaman bisa diputar ulang dari halaman rapat.
 
 </td>
 <td width="50%" valign="top">
@@ -212,6 +213,11 @@ terpasang (bawaan di Ubuntu 22.10+ dan Fedora). Untuk AppImage: `chmod +x Rekami
 
 Anda sudah bisa merekam di titik ini, bahkan sebelum mesin AI terpasang. Rekaman menunggu dengan aman.
 
+> **Saat merekam**, aplikasi menampilkan satu layar yang tenang (timer, level mikrofon dan speaker, **Stop**). Daftar rapat,
+> task, dan pengaturan sengaja disembunyikan: mesin pemrosesan dimatikan selama rapat supaya tidak ada yang berat
+> bersaing dengan perekaman, dan kembali setelah Anda menekan Stop. Bila bar level tetap *Hening*, sumber itu tidak
+> menangkap suara: periksa tombol mute dan volume input mikrofon atau headset Anda.
+
 ### Langkah 3: Pasang mesin transkripsi (sekali saja)
 
 Buka **Pengaturan → Mesin transkripsi → Pasang**.
@@ -235,8 +241,11 @@ Ukuran unduhan pasti bergantung pada versi pustaka saat Anda memasang; periksa r
 | **GPU Intel** (terintegrasi Arc/Iris Xe, mis. Core Ultra 7 155H) | **Eksperimental, lewat OpenVINO** (*Pasang untuk Intel GPU*; tidak ada di beta.1). Dibangun dari jalur yang terbukti di v1 pada Core Ultra 7 155H, tetapi **belum diverifikasi di v2 pada perangkat keras nyata**. Model besar butuh beberapa GB RAM saat konversi sekali-jalan; rapat pertama lebih lambat karenanya. |
 | **NPU Intel** | Belum didukung (dievaluasi di v1: tidak andal pada ucapan nyata). |
 
-> Pemisah pembicara (pyannote) bersifat opsional dan perlu token Hugging Face. Tanpa itu, semua suara dianggap satu
-> pembicara per jalur (mikrofon = Anda). Lihat [INSTALL.id.md](docs/INSTALL.id.md).
+**Pemisah pembicara** (siapa bicara apa) tercentang secara bawaan. Fitur ini butuh **token Hugging Face** gratis, jadi
+tombol pasang tetap nonaktif sampai Anda menempelkan token di kartu peringatan di sana (disimpan di penyimpanan kredensial
+sistem). Hilangkan centang bila ingin memasang tanpanya: seluruh suara dari komputer lalu dianggap satu pembicara. Setelah
+pemasangan yang menyertakan pemisah pembicara selesai, aplikasi mengaktifkan setelannya untuk Anda. Panduan langkah demi
+langkah mendapatkan token: **[docs/API_KEYS.id.md](docs/API_KEYS.id.md)**. Detail lain: [INSTALL.id.md](docs/INSTALL.id.md).
 
 ### Langkah 4: Isi layanan ringkasan
 
@@ -245,7 +254,9 @@ Ringkasan dan task dibuat oleh model bahasa lewat API yang kompatibel dengan Ope
 
 - **Kunci API**: dibuat di akun penyedia Anda. Disimpan di Credential Manager (Windows) atau Secret Service (Linux),
   **tidak** di berkas pengaturan.
-- Alamat dan model sudah terisi untuk Groq; ganti bila memakai penyedia lain (OpenAI, OpenRouter, server lokal).
+- Alamat dan model sudah terisi untuk Groq, tetapi **Groq tidak wajib**: layanan apa pun yang kompatibel OpenAI bisa
+  dipakai (OpenAI, OpenRouter, Ollama, atau server yang Anda jalankan sendiri). Contoh dan cara mendapatkan kunci:
+  [docs/API_KEYS.id.md](docs/API_KEYS.id.md).
 
 > Privasi: yang dikirim ke penyedia ini hanyalah **teks transkrip**, bukan audio. Bila itu tidak boleh keluar
 > dari organisasi Anda, arahkan ke model yang Anda jalankan sendiri atau lewati langkah ini (transkrip tetap jadi).
@@ -257,7 +268,23 @@ Bila **Proses otomatis** mati, buka rapat → **Proses sekarang**. Anda akan mel
 
 1. **Ringkasan**: baca keputusan dan jalannya rapat.
 2. **Pembicara**: beri nama (Rina, Dewi, ...), lalu **proses ulang** agar PIC task terhubung ke nama.
+   Jumlah orang terdeteksi salah? Di tab yang sama pilih **Jumlah pembicara** yang sebenarnya lalu klik **Pisahkan ulang**.
+   Tanpa itu, suara yang mirip kadang tergabung.
 3. **Task**: periksa tiap task (tombol putar pada kutipan bukti memutar bagian rekamannya), ubah bila perlu, lalu **Konfirmasi**.
+
+Di bagian atas setiap rapat, **Dengarkan rekaman** memutar suara komputer atau mikrofon, bahkan saat transkrip kosong.
+
+#### Arti tiap status
+
+| Status | Kapan | Yang dilakukan |
+|---|---|---|
+| **Sedang merekam** | Rekaman berjalan | Tidak ada; hentikan dulu |
+| **Siap diproses** | Tersimpan, belum diproses | **Proses sekarang**; pasang mesin dulu bila diminta |
+| **Menunggu giliran** | Menunggu rapat lain | Tunggu; jendela boleh ditutup |
+| **Sedang diproses** | Transkrip, pembicara, ringkasan sedang dibuat | Tunggu progress bar |
+| **Perlu ditinjau** | Ada task yang harus dikonfirmasi atau ditolak, atau ringkasan gagal | Putuskan tiap task; atau **Buat ulang ringkasan** |
+| **Selesai** | Tidak ada lagi yang perlu ditinjau (semua task diputuskan, atau tidak ada task) | Ekspor atau kirim task |
+| **Gagal** | Pemrosesan error (pesan di kartu merah) | Perbaiki penyebabnya, lalu **Coba lagi** |
 
 ### Langkah 6: Ekspor atau kirim
 
@@ -295,6 +322,10 @@ besar di [docs/INSTALL.id.md](docs/INSTALL.id.md).
 | SmartScreen memblokir installer | Installer beta belum bertanda tangan. **More info → Run anyway**. |
 | "Mesin belum terpasang" | Selesaikan **Langkah 3**. Lalu **Uji mesin**. |
 | Ringkasan gagal, transkrip ada | Kunci API salah atau kena batas pemakaian. Transkrip tetap tersimpan; klik **Buat ulang ringkasan** setelah diperbaiki. |
+| Tombol pasang abu-abu | Pemisah pembicara tercentang dan token Hugging Face belum tersimpan. Tempel token di kartu peringatan (panduan: [docs/API_KEYS.id.md](docs/API_KEYS.id.md)) atau hilangkan centang. |
+| Hanya satu pembicara, atau terlalu sedikit | Setel **Pengaturan → Pemisah pembicara** ke *pyannote* (otomatis setelah memasang dengan fitur itu). Bila suara mirip tergabung, isi **Jumlah pembicara** di tab Pembicara rapat lalu pisahkan ulang. |
+| "Tidak dapat terhubung ke server" saat merekam | Wajar: mesin lokal dimatikan selama rapat. Kembali setelah Anda menekan Stop. |
+| Mikrofon senyap | Bar level menampilkan *Hening*. Periksa tombol mute headset, volume input, dan **Settings → Sound → Input** di Windows. |
 | Tidak ada suara rapat (hanya mikrofon) | Windows: pastikan ada perangkat output aktif. Linux: pasang `pulseaudio-utils`/`pipewire-pulse`. |
 | `Ctrl+Alt+R` tidak bereaksi | Bentrok dengan aplikasi lain. Ganti di Pengaturan. |
 | Lambat di komputer GPU AMD/Intel | Periksa **Uji mesin**: bila tidak menampilkan GPU, mesin kembali ke CPU (perbarui driver grafis). Mesin eksperimental juga bisa lebih lambat dari harapan. |
