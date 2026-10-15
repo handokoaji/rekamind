@@ -198,6 +198,7 @@ def install(kind: str, with_diarize: bool = False, pack: Path | None = None) -> 
     """Run pip *inside this interpreter* (works from the frozen backend too). Output goes to stdout."""
     pack = pack or default_pack_dir()
     pack.mkdir(parents=True, exist_ok=True)
+    fix_distlib_for_frozen()  # same fix selftest applies; without it pip dies in distlib when frozen
     from pip._internal.cli.main import (
         main as pip_main,  # bundled with the frozen backend
     )

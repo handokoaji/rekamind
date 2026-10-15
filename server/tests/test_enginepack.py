@@ -65,3 +65,13 @@ def test_selftest_runs_the_distlib_launcher_lookup_that_failed_in_the_frozen_win
     r = enginepack.selftest()
     assert r["ok"] is True, r
     assert enginepack.fix_distlib_for_frozen() is None  # idempotent
+
+
+def test_install_applies_the_frozen_distlib_fix_before_running_pip(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(enginepack, "fix_distlib_for_frozen", lambda: calls.append("fix"))
+    import pip._internal.cli.main as pipmain
+
+    monkeypatch.setattr(pipmain, "main", lambda args: calls.append("pip") or 0)
+    assert enginepack.install("cpu", pack=tmp_path) == 0
+    assert calls == ["fix", "pip"]
