@@ -379,8 +379,14 @@ Riwayat perubahan: [CHANGELOG.md](CHANGELOG.md)
 
 Rekamind gratis dan sumber terbuka (MIT), dikerjakan di waktu luang. Bila aplikasi ini menghemat waktu Anda dan Anda ingin membantu agar terus berjalan:
 
-- 🌍 **Dari mana saja:** [GitHub Sponsors](https://github.com/sponsors/handokoaji)
-- 🇮🇩 **Indonesia** (QRIS, dompet digital): [Saweria](https://saweria.co/handokoaji)
+<p>
+  <a href="https://github.com/sponsors/handokoaji"><img alt="GitHub Sponsors" src="https://img.shields.io/badge/Sponsor-GitHub_Sponsors-db61a2?style=flat-square&logo=githubsponsors&logoColor=white"></a>
+  <a href="https://saweria.co/handokoaji"><img alt="Saweria" src="https://img.shields.io/badge/Dukung_via-Saweria-f59e0b?style=flat-square"></a>
+</p>
+
+🌍 **Dari mana saja:** GitHub Sponsors. 🇮🇩 **Indonesia** (QRIS, dompet digital): Saweria, atau pindai:
+
+<a href="https://saweria.co/handokoaji"><img src="docs/assets/saweria-qr.svg" width="140" alt="Kode QR ke saweria.co/handokoaji"></a>
 
 Dukungan sepenuhnya opsional. Bintang, laporan bug, atau pull request sama berartinya.
 

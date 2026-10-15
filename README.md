@@ -389,8 +389,14 @@ Changelog: [CHANGELOG.md](CHANGELOG.md)
 
 Rekamind is free and open source (MIT), made in spare time. If it saves you time and you would like to help keep it going:
 
-- 🌍 **Anywhere:** [GitHub Sponsors](https://github.com/sponsors/handokoaji)
-- 🇮🇩 **Indonesia** (QRIS, e-wallets): [Saweria](https://saweria.co/handokoaji)
+<p>
+  <a href="https://github.com/sponsors/handokoaji"><img alt="GitHub Sponsors" src="https://img.shields.io/badge/Sponsor-GitHub_Sponsors-db61a2?style=flat-square&logo=githubsponsors&logoColor=white"></a>
+  <a href="https://saweria.co/handokoaji"><img alt="Saweria" src="https://img.shields.io/badge/Support_via-Saweria-f59e0b?style=flat-square"></a>
+</p>
+
+🌍 **Anywhere:** GitHub Sponsors. 🇮🇩 **Indonesia** (QRIS, e-wallets): Saweria, or scan:
+
+<a href="https://saweria.co/handokoaji"><img src="docs/assets/saweria-qr.svg" width="140" alt="QR code to saweria.co/handokoaji"></a>
 
 Support is entirely optional. A star, a bug report or a pull request helps just as much.
 
