@@ -1,4 +1,7 @@
 import importlib.util
+import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -20,8 +23,6 @@ def test_rejects_non_semver(bad):
 
 def test_repo_versions_are_in_sync():
     """Setiap berkas versi v2 harus sama dengan versi di tauri.conf.json (sumber kebenaran rilis)."""
-    import json
     v = json.loads((sv.ROOT / "desktop/src-tauri/tauri.conf.json").read_text())["version"]
-    import subprocess, sys
-    r = subprocess.run([sys.executable, str(sv.ROOT / "scripts/set_version.py"), "--check", v], capture_output=True, text=True)
+    r = subprocess.run([sys.executable, str(sv.ROOT / "scripts/set_version.py"), "--check", v], capture_output=True, text=True)  # noqa: S603 (our own script)
     assert r.returncode == 0, r.stdout + r.stderr

@@ -47,3 +47,11 @@ strip = true
 
 [profile.test]
 opt-level = 2
+
+# Newer clippy suggests `as_chunks` (needs a recent rustc); `chunks_exact` is clear and works on older toolchains.
+# Set here (not in lib.rs) so the integration tests under tests/ are covered too.
+[lints.rust]
+unknown_lints = "allow"
+
+[lints.clippy]
+chunks_exact_to_as_chunks = "allow"
