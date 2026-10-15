@@ -325,7 +325,7 @@ Dinyatakan apa adanya supaya Anda tahu apa yang sedang diuji:
 Direncanakan untuk rilis berikutnya (**belum dikerjakan**; dicatat supaya Anda tahu arahnya, tanpa urutan pasti):
 
 - **GPU Intel**: dukungan eksperimental sudah diimplementasikan (OpenVINO); naik status setelah terverifikasi di perangkat keras nyata.
-- **Akselerasi GPU AMD**, termasuk GPU AMD terintegrasi, bila GPU AMD tersedia.
+- **Akselerasi GPU AMD terintegrasi** lewat Vulkan (whisper.cpp), dengan target **Radeon 780M** (Ryzen 7 8845HS) dan **Radeon 860M** (Ryzen AI 7 350). iGPU yang lebih kecil seperti Vega pada Ryzen 5 5600G tidak dicakup (manfaat diperkirakan kecil). Pengelola tidak punya perangkat AMD, jadi ini baru dirilis setelah ada yang bisa mengujinya: **relawan penguji dipersilakan** (buka issue).
 - **Lebih banyak bahasa antarmuka** selain Indonesia dan Inggris, serta pilihan bahasa keluaran ringkasan dan task.
 
 Sampai saat itu, komputer Intel dan AMD berjalan di CPU (lihat [Dukungan GPU](#dukungan-gpu)).
