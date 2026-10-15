@@ -88,4 +88,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # compose refuses to interpolate without these; the values only need to be non-empty to build the image.
       - run: docker compose build
+        env:
+          REKAMIND_PUBLIC_URL: https://rekamind.example.org
+          REKAMIND_GOOGLE_CLIENT_ID: ci-placeholder
+          REKAMIND_GOOGLE_CLIENT_SECRET: ci-placeholder
+          REKAMIND_SUPERADMINS: admin@example.org
