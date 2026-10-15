@@ -400,6 +400,42 @@ def tune_pip_args(args: list[str], version: tuple[int, int]) -> list[str]:
     return out
 
 
+def force_utf8_streams() -> None:
+    """Write UTF-8 whatever the console code page is, and never raise on an unencodable character. The desktop app
+    reads this output as UTF-8; cp1252 bytes (e.g. the ellipsis) used to make it stop reading and close the pipe."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:  # noqa: BLE001, S110 - not a text stream (e.g. a test double): nothing to do
+            pass
+
+
+class SafeStream:
+    """A write-through wrapper that swallows `OSError` (a broken pipe is `Errno 22` on Windows). pip treats an OSError
+    from its own output as an install failure, so a reader that went away must not abort a 1 GB download."""
+
+    def __init__(self, out):
+        self._out, self.broken = out, False
+
+    def write(self, s: str) -> int:
+        if not self.broken:
+            try:
+                self._out.write(s)
+            except (OSError, ValueError):
+                self.broken = True
+        return len(s)
+
+    def flush(self) -> None:
+        if not self.broken:
+            try:
+                self._out.flush()
+            except (OSError, ValueError):
+                self.broken = True
+
+    def __getattr__(self, name):
+        return getattr(self._out, name)
+
+
 class ProgressReporter:
     """Wraps stdout while pip runs: turns pip's "Progress N of M" lines into a readable line every few seconds
     (MB, percent, speed) and warns when a download makes no progress. A silent 700 MB download over a slow link is
@@ -408,7 +444,7 @@ class ProgressReporter:
     def __init__(self, out, every: float = 5.0, stall: float = 60.0, clock=None):
         import time
 
-        self._out, self._every, self._stall = out, every, stall
+        self._out, self._every, self._stall = SafeStream(out), every, stall
         self._clock = clock or time.monotonic
         self._last_print = self._last_change = self._last_warn = self._clock()
         self._last_cur, self._last_print_cur, self._total, self._active = 0, 0, 0, False
@@ -437,7 +473,7 @@ class ProgressReporter:
             dt = max(now - self._last_print, 1e-6)
             speed = (cur - self._last_print_cur) / dt / 1e6
             of_total = f" / {tot / 1e6:,.0f} MB ({cur * 100 // tot}%)" if tot else " MB"
-            self._out.write(f"  … {cur / 1e6:,.0f}{of_total}, {speed:.2f} MB/s\n")
+            self._out.write(f"  ... {cur / 1e6:,.0f}{of_total}, {speed:.2f} MB/s\n")
             self._last_print, self._last_print_cur = now, cur
 
     def check_stall(self) -> bool:
@@ -531,11 +567,12 @@ def install(kind: str, with_diarize: bool = False, pack: Path | None = None) -> 
             reporter.check_stall()
 
     threading.Thread(target=watchdog, daemon=True).start()
-    real_stdout, sys.stdout = sys.stdout, reporter
+    real_stdout, real_stderr = sys.stdout, sys.stderr
+    sys.stdout, sys.stderr = reporter, SafeStream(real_stderr)
     try:
         code = int(pip_main(args) or 0)
     finally:
-        sys.stdout = real_stdout
+        sys.stdout, sys.stderr = real_stdout, real_stderr
         stop.set()
     if code == 0:
         (pack / "installed.json").write_text(json.dumps({"kind": kind, "diarize": with_diarize}), "utf-8")
@@ -555,7 +592,7 @@ def warmup(model: str, pack: Path | None = None) -> int:
     if _kind(pack) == "openvino":
         from .engines.openvino import prepare_model
 
-        print(f"Mengonversi model {model} ke OpenVINO (sekali saja; beberapa menit dan beberapa GB memori) …", flush=True)
+        print(f"Mengonversi model {model} ke OpenVINO (sekali saja; beberapa menit dan beberapa GB memori) ...", flush=True)
         path = prepare_model(model, log=lambda m: print(m, flush=True))
         print(f"Model siap: {path}", flush=True)
         return 0
@@ -566,7 +603,7 @@ def warmup(model: str, pack: Path | None = None) -> int:
     if os.environ.get("REKAMIND_HF_TOKEN"):
         os.environ.setdefault("HF_TOKEN", os.environ["REKAMIND_HF_TOKEN"])
     cache = os.environ.get("HF_HOME") and str(Path(os.environ["HF_HOME"]) / "hub") or None
-    print(f"Mengunduh model {model} (bisa beberapa GB; progres tampil tiap beberapa detik) …", flush=True)
+    print(f"Mengunduh model {model} (bisa beberapa GB; progres tampil tiap beberapa detik) ...", flush=True)
     done = threading.Event()
 
     def report() -> None:
@@ -576,7 +613,7 @@ def warmup(model: str, pack: Path | None = None) -> int:
         while not done.wait(4):
             try:
                 size = sum(f.stat().st_size for f in root.rglob("*") if f.is_file())
-                print(f"  … {size / 1e6:,.0f} MB terunduh", flush=True)
+                print(f"  ... {size / 1e6:,.0f} MB terunduh", flush=True)
             except OSError:
                 pass
 
@@ -590,6 +627,20 @@ def warmup(model: str, pack: Path | None = None) -> int:
 
 
 def main(argv: list[str]) -> int:
+    force_utf8_streams()
+    try:
+        return _main(argv)
+    finally:
+        # A reader that went away makes the interpreter's final flush fail and replaces the exit code with 120,
+        # even when the command succeeded. Make the final flush harmless.
+        for name in ("stdout", "stderr"):
+            try:
+                getattr(sys, name).flush()
+            except (OSError, ValueError, AttributeError):
+                setattr(sys, name, open(os.devnull, "w", encoding="utf-8"))  # noqa: SIM115
+
+
+def _main(argv: list[str]) -> int:
     import argparse
 
     ap = argparse.ArgumentParser(prog="engines")

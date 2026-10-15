@@ -1,5 +1,6 @@
 """Long engine installs must be observable and robust, without changing what CPU/NVIDIA installs ask pip to do."""
 import io
+import json
 
 from rekamind_server import enginepack
 from rekamind_server.enginepack import (
@@ -52,10 +53,10 @@ def test_progress_lines_are_throttled_and_readable():
     clock.t += 5.0
     r.write("Progress 10500000 of 743000000\n")
     line = out.getvalue().splitlines()[-1]
-    assert line.startswith("  … 10 / 743 MB (1%)") and line.endswith("MB/s")
+    assert line.startswith("  ... 10 / 743 MB (1%)") and line.endswith("MB/s")
     clock.t += 0.1
     r.write("Progress 743000000 of 743000000\n")  # completion always prints
-    assert out.getvalue().splitlines()[-1].startswith("  … 743 / 743 MB (100%)")
+    assert out.getvalue().splitlines()[-1].startswith("  ... 743 / 743 MB (100%)")
 
 
 def test_a_stalled_download_warns_once_per_interval_and_never_when_idle():
@@ -103,3 +104,92 @@ def test_diagnostics_probe_never_raises_without_a_network(monkeypatch):
     describe_environment("cpu", log=lines.append, probe=True)
     assert any("pypi.org: GAGAL" in line for line in lines)
     assert enginepack.pip_version() >= (0, 0)
+
+
+# ---- the Windows failure: a reader that went away / a code page that is not UTF-8 -----------------------------
+class DeadPipe:
+    """What Windows gives a writer whose reader closed the pipe: OSError [Errno 22] on write and on flush."""
+
+    def write(self, s):
+        raise OSError(22, "Invalid argument")
+
+    def flush(self):
+        raise OSError(22, "Invalid argument")
+
+
+def test_a_dead_stdout_never_aborts_the_install_output_path():
+    from rekamind_server.enginepack import SafeStream
+
+    s = SafeStream(DeadPipe())
+    assert s.write("Downloading nvidia_cuda_nvrtc_cu12 (76.4 MB)\n") > 0  # pip would have failed with "Could not install packages"
+    s.flush()
+    assert s.broken is True
+    assert s.write("more") == 4  # and stays quiet afterwards
+
+
+def test_progress_reporter_survives_a_dead_pipe():
+    r = ProgressReporter(DeadPipe(), clock=Clock())
+    r.write("Collecting x\n")
+    r.write("Progress 0 of 1000000\n")
+    r.write("Progress 1000000 of 1000000\n")
+    r.flush()
+    assert r.check_stall() is False
+
+
+def test_everything_we_print_during_an_install_is_ascii():
+    """cp1252 turns the ellipsis into 0x85, which is not UTF-8 and used to make the desktop app stop reading."""
+    out, clock = io.StringIO(), Clock()
+    r = ProgressReporter(out, every=1.0, stall=10.0, clock=clock)
+    r.write("Progress 0 of 743000000\n")
+    clock.t += 2
+    r.write("Progress 100000000 of 743000000\n")
+    clock.t += 20
+    r.check_stall()
+    r.write("Progress 743000000 of 743000000\n")
+    lines: list[str] = []
+    describe_environment("cuda", log=lines.append, probe=False, with_diarize=True)
+    text = out.getvalue() + "\n".join(lines)
+    assert text and all(ord(c) < 128 for c in text), [c for c in text if ord(c) >= 128]
+
+
+def test_force_utf8_makes_cp1252_consoles_emit_valid_utf8(monkeypatch):
+    import io as _io
+
+    raw = _io.BytesIO()
+    cp1252 = _io.TextIOWrapper(raw, encoding="cp1252", write_through=True)
+    monkeypatch.setattr(enginepack.sys, "stdout", cp1252)
+    monkeypatch.setattr(enginepack.sys, "stderr", _io.TextIOWrapper(_io.BytesIO(), encoding="cp1252"))
+    enginepack.force_utf8_streams()
+    cp1252.write("  … 10 MB\n")
+    assert raw.getvalue() == "  … 10 MB\n".encode()  # valid UTF-8 (E2 80 A6), not the single byte 0x85
+    raw.getvalue().decode("utf-8")  # does not raise
+
+
+def test_a_broken_stdout_at_exit_cannot_turn_success_into_exit_code_120(monkeypatch):
+    class Broken:
+        def reconfigure(self, **k):
+            pass
+
+        def write(self, s):
+            return len(s)
+
+        def flush(self):
+            raise OSError(22, "Invalid argument")
+
+    monkeypatch.setattr(enginepack.sys, "stdout", Broken())
+    monkeypatch.setattr(enginepack.sys, "stderr", Broken())
+    monkeypatch.setattr(enginepack, "_main", lambda argv: 0)
+    assert enginepack.main(["status"]) == 0
+    enginepack.sys.stdout.flush()  # replaced by a harmless stream: the interpreter's own final flush now succeeds
+    enginepack.sys.stderr.flush()
+
+
+def test_cli_status_is_valid_utf8_even_when_python_would_use_a_legacy_code_page(tmp_path):
+    import os
+    import subprocess
+    import sys
+
+    env = {**os.environ, "PYTHONIOENCODING": "cp1252", "REKAMIND_DATA_DIR": str(tmp_path)}
+    env.pop("PYTHONUTF8", None)
+    p = subprocess.run([sys.executable, "-m", "rekamind_server.enginepack", "status"], capture_output=True, env=env, check=True)  # noqa: S603
+    json.loads(p.stdout.decode("utf-8"))

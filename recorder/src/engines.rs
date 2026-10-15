@@ -137,10 +137,57 @@ impl EngineTool {
     }
 }
 
-fn pump<R: BufRead>(r: R, tx: mpsc::Sender<String>) {
-    for line in r.lines().map_while(Result::ok) {
-        if tx.send(line).is_err() {
-            break;
+/// Forward every line of a child's output. Must never stop early: if this reader quits, the pipe closes and the
+/// child's next write fails (on Windows with `OSError: [Errno 22]`), which killed a long engine install. Bytes that
+/// are not valid UTF-8 (a console code page, e.g. cp1252's "…" = 0x85) are replaced, not treated as the end.
+fn pump<R: BufRead>(mut r: R, tx: mpsc::Sender<String>) {
+    let mut buf = Vec::new();
+    loop {
+        buf.clear();
+        match r.read_until(b'\n', &mut buf) {
+            Ok(0) => break,
+            Ok(_) => {
+                let text = String::from_utf8_lossy(&buf);
+                let line = text.trim_end_matches(['\r', '\n']).to_string();
+                if tx.send(line).is_err() {
+                    break;
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => break,
         }
+    }
+}
+
+#[cfg(test)]
+mod pump_tests {
+    use super::*;
+    use std::io::Cursor;
+
+    fn run(bytes: &[u8]) -> Vec<String> {
+        let (tx, rx) = mpsc::channel();
+        pump(BufReader::new(Cursor::new(bytes.to_vec())), tx);
+        rx.iter().collect()
+    }
+
+    #[test]
+    fn keeps_reading_after_a_line_that_is_not_utf8() {
+        // "  \x85 10 MB" is cp1252 for "  … 10 MB": invalid UTF-8. Everything after it must still arrive.
+        let got = run(b"first\n  \x85 10 MB\nthird\nfourth\n");
+        assert_eq!(got.len(), 4, "{got:?}");
+        assert_eq!(got[0], "first");
+        assert!(got[1].contains("10 MB"));
+        assert_eq!((got[2].as_str(), got[3].as_str()), ("third", "fourth"));
+    }
+
+    #[test]
+    fn handles_crlf_blank_lines_and_a_last_line_without_newline() {
+        assert_eq!(run(b"a\r\n\nb"), vec!["a", "", "b"]);
+        assert!(run(b"").is_empty());
+    }
+
+    #[test]
+    fn utf8_text_is_preserved() {
+        assert_eq!(run("  … 5 MB\n".as_bytes()), vec!["  … 5 MB"]);
     }
 }

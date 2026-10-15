@@ -38,11 +38,14 @@ relevan. JANGAN mengubah kode (hanya prasyarat). JANGAN menulis rahasia (kunci A
    `Get-ChildItem Env: | Where-Object Name -match 'PIP|PROXY|SSL|REQUESTS'` di terminal yang kamu pakai (catat, jangan ubah).
 
 ## BAGIAN 1. Pemasangan NVIDIA dari aplikasi (inti uji)
-N1 [pasang NVIDIA dari UI]. Buka app -> Pengaturan -> Mesin transkripsi -> (tanpa pemisah pembicara) "Pasang untuk NVIDIA GPU".
+N1 [pasang NVIDIA dari UI]. Buka app -> Pengaturan -> Mesin transkripsi -> centang "Sertakan pemisah pembicara (pyannote)" (ini skenario yang
+   sebelumnya gagal dengan `OSError: [Errno 22] Invalid argument` / kode 120 tepat saat unduhan pertama dimulai; unduhan ikut menarik PyTorch dan
+   banyak paket CUDA) lalu "Pasang untuk NVIDIA GPU". Pasang TANPA pyannote hanya bila yang dengan pyannote sudah lulus.
    Catat dan SALIN ke laporan: (a) blok "Diagnostik" di awal log (semua barisnya), (b) apakah muncul baris progres `  … X / Y MB (Z%), N.NN MB/s`
    tiap ±5 dtk, (c) kecepatan rata-rata per berkas besar (cuDNN ±743 MB, cuBLAS ±553 MB), (d) apakah peringatan "Tidak ada kemajuan unduhan"
    muncul dan kapan, (e) total waktu sampai selesai atau sampai kamu hentikan (maks 40 menit; bila lebih, Batalkan dan catat), (f) ukuran
-   `engine-pack` akhir. Panel TIDAK boleh hang/berkedip; konsol hitam tidak boleh muncul.
+   `engine-pack` akhir. Panel TIDAK boleh hang/berkedip; konsol hitam tidak boleh muncul. Pemasangan TIDAK boleh berhenti dengan `Errno 22`,
+   "Exception ignored on flushing sys.stdout", atau kode keluar 120: bila terjadi, salin 30 baris terakhir log PERSIS (itu kegagalan inti).
 N2 [uji mesin]. "Uji mesin" harus: faster-whisper + "GPU NVIDIA terdeteksi: 1". CLI `engines check` -> `"ok": true`, `cuda_devices: 1`.
    `engines status` -> `kind: "cuda"`, `asr: true`, `gpus` memuat `vendor: "nvidia"` (tanpa rekomendasi AMD/Intel di panel karena NVIDIA ada).
 N3 [transkripsi di GPU]. Proses rekaman Indonesia >= 3 menit. Log harus `loading whisper large-v3 on cuda (int8)` (BUKAN cpu), selesai

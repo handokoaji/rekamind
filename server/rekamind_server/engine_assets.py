@@ -121,7 +121,7 @@ def download(url: str, dest: Path, sha256: str | None = None, log: Callable[[str
                 if time.monotonic() - last >= every:
                     last = time.monotonic()
                     pct = f" ({done * 100 // total}%)" if total else ""
-                    log(f"  … {done / 1e6:,.0f} MB{pct}")
+                    log(f"  ... {done / 1e6:,.0f} MB{pct}")
         if total and done != total:
             raise AssetError(f"Unduhan terputus ({done} dari {total} byte).")
         if sha256 and sha256_file(part).lower() != sha256.lower():
@@ -178,7 +178,7 @@ def install_program(pack: Path, log: Callable[[str], None] = print) -> Path:
     manifest = fetch_manifest()
     asset = pick_asset(manifest)
     wc = manifest["whispercpp"]
-    log(f"whisper.cpp {wc.get('version', '?')} untuk {platform_key()} (SHA-256 {asset['sha256'][:12]}…)")
+    log(f"whisper.cpp {wc.get('version', '?')} untuk {platform_key()} (SHA-256 {asset['sha256'][:12]}...)")
     target = pack / "whispercpp"
     zip_path = pack / "whispercpp.zip"
     download(asset["url"], zip_path, asset["sha256"], log)
@@ -229,7 +229,7 @@ def ensure_model(name: str, quant: str, log: Callable[[str], None] = print) -> P
     last: Exception | None = None
     for f in model_files(name, quant):
         url = f"{MODEL_REPO_URL}/{f}"
-        log(f"Mengunduh model {f} (bisa ratusan MB sampai beberapa GB) …")
+        log(f"Mengunduh model {f} (bisa ratusan MB sampai beberapa GB) ...")
         try:
             return download(url, models_dir() / f, None, log)
         except AssetError as e:

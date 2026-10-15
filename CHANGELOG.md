@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+### Fixed
+- Engine install could die with `OSError: [Errno 22] Invalid argument` (exit code 120) when pip printed its first download progress line: the desktop app's output reader stopped at the first non-UTF-8 line (the progress line's ellipsis in a cp1252 console) and closed the pipe. The reader now never stops early (invalid bytes are replaced), the backend CLI writes UTF-8, install output is ASCII, and a closed pipe can no longer abort pip or turn a success into exit code 120. Regression introduced after beta.1 on the feature branches; beta.1 is not affected.
+
 ### Changed
 - Engine install is observable and more robust: a diagnostics block (pip version, package sources/proxies with credentials masked, host reachability), a progress line every few seconds with speed, a warning when a download stalls, longer timeouts/retries, and resumable downloads on pip >= 25.1. Arguments for CPU/NVIDIA installs are otherwise unchanged.
 

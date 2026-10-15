@@ -97,7 +97,7 @@ def prepare_model(name: str, log: Callable[[str], None] = print) -> Path:
         return out
     out.parent.mkdir(parents=True, exist_ok=True)
     mid = model_id(name)
-    log(f"Mengunduh dan mengonversi {mid} …")
+    log(f"Mengunduh dan mengonversi {mid} ...")
     model = OVModelForSpeechSeq2Seq.from_pretrained(mid, export=True, compile=False)
     model.save_pretrained(out)
     WhisperProcessor.from_pretrained(mid).save_pretrained(out)  # so later loads work offline
