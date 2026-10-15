@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### Fixed
+- Intel GPU (OpenVINO) engine install failed with `ResolutionImpossible`: `optimum-intel[openvino]` needs `nncf`, which caps numpy below 2.5, while the frozen backend shipped numpy 2.5.4 and the install pinned to it, so pip fell back to ancient releases needing an unpublished OpenVINO build. The backend now requires `numpy<2.5`, the install retries once without the numpy/av pins on `ResolutionImpossible`, and CI resolves every engine kind with the real pip (`scripts/check_engine_pack_resolves.py`). Only affects the unreleased Intel/AMD branches.
 - Engine install could die with `OSError: [Errno 22] Invalid argument` (exit code 120) when pip printed its first download progress line: the desktop app's output reader stopped at the first non-UTF-8 line (the progress line's ellipsis in a cp1252 console) and closed the pipe. The reader now never stops early (invalid bytes are replaced), the backend CLI writes UTF-8, install output is ASCII, and a closed pipe can no longer abort pip or turn a success into exit code 120. Regression introduced after beta.1 on the feature branches; beta.1 is not affected.
 
 ### Changed

@@ -414,10 +414,12 @@ class SafeStream:
     """A write-through wrapper that swallows `OSError` (a broken pipe is `Errno 22` on Windows). pip treats an OSError
     from its own output as an install failure, so a reader that went away must not abort a 1 GB download."""
 
-    def __init__(self, out):
-        self._out, self.broken = out, False
+    def __init__(self, out, keep: int = 0):
+        self._out, self.broken, self._keep, self.recent = out, False, keep, ""
 
     def write(self, s: str) -> int:
+        if self._keep:  # remember the tail so the caller can recognise a known pip failure
+            self.recent = (self.recent + s)[-self._keep:]
         if not self.broken:
             try:
                 self._out.write(s)
@@ -444,7 +446,7 @@ class ProgressReporter:
     def __init__(self, out, every: float = 5.0, stall: float = 60.0, clock=None):
         import time
 
-        self._out, self._every, self._stall = SafeStream(out), every, stall
+        self._out, self._every, self._stall = SafeStream(out, keep=6000), every, stall
         self._clock = clock or time.monotonic
         self._last_print = self._last_change = self._last_warn = self._clock()
         self._last_cur, self._last_print_cur, self._total, self._active = 0, 0, 0, False
@@ -475,6 +477,10 @@ class ProgressReporter:
             of_total = f" / {tot / 1e6:,.0f} MB ({cur * 100 // tot}%)" if tot else " MB"
             self._out.write(f"  ... {cur / 1e6:,.0f}{of_total}, {speed:.2f} MB/s\n")
             self._last_print, self._last_print_cur = now, cur
+
+    @property
+    def recent(self) -> str:
+        return self._out.recent
 
     def check_stall(self) -> bool:
         """Called periodically from a watchdog thread; True (and a warning line) when a download has stood still."""
@@ -558,8 +564,25 @@ def install(kind: str, with_diarize: bool = False, pack: Path | None = None) -> 
             (pack / "installed.json").write_text(json.dumps({"kind": kind, "diarize": False}), "utf-8")
             return 0
     describe_environment(kind, log=lambda m: print(m, flush=True), with_diarize=with_diarize)
-    args = tune_pip_args(pip_args(kind, pack, with_diarize, _bundled_pins()), pip_version())
+    pins = _bundled_pins()
+    code, text = _run_pip(kind, pack, with_diarize, pip_main, pins)
+    if code != 0 and pins and "ResolutionImpossible" in text:
+        # The pack's libraries must agree with the numpy/av inside the frozen backend; when they cannot (a library
+        # releases a stricter cap), one retry without those pins still gives a usable pack, because the app's own
+        # copies win at run time. `check` ("Uji mesin") verifies the result.
+        print("Aviso: pip tidak menemukan kombinasi paket yang cocok dengan versi numpy/av bawaan aplikasi; mencoba sekali lagi "
+              "tanpa mengikat versi itu (pustaka bawaan aplikasi tetap dipakai saat berjalan).", flush=True)
+        code, _ = _run_pip(kind, pack, with_diarize, pip_main, [])
+    if code == 0:
+        (pack / "installed.json").write_text(json.dumps({"kind": kind, "diarize": with_diarize}), "utf-8")
+    return code
+
+
+def _run_pip(kind: str, pack: Path, with_diarize: bool, pip_main, pins: list[str]) -> tuple[int, str]:
+    """One pip run with observable progress and a shielded output; returns (exit code, tail of its output)."""
+    args = tune_pip_args(pip_args(kind, pack, with_diarize, pins), pip_version())
     reporter = ProgressReporter(sys.stdout)
+    err = SafeStream(sys.stderr, keep=6000)
     stop = threading.Event()
 
     def watchdog() -> None:
@@ -568,15 +591,13 @@ def install(kind: str, with_diarize: bool = False, pack: Path | None = None) -> 
 
     threading.Thread(target=watchdog, daemon=True).start()
     real_stdout, real_stderr = sys.stdout, sys.stderr
-    sys.stdout, sys.stderr = reporter, SafeStream(real_stderr)
+    sys.stdout, sys.stderr = reporter, err
     try:
         code = int(pip_main(args) or 0)
     finally:
         sys.stdout, sys.stderr = real_stdout, real_stderr
         stop.set()
-    if code == 0:
-        (pack / "installed.json").write_text(json.dumps({"kind": kind, "diarize": with_diarize}), "utf-8")
-    return code
+    return code, reporter.recent + err.recent
 
 
 def warmup(model: str, pack: Path | None = None) -> int:

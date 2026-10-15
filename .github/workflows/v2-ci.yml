@@ -58,6 +58,21 @@ jobs:
         if: matrix.os == 'windows-latest'
         with: { name: rekamind-rec-windows, path: recorder/target/release/rekamind-rec.exe }
 
+  # The engine pack is installed on users' machines next to the frozen backend and must resolve with its numpy/av.
+  # Unit tests cannot see a dependency cap (nncf < numpy 2.5 broke the Intel install), so run the real resolver.
+  engine-resolve:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - run: pip install -e "server[dev]"
+      - run: python scripts/check_engine_pack_resolves.py
+
   desktop:
     strategy:
       fail-fast: false

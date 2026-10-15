@@ -193,3 +193,54 @@ def test_cli_status_is_valid_utf8_even_when_python_would_use_a_legacy_code_page(
     env.pop("PYTHONUTF8", None)
     p = subprocess.run([sys.executable, "-m", "rekamind_server.enginepack", "status"], capture_output=True, env=env, check=True)  # noqa: S603
     json.loads(p.stdout.decode("utf-8"))
+
+
+# ---- "ResolutionImpossible" with the numpy pinned to the frozen backend's version (Intel/OpenVINO install) -------
+def _fake_pip(monkeypatch, tmp_path, outcomes):
+    """Replace pip's entry point; `outcomes` = [(exit code, text written to stderr), ...] in call order."""
+    import pip._internal.cli.main as pipmain
+
+    calls: list[list[str]] = []
+
+    def fake_main(args):
+        calls.append(list(args))
+        code, text = outcomes[len(calls) - 1]
+        if text:
+            enginepack.sys.stderr.write(text)
+        return code
+
+    monkeypatch.setattr(pipmain, "main", fake_main)
+    monkeypatch.setattr(enginepack, "describe_environment", lambda *a, **k: None)
+    monkeypatch.setattr(enginepack, "_bundled_pins", lambda: ["numpy==2.5.4", "av==16.1.0"])
+    return calls
+
+
+def test_resolution_failure_with_bundled_pins_is_retried_once_without_them(monkeypatch, tmp_path):
+    calls = _fake_pip(monkeypatch, tmp_path, [(1, "ERROR: ResolutionImpossible: for help visit https://pip.pypa.io\n"), (0, "")])
+    assert enginepack.install("openvino", pack=tmp_path / "pack") == 0
+    assert len(calls) == 2
+    assert "numpy==2.5.4" in calls[0] and "av==16.1.0" in calls[0]
+    assert "numpy==2.5.4" not in calls[1] and "av==16.1.0" not in calls[1] and "optimum-intel[openvino]>=1.20" in calls[1]
+    assert json.loads((tmp_path / "pack" / "installed.json").read_text())["kind"] == "openvino"
+
+
+def test_other_failures_are_not_retried_and_leave_no_marker(monkeypatch, tmp_path):
+    calls = _fake_pip(monkeypatch, tmp_path, [(1, "ERROR: Could not install packages due to an OSError: network is unreachable\n")])
+    assert enginepack.install("cuda", pack=tmp_path / "pack") == 1
+    assert len(calls) == 1 and not (tmp_path / "pack" / "installed.json").exists()
+
+
+def test_a_normal_install_runs_pip_once_with_the_pins(monkeypatch, tmp_path):
+    calls = _fake_pip(monkeypatch, tmp_path, [(0, "")])
+    assert enginepack.install("cpu", pack=tmp_path / "pack") == 0
+    assert len(calls) == 1 and "numpy==2.5.4" in calls[0] and "faster-whisper>=1.0" in calls[0]
+
+
+def test_the_backend_numpy_stays_compatible_with_the_openvino_stack():
+    """nncf (pulled in by optimum-intel[openvino]) caps numpy below 2.5. The frozen backend must not ship a numpy the
+    engine pack cannot be resolved against: that made the Intel install fail with ResolutionImpossible."""
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text()
+    line = next(entry for entry in text.splitlines() if '"numpy' in entry)
+    assert "<2.5" in line, line
