@@ -16,7 +16,7 @@
 - Bahasa Indonesia for all user-facing strings (labels, status text, error messages), matching the rest of the app.
 - Every new async DB function opens its own session via a `session_factory` parameter (not a shared caller session) unless explicitly chaining within one commit boundary — this is what makes actions independently triggerable from separate button clicks / background threads.
 - Follow existing test conventions exactly: in-memory `sqlite+aiosqlite:///:memory:` via `make_engine`/`init_db`/`make_session_factory`, fakes/mocks for transcriber/diarizer/summarizer, `asyncio.run(scenario())` wrapping async test bodies.
-- The live Postgres DB at `10.55.11.209` needs the same new columns added manually via `ALTER TABLE` after each model change (SQLAlchemy's `create_all` only creates missing tables, never alters existing ones) — call this out explicitly in Task 1's steps, using the `.venv` python + `app.config.get_settings()` pattern already used earlier this session, not raw SQL with hand-typed credentials.
+- The live Postgres DB at `DB_HOST` needs the same new columns added manually via `ALTER TABLE` after each model change (SQLAlchemy's `create_all` only creates missing tables, never alters existing ones) — call this out explicitly in Task 1's steps, using the `.venv` python + `app.config.get_settings()` pattern already used earlier this session, not raw SQL with hand-typed credentials.
 
 ---
 

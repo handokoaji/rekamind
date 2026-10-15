@@ -1,0 +1,26 @@
+name: Laporan bug
+description: Ada yang tidak berjalan di rilis beta
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Jangan** lampirkan rekaman, transkrip rahasia, kunci API, atau token. Tutupi nama/alamat pribadi pada tangkapan layar.
+  - type: input
+    id: version
+    attributes: { label: Versi Rekamind, placeholder: "0.4.0-beta.1" }
+    validations: { required: true }
+  - type: dropdown
+    id: os
+    attributes: { label: Sistem, options: [Windows 11, Windows 10, "Linux (Debian/Ubuntu)", Linux lain] }
+    validations: { required: true }
+  - type: dropdown
+    id: engine
+    attributes: { label: Mesin transkripsi, options: [CPU, NVIDIA GPU, Belum terpasang, Server bersama] }
+  - type: textarea
+    id: what
+    attributes: { label: Apa yang terjadi?, description: "Langkah, hasil yang diharapkan, hasil sebenarnya." }
+    validations: { required: true }
+  - type: textarea
+    id: log
+    attributes: { label: Cuplikan log, description: "Bagian relevan dari backend.log (tanpa kunci/token).", render: text }

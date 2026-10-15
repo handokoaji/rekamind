@@ -1,3 +1,4 @@
+import { Logo } from "./Logo";
 import { CheckSquare, FileAudio, Settings, Users, WifiOff } from "lucide-react";
 import { Suspense, useEffect, useRef } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
@@ -81,9 +82,7 @@ export function AppShell() {
       <header className="sticky top-0 z-20 border-b border-border bg-bg/85 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center gap-6 px-4 py-3">
           <NavLink to="/" className="flex items-center gap-2 font-semibold tracking-tight">
-            <span className="grid size-8 place-items-center rounded-lg bg-primary text-primary-fg" aria-hidden>
-              <span className="size-3 rounded-full border-[3px] border-current" />
-            </span>
+            <Logo className="size-8" />
             Rekamind
           </NavLink>
           <nav aria-label="Utama" className="flex gap-1">

@@ -1,3 +1,4 @@
+import { Logo } from "./Logo";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { useState } from "react";
@@ -54,9 +55,7 @@ export function LoginScreen() {
   return (
     <main className="grid min-h-screen place-items-center px-4">
       <Card className="flex w-full max-w-sm flex-col items-center gap-6 p-8 text-center">
-        <span className="grid size-12 place-items-center rounded-xl bg-primary text-primary-fg" aria-hidden>
-          <span className="size-4 rounded-full border-[3px] border-current" />
-        </span>
+        <Logo className="size-12" />
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Rekamind</h1>
           <p className="mt-2 text-sm text-muted">Masuk untuk melihat rapat, transkrip, dan task Anda.</p>

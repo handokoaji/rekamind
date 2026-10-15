@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0-beta.1] - 2026-10-15
+
+Rilis pertama generasi v2 (pre-release, untuk diuji). Aplikasi v1 (Tkinter) digantikan; tidak kompatibel.
+
+### Ditambahkan
+- Perekam Rust (mikrofon + suara sistem) dan aplikasi desktop Tauri untuk Windows dan Linux, dengan backend lokal dibundel.
+- Backend FastAPI: antrean job, transkripsi (faster-whisper), pemisahan pembicara (opsional), ekstraksi ringkasan/task via LLM kompatibel OpenAI.
+- Antarmuka web React: rapat, ringkasan, task, transkrip, pembicara, pengaturan.
+- Ekspor Word/Markdown/JSON; integrasi GitHub, GitLab, webhook bertanda tangan; zona waktu (bawaan WIB).
+- Login Google (OIDC + PKCE) dan kepemilikan per pengguna untuk server bersama; Docker Compose.
+- Pemasangan mesin transkripsi on-demand dari aplikasi (CPU atau NVIDIA).
+
+### Diketahui
+- Installer belum bertanda tangan; Linux desktop belum diuji di mesin sungguhan. Lihat catatan rilis.
+
 ## [0.3.0] - 2026-09-23
 
 ### Added
@@ -191,3 +206,4 @@ is implemented and unit-tested but not yet run on real hardware.
   directory.
 
 [0.1.0]: https://github.com/handokoaji/rekamind/releases/tag/v0.1.0
+[0.4.0-beta.1]: https://github.com/handokoaji/rekamind/releases/tag/v0.4.0-beta.1

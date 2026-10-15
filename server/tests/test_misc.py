@@ -44,3 +44,13 @@ async def test_job_that_keeps_killing_the_worker_is_failed_not_retried_forever()
     async with sf() as s:
         m = await s.get(Meeting, "b" * 32)
         assert m.status == "failed" and "berhenti tiba-tiba" in m.error
+
+
+def test_demo_engines_produce_realistic_content(tmp_path):
+    from rekamind_server.engines.registry import build_engines
+
+    e = build_engines(Settings(engines="demo"))
+    assert e is not None and e.description["extractor"] == "demo"
+    mic = e.transcriber.transcribe(tmp_path / "mic.wav", "id")
+    assert len(mic) >= 3 and all(s.end_ms > s.start_ms for s in mic)
+    assert e.diarizer.diarize(tmp_path / "speaker.wav")

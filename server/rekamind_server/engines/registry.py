@@ -12,8 +12,12 @@ def build_engines(settings: Settings) -> Engines | None:
         from .fake import fake_engines
 
         return fake_engines()
+    if name == "demo":
+        from .fake import demo_engines
+
+        return demo_engines()
     if name != "local":
-        raise ValueError(f"REKAMIND_ENGINES='{name}' tidak dikenal (none | fake | local)")
+        raise ValueError(f"REKAMIND_ENGINES='{name}' tidak dikenal (none | fake | demo | local)")
 
     if settings.hf_token:
         # huggingface_hub reads this: without it the Whisper download is anonymous (slower, rate-limited)

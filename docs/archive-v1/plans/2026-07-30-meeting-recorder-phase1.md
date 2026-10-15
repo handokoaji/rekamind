@@ -17,7 +17,7 @@
 - Diarization hanya berjalan pada stream speaker/loopback; mic selalu berlabel "Anda" (spec §3).
 - Audio WAV disimpan permanen di `./recordings/<meeting_id>/` (spec §5, §9).
 - MoM di-generate via Groq model `llama-3.3-70b-versatile`, hasil disimpan ke DB dan di-export ke `.docx` rapi (spec §5, §6).
-- DB: Postgres `meeting_recorder` di `10.55.11.209` (sudah dibuat); skema mengikuti spec §6 persis (meetings, speakers, transcript_segments, recordings, summaries).
+- DB: Postgres `meeting_recorder` di `DB_HOST` (sudah dibuat); skema mengikuti spec §6 persis (meetings, speakers, transcript_segments, recordings, summaries).
 - UI: Tkinter native saja, tanpa browser/web server, tanpa autentikasi, tanpa auto-start Windows (spec §8).
 - Package manager: pip + `pyproject.toml` biasa.
 - Bahasa UI: Bahasa Indonesia.

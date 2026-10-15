@@ -105,7 +105,7 @@ Tkinter agar tidak menambah proses/RAM browser.
 
 ## 6. Skema Database (Postgres `meeting_recorder`)
 
-Server: `10.55.11.209:5432`, kredensial di `.env` (`POSTGRES_*`,
+Server: `DB_HOST:5432`, kredensial di `.env` (`POSTGRES_*`,
 `DATABASE_URL`). Database `meeting_recorder` sudah dibuat.
 
 - `meetings`: id, title, scheduled_time (nullable), start_time, end_time, status (`scheduled|recording|processing|completed|failed`), created_at
@@ -117,12 +117,12 @@ Server: `10.55.11.209:5432`, kredensial di `.env` (`POSTGRES_*`,
 ## 7. Konfigurasi (.env)
 
 ```
-POSTGRES_HOST=10.55.11.209
+POSTGRES_HOST=DB_HOST
 POSTGRES_PORT=5432
 POSTGRES_USER=admin
 POSTGRES_PASSWORD=admin
 POSTGRES_DB=meeting_recorder
-DATABASE_URL=postgresql+asyncpg://admin:admin@10.55.11.209:5432/meeting_recorder
+DATABASE_URL=postgresql+asyncpg://USER:PASSWORD@DB_HOST:5432/meeting_recorder
 GROQ_API_KEY=            # diisi manual oleh user
 HF_TOKEN=                # diisi manual oleh user (butuh accept terms pyannote di HuggingFace)
 ```
