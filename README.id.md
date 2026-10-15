@@ -25,6 +25,10 @@
 > Windows, tetapi belum di banyak mesin. **Jangan jadikan Rekamind satu-satunya salinan rekaman yang penting.**
 > Daftar batasan yang jujur ada di [Batasan rilis beta](#-batasan-rilis-beta).
 
+> [!NOTE]
+> **Bahasa:** antarmuka tersedia dalam **Indonesia (bawaan) dan Inggris**; ganti lewat pemilih bahasa di bilah atas (juga ada di layar masuk).
+> Ringkasan, keputusan, dan task yang dihasilkan saat ini **hanya berbahasa Indonesia**, apa pun bahasa antarmukanya.
+
 ## Kenapa Rekamind
 
 - **Ringan saat merekam.** Perekam kecil (Rust) yang menangkap mikrofon dan suara sistem. Tidak ada model AI yang
@@ -309,7 +313,18 @@ Dinyatakan apa adanya supaya Anda tahu apa yang sedang diuji:
 - **GPU**: hanya CPU dan NVIDIA CUDA yang ada. **GPU AMD dan Intel belum didukung dan belum pernah diuji.**
 - **Kualitas** transkrip, pemisahan pembicara, dan ekstraksi task belum diukur pada banyak jenis audio. Tinjau
   hasilnya, terutama nama dan tenggat.
+- **Bahasa:** antarmuka tersedia dalam Indonesia dan Inggris; ringkasan dan task yang dihasilkan hanya berbahasa Indonesia. Pesan dari server atau perekam Rust (mis. sebagian teks galat) belum diterjemahkan.
 - Aplikasi lama (v1, Tkinter) ada di riwayat git dan tag `v0.1.0` sampai `v0.3.0`; v2 tidak kompatibel dengannya.
+
+## 🗺️ Peta jalan (roadmap)
+
+Direncanakan untuk rilis berikutnya (**belum dikerjakan**; dicatat supaya Anda tahu arahnya, tanpa urutan pasti):
+
+- **Akselerasi GPU Intel**, termasuk GPU terintegrasi seperti pada Intel Core Ultra 7 155H.
+- **Akselerasi GPU AMD**, termasuk GPU AMD terintegrasi, bila GPU AMD tersedia.
+- **Lebih banyak bahasa antarmuka** selain Indonesia dan Inggris, serta pilihan bahasa keluaran ringkasan dan task.
+
+Sampai saat itu, komputer Intel dan AMD berjalan di CPU (lihat [Dukungan GPU](#dukungan-gpu)).
 
 ## 🛠️ Untuk pengembang
 

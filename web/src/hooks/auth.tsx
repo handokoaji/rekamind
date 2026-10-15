@@ -4,6 +4,7 @@ import { api, ApiError, onUnauthorized, setAuthToken } from "../lib/api";
 import { useBackendReady } from "../desktop/backend";
 import { desktop, isDesktop } from "../desktop/bridge";
 import type { Me } from "../lib/types";
+import { t } from "../lib/i18n";
 
 interface Ctx {
   me: Me;
@@ -43,7 +44,7 @@ export function useAuthState(): AuthState {
   // "starting" / "cannot start" itself, and the backend still demands the local secret.
   if (local) return { status: "ready", me: LOCAL_ME };
   if (backend.mode === null && isDesktop()) return { status: "loading" };
-  if (backend.status === "error" && !backend.everReady) return { status: "error", error: new Error(backend.error ?? "Tidak bisa menyalakan layanan.") };
+  if (backend.status === "error" && !backend.everReady) return { status: "error", error: new Error(backend.error ?? t("Tidak bisa menyalakan layanan.")) };
   if (!up) return { status: "loading" };
   if (q.isPending) return { status: "loading" };
   if (q.error instanceof ApiError && q.error.status === 401) return { status: "signed-out" };

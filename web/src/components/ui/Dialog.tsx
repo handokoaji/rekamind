@@ -1,6 +1,7 @@
 import * as D from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
+import { t } from "../../lib/i18n";
 
 /** Radix handles focus trap, Esc, scroll lock and aria wiring. */
 export function Dialog({ open, onOpenChange, title, description, children }: {
@@ -16,7 +17,7 @@ export function Dialog({ open, onOpenChange, title, description, children }: {
               <D.Title className="text-lg font-semibold">{title}</D.Title>
               <D.Description className={description ? "mt-1 text-sm text-muted" : "sr-only"}>{description ?? title}</D.Description>
             </div>
-            <D.Close className="rounded-lg p-1.5 text-muted hover:bg-primary-soft hover:text-fg" aria-label="Tutup">
+            <D.Close className="rounded-lg p-1.5 text-muted hover:bg-primary-soft hover:text-fg" aria-label={t("Tutup")}>
               <X className="size-4" />
             </D.Close>
           </div>

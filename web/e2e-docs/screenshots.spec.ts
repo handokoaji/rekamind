@@ -145,6 +145,14 @@ test("screenshots README", async ({ page, request }) => {
   await settled(page);
   await shot(page, "05b-ringkasan-gelap", true);
   await page.emulateMedia({ colorScheme: "light" });
+
+  // antarmuka bahasa Inggris (pilihan bahasa di header)
+  await page.goto(`/rapat/${id}?tab=task`);
+  await settled(page);
+  await page.getByLabel("Bahasa / Language").selectOption("en");
+  await page.waitForTimeout(400);
+  await shot(page, "16-english-ui", true);
+  await page.getByLabel("Bahasa / Language").selectOption("id");
 });
 
 for (const [phase, name] of [["idle", "13-desktop-siap"], ["recording", "14-desktop-merekam"]] as const) {

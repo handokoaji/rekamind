@@ -18,6 +18,9 @@ First release of the v2 generation (pre-release, for testing). Replaces the v1 (
 - On-demand transcription engine install from the app (CPU or NVIDIA).
 - English (default) and Indonesian documentation.
 
+### Planned (not implemented)
+- Intel GPU (incl. integrated) and AMD GPU (incl. integrated) acceleration; more interface languages; output-language choice.
+
 ### Known issues
 - Installers are unsigned; Linux desktop untested on real hardware; AMD/Intel GPUs unsupported (CPU only) and untested. See the release notes.
 

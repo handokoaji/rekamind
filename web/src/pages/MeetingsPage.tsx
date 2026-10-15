@@ -16,15 +16,16 @@ import { useCapabilities, useMeetings, useProcessMeeting } from "../hooks/querie
 import { api } from "../lib/api";
 import { cn } from "../lib/cn";
 import { formatDateTime } from "../lib/format";
+import { t } from "../lib/i18n";
 import { stageLabel } from "../lib/strings";
 import type { Meeting } from "../lib/types";
 
-const filters = [
-  { value: "", label: "Semua" },
-  { value: "review", label: "Perlu ditinjau" },
-  { value: "processing", label: "Diproses" },
-  { value: "done", label: "Selesai" },
-  { value: "failed", label: "Gagal" },
+const filters = () => [
+  { value: "", label: t("Semua") },
+  { value: "review", label: t("Perlu ditinjau") },
+  { value: "processing", label: t("Diproses") },
+  { value: "done", label: t("Selesai") },
+  { value: "failed", label: t("Gagal") },
 ];
 
 const UploadDialog = lazy(() => import("../components/UploadDialog").then((m) => ({ default: m.UploadDialog })));
@@ -44,11 +45,11 @@ function Row({ m, canProcess, showOwner }: { m: Meeting; canProcess: boolean; sh
     await api.deleteMeeting(m.id);
     await qc.invalidateQueries({ queryKey: ["meetings"] });
     // Undo instead of "Are you sure?": deleting stays one click, and so does changing your mind.
-    toast(`“${m.title}” dihapus`, {
+    toast(t("“{title}” dihapus", { title: m.title }), {
       duration: 10000,
-      description: "Dihapus permanen setelah 30 hari.",
-      cancel: { label: "Hapus permanen", onClick: () => void api.purgeMeeting(m.id).then(() => toast.success("Dihapus permanen.")).catch((e: Error) => toast.error(e.message)) },
-      action: { label: "Urungkan", onClick: () => void api.restoreMeeting(m.id).then(() => qc.invalidateQueries({ queryKey: ["meetings"] })) },
+      description: t("Dihapus permanen setelah 30 hari."),
+      cancel: { label: t("Hapus permanen"), onClick: () => void api.purgeMeeting(m.id).then(() => toast.success(t("Dihapus permanen."))).catch((e: Error) => toast.error(e.message)) },
+      action: { label: t("Urungkan"), onClick: () => void api.restoreMeeting(m.id).then(() => qc.invalidateQueries({ queryKey: ["meetings"] })) },
     });
   }
 
@@ -62,8 +63,8 @@ function Row({ m, canProcess, showOwner }: { m: Meeting; canProcess: boolean; sh
         </Link>
         {m.job && (
           <div className="w-48">
-            <p className="mb-1 text-xs text-muted">{m.job.stage ? stageLabel[m.job.stage] ?? m.job.stage : "Menunggu giliran"}</p>
-            <ProgressBar value={m.job.progress} label={`Kemajuan pemrosesan ${m.title}`} />
+            <p className="mb-1 text-xs text-muted">{m.job.stage ? stageLabel[m.job.stage] ?? m.job.stage : t("Menunggu giliran")}</p>
+            <ProgressBar value={m.job.progress} label={t("Kemajuan pemrosesan {title}", { title: m.title })} />
           </div>
         )}
         <StatusBadge status={m.status} />
@@ -72,10 +73,10 @@ function Row({ m, canProcess, showOwner }: { m: Meeting; canProcess: boolean; sh
             <Button size="sm" variant="primary" loading={process.isPending}
               onClick={() => process.mutate(m.id, { onError: (e) => toast.error(e.message) })}>
               {m.status === "failed" ? <RotateCcw className="size-3.5" aria-hidden /> : <Play className="size-3.5" aria-hidden />}
-              {m.status === "failed" ? "Coba lagi" : "Proses"}
+              {m.status === "failed" ? t("Coba lagi") : t("Proses")}
             </Button>
           )}
-          <Button size="sm" variant="ghost" onClick={() => void remove().catch((e: Error) => toast.error(e.message))} aria-label={`Hapus ${m.title}`}>
+          <Button size="sm" variant="ghost" onClick={() => void remove().catch((e: Error) => toast.error(e.message))} aria-label={t("Hapus {title}", { title: m.title })}>
             <Trash2 className="size-4" aria-hidden />
           </Button>
         </div>
@@ -99,8 +100,8 @@ export function MeetingsPage() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement;
-      if (e.key === "/" && !/INPUT|TEXTAREA|SELECT/.test(t.tagName)) { e.preventDefault(); search.current?.focus(); }
+      const el = e.target as HTMLElement;
+      if (e.key === "/" && !/INPUT|TEXTAREA|SELECT/.test(el.tagName)) { e.preventDefault(); search.current?.focus(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -114,18 +115,18 @@ export function MeetingsPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Rapat</h1>
-          <p className="mt-1 text-sm text-muted">Semua rekaman, transkrip, dan task Anda di satu tempat.</p>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("Rapat")}</h1>
+          <p className="mt-1 text-sm text-muted">{t("Semua rekaman, transkrip, dan task Anda di satu tempat.")}</p>
         </div>
-        <Button variant="primary" onClick={() => setUpload(true)}><Plus className="size-4" aria-hidden /> Rapat baru</Button>
+        <Button variant="primary" onClick={() => setUpload(true)}><Plus className="size-4" aria-hidden /> {t("Rapat baru")}</Button>
       </div>
 
       {isDesktop() && <RecordCard />}
       {isDesktop() && <EngineSetupBanner ready={caps.data?.processing_ready} />}
 
       {canAdmin && (
-        <div role="group" aria-label="Cakupan rapat" className="flex w-fit gap-1 rounded-lg border border-border bg-card p-1">
-          {([["mine", "Milik saya"], ["all", "Semua pengguna"]] as const).map(([v, l]) => (
+        <div role="group" aria-label={t("Cakupan rapat")} className="flex w-fit gap-1 rounded-lg border border-border bg-card p-1">
+          {([["mine", t("Milik saya")], ["all", t("Semua pengguna")]] as const).map(([v, l]) => (
             <button key={v} onClick={() => setScope(v)} aria-pressed={scope === v}
               className={cn("rounded-md px-3 py-1.5 text-sm font-medium transition-colors", scope === v ? "bg-primary text-primary-fg" : "text-muted hover:text-fg")}>{l}</button>))}
         </div>)}
@@ -133,11 +134,11 @@ export function MeetingsPage() {
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-60 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
-          <Input ref={search} aria-label="Cari rapat" placeholder="Cari rapat…  (tekan /)" className="pl-9"
+          <Input ref={search} aria-label={t("Cari rapat")} placeholder={t("Cari rapat…  (tekan /)")} className="pl-9"
             value={text} onChange={(e) => setText(e.target.value)} />
         </div>
-        <div role="group" aria-label="Saring status" className="flex flex-wrap gap-1.5">
-          {filters.map((f) => (
+        <div role="group" aria-label={t("Saring status")} className="flex flex-wrap gap-1.5">
+          {filters().map((f) => (
             <button key={f.value} onClick={() => setStatus(f.value)} aria-pressed={status === f.value}
               className={cn("rounded-full px-3 py-1.5 text-sm font-medium transition-colors",
                 status === f.value ? "bg-primary text-primary-fg" : "bg-card text-muted border border-border hover:text-fg")}>
@@ -148,28 +149,28 @@ export function MeetingsPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex flex-col gap-3" aria-label="Memuat daftar rapat">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-[76px]" />)}</div>
+        <div className="flex flex-col gap-3" aria-label={t("Memuat daftar rapat")}>{[0, 1, 2].map((i) => <Skeleton key={i} className="h-[76px]" />)}</div>
       ) : error ? (
         <Card><ErrorState error={error} onRetry={() => void refetch()} /></Card>
       ) : data && data.length === 0 ? (
         <Card>
           {filtering ? (
-            <EmptyState icon={<Search className="size-6" />} title="Tidak ada rapat yang cocok"
-              action={<Button onClick={() => { setText(""); setStatus(""); }}>Hapus pencarian</Button>}>
-              Coba kata kunci lain atau tampilkan semua status.
+            <EmptyState icon={<Search className="size-6" />} title={t("Tidak ada rapat yang cocok")}
+              action={<Button onClick={() => { setText(""); setStatus(""); }}>{t("Hapus pencarian")}</Button>}>
+              {t("Coba kata kunci lain atau tampilkan semua status.")}
             </EmptyState>
           ) : (
-            <EmptyState icon={<FileAudio className="size-6" />} title="Belum ada rapat"
-              action={<Button variant="primary" onClick={() => setUpload(true)}><Plus className="size-4" aria-hidden /> Unggah rekaman</Button>}>
-              Unggah rekaman rapat dan Rekamind akan membuat transkrip per pembicara, ringkasan, serta daftar task lengkap dengan PIC dan tenggat.
-              {!isDesktop() && <span className="mt-3 flex items-center justify-center gap-1.5 text-xs"><Monitor className="size-3.5" aria-hidden /> Merekam langsung tersedia di aplikasi desktop.</span>}
+            <EmptyState icon={<FileAudio className="size-6" />} title={t("Belum ada rapat")}
+              action={<Button variant="primary" onClick={() => setUpload(true)}><Plus className="size-4" aria-hidden /> {t("Unggah rekaman")}</Button>}>
+              {t("Unggah rekaman rapat dan Rekamind akan membuat transkrip per pembicara, ringkasan, serta daftar task lengkap dengan PIC dan tenggat.")}
+              {!isDesktop() && <span className="mt-3 flex items-center justify-center gap-1.5 text-xs"><Monitor className="size-3.5" aria-hidden /> {t("Merekam langsung tersedia di aplikasi desktop.")}</span>}
             </EmptyState>
           )}
         </Card>
       ) : (
         <>
           <ul className="flex flex-col gap-3">{data?.map((m) => <Row key={m.id} m={m} canProcess={caps.data?.processing_ready ?? false} showOwner={scope === "all"} />)}</ul>
-          {hasNextPage && <Button className="self-center" loading={isFetchingNextPage} onClick={() => void fetchNextPage()}>Tampilkan lebih banyak</Button>}
+          {hasNextPage && <Button className="self-center" loading={isFetchingNextPage} onClick={() => void fetchNextPage()}>{t("Tampilkan lebih banyak")}</Button>}
         </>
       )}
 

@@ -26,9 +26,9 @@
 > recording that matters.** See the honest list of [beta limitations](#-beta-limitations).
 
 > [!NOTE]
-> **Language:** the app interface and the meeting output (summary, tasks) are currently **Indonesian only**. The
-> screenshots below therefore show Indonesian. Transcription language is configurable in Settings; the interface
-> itself has not been translated yet.
+> **Language:** the interface is available in **Indonesian (default) and English**; switch with the language selector in the
+> top bar (it is also on the sign-in screen). Most screenshots below show the Indonesian interface. The meeting output
+> (summary, decisions, tasks) is currently generated **in Indonesian only**, whichever interface language you pick.
 
 ## Why Rekamind
 
@@ -151,6 +151,7 @@ create duplicates.
 | ![Speakers](docs/screenshots/07-pembicara.png) <br> **Name the speakers** | ![All tasks](docs/screenshots/11-semua-task.png) <br> **All tasks across meetings** |
 | ![Settings](docs/screenshots/12-pengaturan.png) <br> **Settings: integrations and time zone** | ![Engine](docs/screenshots/15-desktop-mesin.png) <br> **Desktop settings: install the local engine** |
 | ![Dark](docs/screenshots/05b-ringkasan-gelap.png) <br> **Automatic dark mode** | ![Login](docs/screenshots/01-login.png) <br> **Google sign-in (server mode)** |
+| ![English UI](docs/screenshots/16-english-ui.png) <br> **English interface** (language selector, top right) | |
 
 </details>
 
@@ -321,8 +322,18 @@ Stated plainly so you know what is being tested:
 - **Real GitHub, GitLab, Google sign-in and S3/MinIO** have only been tested against mock/automated servers.
 - **Quality** of transcripts, speaker separation and task extraction has not been measured across many kinds of
   audio. Review the output, especially names and deadlines.
-- **Interface and generated output are Indonesian only.**
+- **Language:** the interface has Indonesian and English; the generated summary and tasks are Indonesian only. Messages coming from the server or the Rust recorder (e.g. some error texts) are not translated yet.
 - The old v1 app (Tkinter) lives in git history and tags `v0.1.0` to `v0.3.0`; v2 is not compatible with it.
+
+## 🗺️ Roadmap
+
+Planned for the next releases (**not implemented yet**; listed so you know what to expect, and in no firm order):
+
+- **Intel GPU acceleration**, including integrated GPUs such as the one in the Intel Core Ultra 7 155H.
+- **AMD GPU acceleration**, including integrated AMD GPUs, when an AMD GPU is present.
+- **More interface languages** beyond Indonesian and English, and a choice of output language for summaries and tasks.
+
+Until then, Intel and AMD machines run on the CPU (see [GPU support](#gpu-support)).
 
 ## 🛠️ For developers
 

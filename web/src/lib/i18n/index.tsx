@@ -10,7 +10,7 @@ import { enPages } from "./en.pages";
  * Placeholders: t("Kirim {n} task", { n: 3 }).
  */
 export type Lang = "id" | "en";
-export const LANGS: { code: Lang; label: string }[] = [{ code: "id", label: "Bahasa Indonesia" }, { code: "en", label: "English" }];
+export const LANGS: { code: Lang; label: string }[] = [{ code: "id", label: "Indonesia" }, { code: "en", label: "English" }];
 
 export const EN: Record<string, string> = { ...enComponents, ...enPages, ...enDesktop };
 

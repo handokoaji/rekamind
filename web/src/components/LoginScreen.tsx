@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { desktop, isDesktop } from "../desktop/bridge";
 import { getBackendUrl, setAuthToken } from "../lib/api";
 import { Card } from "./ui/Card";
+import { LanguageSwitcher } from "./LanguageSwitcher";
+import { t } from "../lib/i18n";
 
 /** Google's own button guidelines: the "G" mark and plain wording, on a light surface. */
 function GoogleMark() {
@@ -31,19 +33,19 @@ function DesktopSignIn() {
     try {
       const r = await desktop.login();
       setAuthToken(r.token);
-      if (!r.remembered) toast.warning("Login berhasil, tetapi tidak bisa disimpan di penyimpanan kredensial sistem. Anda harus login lagi saat aplikasi dibuka berikutnya.");
+      if (!r.remembered) toast.warning(t("Login berhasil, tetapi tidak bisa disimpan di penyimpanan kredensial sistem. Anda harus login lagi saat aplikasi dibuka berikutnya."));
       await qc.invalidateQueries({ queryKey: ["me"] });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Login gagal.");
+      setError(e instanceof Error ? e.message : t("Login gagal."));
     } finally { setBusy(false); }
   };
   return (
     <>
       <button type="button" onClick={go} disabled={busy} aria-busy={busy} className={BTN}>
         {busy ? <Loader2 className="size-5 animate-spin" aria-hidden /> : <GoogleMark />}
-        {busy ? "Menunggu login di browser…" : "Masuk dengan Google"}
+        {busy ? t("Menunggu login di browser…") : t("Masuk dengan Google")}
       </button>
-      {busy && <p className="text-xs text-muted" role="status">Selesaikan login di jendela browser yang terbuka. Batas waktu 5 menit.</p>}
+      {busy && <p className="text-xs text-muted" role="status">{t("Selesaikan login di jendela browser yang terbuka. Batas waktu 5 menit.")}</p>}
       {error && <p className="text-sm text-danger" role="alert">{error}</p>}
     </>
   );
@@ -58,17 +60,18 @@ export function LoginScreen() {
         <Logo className="size-12" />
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Rekamind</h1>
-          <p className="mt-2 text-sm text-muted">Masuk untuk melihat rapat, transkrip, dan task Anda.</p>
+          <p className="mt-2 text-sm text-muted">{t("Masuk untuk melihat rapat, transkrip, dan task Anda.")}</p>
         </div>
         {isDesktop() ? <DesktopSignIn /> : (
           <a href={href} className={BTN}>
-            <GoogleMark /> Masuk dengan Google
+            <GoogleMark /> {t("Masuk dengan Google")}
           </a>
         )}
         <p className="flex items-start gap-2 text-left text-xs text-muted">
           <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden />
-          Anda hanya bisa melihat rapat milik Anda sendiri. Kata sandi Google tidak pernah dikirim ke Rekamind.
+          {t("Anda hanya bisa melihat rapat milik Anda sendiri. Kata sandi Google tidak pernah dikirim ke Rekamind.")}
         </p>
+        <LanguageSwitcher />
       </Card>
     </main>
   );

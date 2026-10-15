@@ -1,4 +1,5 @@
 import type { DesktopSettings, EngineCheck, EngineState, LoginResult, SettingsView, UiState } from "./types";
+import { t } from "../lib/i18n";
 
 /** True only inside the Tauri shell. In a normal browser every desktop feature stays hidden. */
 export const isDesktop = (): boolean => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -12,7 +13,7 @@ async function invoke<T>(cmd: string, args?: Args): Promise<T> {
     return await tauriInvoke<T>(cmd, args);
   } catch (e) {
     // Rust returns plain strings for expected errors ("Perekaman sedang berjalan.").
-    throw new Error(typeof e === "string" ? e : e instanceof Error ? e.message : "Terjadi kesalahan pada aplikasi desktop.");
+    throw new Error(typeof e === "string" ? e : e instanceof Error ? e.message : t("Terjadi kesalahan pada aplikasi desktop."));
   }
 }
 

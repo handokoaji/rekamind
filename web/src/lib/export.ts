@@ -1,5 +1,6 @@
 import { formatClock, formatDay, formatMinutes } from "./format";
 import { priorityLabel } from "./strings";
+import { t } from "./i18n";
 import type { MeetingDetail, Participant, Task } from "./types";
 
 export function assigneeName(t: Task, participants: Participant[]): string | null {
@@ -30,18 +31,18 @@ export function tasksToJson(m: MeetingDetail, tasks: Task[]): string {
 }
 
 export function tasksToMarkdown(m: MeetingDetail, tasks: Task[]): string {
-  const lines = [`# Task: ${m.title}`, ""];
-  for (const t of tasks) {
-    const who = assigneeName(t, m.participants);
+  const lines = [t("# Task: {title}", { title: m.title }), ""];
+  for (const k of tasks) {
+    const who = assigneeName(k, m.participants);
     const meta = [
-      who && `PIC: ${who}`,
-      t.deadline && `Tenggat: ${formatDay(t.deadline)}${t.deadline_approximate ? " (perkiraan)" : ""}`,
-      t.estimate_minutes && `Estimasi: ${formatMinutes(t.estimate_minutes)}`,
-      `Prioritas: ${priorityLabel[t.priority]}`,
+      who && t("PIC: {name}", { name: who }),
+      k.deadline && (k.deadline_approximate ? t("Tenggat: {date} (perkiraan)", { date: formatDay(k.deadline) }) : t("Tenggat: {date}", { date: formatDay(k.deadline) })),
+      k.estimate_minutes && t("Estimasi: {time}", { time: formatMinutes(k.estimate_minutes) }),
+      t("Prioritas: {level}", { level: priorityLabel[k.priority] }),
     ].filter(Boolean);
-    lines.push(`- [ ] **${t.title}** — ${meta.join(" · ")}`);
-    if (t.description) lines.push(`  ${t.description}`);
-    if (t.evidence_quote) lines.push(`  > ${t.evidence_quote}${t.evidence_start_ms != null ? ` (${formatClock(t.evidence_start_ms)})` : ""}`);
+    lines.push(`- [ ] **${k.title}** — ${meta.join(" · ")}`);
+    if (k.description) lines.push(`  ${k.description}`);
+    if (k.evidence_quote) lines.push(`  > ${k.evidence_quote}${k.evidence_start_ms != null ? ` (${formatClock(k.evidence_start_ms)})` : ""}`);
   }
   return lines.join("\n") + "\n";
 }

@@ -1,18 +1,19 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { getDisplayTimeZone, setDisplayTimeZone } from "../lib/format";
+import { t } from "../lib/i18n";
 import { useCapabilities } from "./queries";
 
 /** "server" follows the server's zone (WIB unless the operator changed it); "device" the computer's own. */
 export type ZoneChoice = "server" | "device" | string;
 const KEY = "rekamind.tz";
 
-export const ZONES: { value: ZoneChoice; label: string }[] = [
-  { value: "server", label: "Ikuti server" },
+export const zoneOptions = (): { value: ZoneChoice; label: string }[] => [
+  { value: "server", label: t("Ikuti server") },
   { value: "Asia/Jakarta", label: "WIB (Jakarta)" },
   { value: "Asia/Makassar", label: "WITA (Makassar)" },
   { value: "Asia/Jayapura", label: "WIT (Jayapura)" },
   { value: "UTC", label: "UTC" },
-  { value: "device", label: "Zona perangkat ini" },
+  { value: "device", label: t("Zona perangkat ini") },
 ];
 
 function readChoice(): ZoneChoice {

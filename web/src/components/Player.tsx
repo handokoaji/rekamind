@@ -2,6 +2,7 @@ import { X } from "lucide-react";
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
 import { formatClock } from "../lib/format";
+import { t } from "../lib/i18n";
 import type { Source } from "../lib/types";
 
 interface Now { meetingId: string; source: Source; label: string }
@@ -44,9 +45,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             <p className="truncate font-medium">{now?.label}</p>
             <p className="text-xs text-muted tabular-nums">{formatClock(ms)}</p>
           </div>
-          <audio ref={audio} controls preload="none" className="h-9 flex-1" aria-label="Pemutar audio rapat"
+          <audio ref={audio} controls preload="none" className="h-9 flex-1" aria-label={t("Pemutar audio rapat")}
             onTimeUpdate={(e) => setMs(e.currentTarget.currentTime * 1000)} />
-          <button onClick={close} aria-label="Tutup pemutar" className="rounded-lg p-2 text-muted hover:bg-primary-soft hover:text-fg"><X className="size-4" /></button>
+          <button onClick={close} aria-label={t("Tutup pemutar")} className="rounded-lg p-2 text-muted hover:bg-primary-soft hover:text-fg"><X className="size-4" /></button>
         </div>
       </div>
     </PlayerCtx.Provider>

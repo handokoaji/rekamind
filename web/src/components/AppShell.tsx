@@ -5,6 +5,8 @@ import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../hooks/auth";
 import { useHealth } from "../hooks/queries";
 import { UserMenu } from "./UserMenu";
+import { LanguageSwitcher } from "./LanguageSwitcher";
+import { t } from "../lib/i18n";
 import { cn } from "../lib/cn";
 import { useBackendReady } from "../desktop/backend";
 import { isDesktop } from "../desktop/bridge";
@@ -14,10 +16,10 @@ import { ErrorState, Spinner } from "./ui/Feedback";
 import { Button } from "./ui/Button";
 import { Card } from "./ui/Card";
 
-const nav = [
-  { to: "/", label: "Rapat", icon: FileAudio, end: true },
-  { to: "/task", label: "Task", icon: CheckSquare },
-  { to: "/pengaturan", label: "Pengaturan", icon: Settings },
+const navItems = () => [
+  { to: "/", label: t("Rapat"), icon: FileAudio, end: true },
+  { to: "/task", label: t("Task"), icon: CheckSquare },
+  { to: "/pengaturan", label: t("Pengaturan"), icon: Settings },
 ];
 
 function ServerStatus() {
@@ -41,7 +43,7 @@ function ServerStatus() {
   return (
     <button onClick={() => void refetch()} disabled={isFetching}
       className="flex items-center gap-2 rounded-full bg-danger-soft px-3 py-1 text-xs font-medium text-danger">
-      <WifiOff className="size-3.5" aria-hidden /> Server tidak terjangkau · {isFetching ? "mencoba…" : "coba lagi"}
+      <WifiOff className="size-3.5" aria-hidden /> {isFetching ? t("Server tidak terjangkau · mencoba…") : t("Server tidak terjangkau · coba lagi")}
     </button>
   );
 }
@@ -56,36 +58,37 @@ function Content() {
   if (status === "ready" || onSettings || everReady) {
     return (
       <>
-        {status === "starting" && everReady && !onSettings && <p role="status" className="mb-4 flex items-center gap-2 text-sm text-muted"><span className="size-3 animate-spin rounded-full border-2 border-border border-t-primary" aria-hidden /> Menyalakan layanan pemrosesan lokal…</p>}
+        {status === "starting" && everReady && !onSettings && <p role="status" className="mb-4 flex items-center gap-2 text-sm text-muted"><span className="size-3 animate-spin rounded-full border-2 border-border border-t-primary" aria-hidden /> {t("Menyalakan layanan pemrosesan lokal…")}</p>}
         {page}
       </>
     );
   }
-  if (status === "starting") return <Spinner label="Menyalakan layanan pemrosesan lokal…" />;
+  if (status === "starting") return <Spinner label={t("Menyalakan layanan pemrosesan lokal…")} />;
   return (
     <Card>
-      <ErrorState error={new Error(error ?? "Layanan lokal tidak bisa dinyalakan.")} onRetry={retry} />
-      <div className="flex justify-center pb-8"><Link to="/pengaturan"><Button>Buka pengaturan</Button></Link></div>
+      <ErrorState error={new Error(error ?? t("Layanan lokal tidak bisa dinyalakan."))} onRetry={retry} />
+      <div className="flex justify-center pb-8"><Link to="/pengaturan"><Button>{t("Buka pengaturan")}</Button></Link></div>
     </Card>
   );
 }
 
 export function AppShell() {
   const { canAdmin } = useAuth();
-  const items = canAdmin ? [...nav.slice(0, 2), { to: "/admin", label: "Pengguna", icon: Users }, nav[2]!] : nav;
+  const nav = navItems();
+  const items = canAdmin ? [...nav.slice(0, 2), { to: "/admin", label: t("Pengguna"), icon: Users }, nav[2]!] : nav;
   return (
     <div className="min-h-screen pb-24">
       <a href="#utama" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-card focus:px-3 focus:py-2">
-        Lewati ke konten
+        {t("Lewati ke konten")}
       </a>
       {isDesktop() && <RecorderBar />}
       <header className="sticky top-0 z-20 border-b border-border bg-bg/85 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center gap-6 px-4 py-3">
+        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3 sm:gap-6">
           <NavLink to="/" className="flex items-center gap-2 font-semibold tracking-tight">
             <Logo className="size-8" />
             Rekamind
           </NavLink>
-          <nav aria-label="Utama" className="flex gap-1">
+          <nav aria-label={t("Utama")} className="flex gap-1">
             {items.map(({ to, label, icon: Icon, end }) => (
               <NavLink key={to} to={to} end={end}
                 className={({ isActive }) => cn("flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
@@ -95,7 +98,7 @@ export function AppShell() {
               </NavLink>
             ))}
           </nav>
-          <div className="ml-auto flex items-center gap-3"><ServerStatus /><UserMenu /></div>
+          <div className="ml-auto flex items-center gap-2 sm:gap-3"><ServerStatus /><LanguageSwitcher className="w-[4.5rem] px-1 sm:w-auto sm:px-2" /><UserMenu /></div>
         </div>
       </header>
       <main id="utama" className="mx-auto max-w-5xl px-4 py-8">

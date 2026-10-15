@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { setAuthToken, setBackendUrl } from "../lib/api";
 import { desktop } from "./bridge";
+import { t } from "../lib/i18n";
 
 type Status = "starting" | "ready" | "error";
 interface Ctx {
@@ -33,7 +34,7 @@ export function BackendProvider({ children }: { children: ReactNode }) {
     desktop.settings()
       .then((s) => { setBackendUrl(s.server_url); setAuthToken(s.auth_token); setMode(s.settings.mode); return desktop.ensureBackend(); })
       .then(() => { everReady.current = true; setStatus("ready"); void qc.invalidateQueries({ queryKey: ["health"] }); })
-      .catch((e: unknown) => { setError(e instanceof Error ? e.message : "Tidak bisa menyalakan layanan."); setStatus("error"); })
+      .catch((e: unknown) => { setError(e instanceof Error ? e.message : t("Tidak bisa menyalakan layanan.")); setStatus("error"); })
       .finally(() => { inFlight.current = false; });
   }, [qc]);
   useEffect(start, [start]);

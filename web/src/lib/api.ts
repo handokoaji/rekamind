@@ -1,6 +1,7 @@
 import type {
   AdminUser, Capabilities, ExportFormat, Integration, IntegrationKind, IntegrationStatus, Me, Meeting, MeetingDetail, Participant, Role, Scope, PushResult, Source, Task, TaskLinkInfo, TaskPatch, TaskStatus, TaskWithMeeting,
 } from "./types";
+import { t } from "./i18n";
 
 const KEY = "rekamind.backendUrl";
 
@@ -28,7 +29,7 @@ export class ApiError extends Error {
 /** The desktop app logs in out of band and hands us a bearer token; a browser uses its session cookie
  *  instead, which needs no code here at all. */
 let bearer: string | null = null;
-export const setAuthToken = (t: string | null) => { bearer = t; };
+export const setAuthToken = (tok: string | null) => { bearer = tok; };
 function authHeaders(): Record<string, string> { return bearer ? { authorization: `Bearer ${bearer}` } : {}; }
 
 /** Called whenever the server says "not signed in": the UI then shows the login screen. */
@@ -38,10 +39,10 @@ export const onUnauthorized = (fn: () => void) => { unauthorized.add(fn); return
 function messageFrom(body: unknown, status: number): string {
   const detail = (body as { detail?: unknown } | null)?.detail;
   if (typeof detail === "string") return detail;
-  if (Array.isArray(detail)) return "Isian belum valid. Periksa kembali data yang dimasukkan.";
-  if (status === 413) return "File terlalu besar.";
-  if (status >= 500) return "Server mengalami masalah. Coba lagi sebentar lagi.";
-  return `Permintaan gagal (${status}).`;
+  if (Array.isArray(detail)) return t("Isian belum valid. Periksa kembali data yang dimasukkan.");
+  if (status === 413) return t("File terlalu besar.");
+  if (status >= 500) return t("Server mengalami masalah. Coba lagi sebentar lagi.");
+  return t("Permintaan gagal ({status}).", { status });
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -53,7 +54,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch {
-    throw new ApiError(0, "Tidak dapat terhubung ke server. Periksa koneksi atau alamat server di Pengaturan.");
+    throw new ApiError(0, t("Tidak dapat terhubung ke server. Periksa koneksi atau alamat server di Pengaturan."));
   }
   if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => null);
@@ -94,7 +95,7 @@ export const api = {
     const q = new URLSearchParams({ format: o.format, transcript: String(o.transcript), tasks: o.allTasks ? "all" : "confirmed" });
     let res: Response;
     try { res = await fetch(`${getBackendUrl()}/api/meetings/${id}/export?${q}`, { headers: authHeaders() }); }
-    catch { throw new ApiError(0, "Tidak dapat terhubung ke server."); }
+    catch { throw new ApiError(0, t("Tidak dapat terhubung ke server.")); }
     if (!res.ok) throw new ApiError(res.status, messageFrom(await res.json().catch(() => null), res.status));
     const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? `rekamind.${o.format}`;
     return { blob: await res.blob(), filename: name };
@@ -136,8 +137,8 @@ export function uploadAudio(
       try { body = JSON.parse(xhr.responseText); } catch { /* non-JSON error body */ }
       reject(new ApiError(xhr.status, messageFrom(body, xhr.status)));
     };
-    xhr.onerror = () => reject(new ApiError(0, "Unggahan terputus. Periksa koneksi lalu coba lagi."));
-    xhr.onabort = () => reject(new DOMException("Dibatalkan", "AbortError"));
+    xhr.onerror = () => reject(new ApiError(0, t("Unggahan terputus. Periksa koneksi lalu coba lagi.")));
+    xhr.onabort = () => reject(new DOMException(t("Dibatalkan"), "AbortError"));
     signal?.addEventListener("abort", () => xhr.abort());
     xhr.send(file);
   });

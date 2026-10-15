@@ -8,7 +8,7 @@ import { Spinner } from "./components/ui/Feedback";
 import { ErrorState } from "./components/ui/Feedback";
 import { AuthProvider, useAuthState } from "./hooks/auth";
 import { PlayerProvider } from "./components/Player";
-import { I18nProvider } from "./lib/i18n";
+import { I18nProvider, t } from "./lib/i18n";
 import { TimeZoneProvider } from "./hooks/timezone";
 import { BackendProvider } from "./desktop/backend";
 import { isDesktop } from "./desktop/bridge";
@@ -33,7 +33,7 @@ function Desktop({ children }: { children: React.ReactNode }) {
 /** Nothing below this point renders for someone who is not signed in. */
 function Authenticated({ children }: { children: React.ReactNode }) {
   const auth = useAuthState();
-  if (auth.status === "loading") return <Spinner label="Memeriksa sesi…" />;
+  if (auth.status === "loading") return <Spinner label={t("Memeriksa sesi…")} />;
   if (auth.status === "signed-out") return <LoginScreen />;
   if (auth.status === "error") return <ErrorState error={auth.error} onRetry={() => window.location.reload()} />;
   return <AuthProvider me={auth.me}>{children}</AuthProvider>;

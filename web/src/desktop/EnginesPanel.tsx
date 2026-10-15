@@ -6,6 +6,7 @@ import { Button } from "../components/ui/Button";
 import { useBackendReady } from "./backend";
 import { desktop } from "./bridge";
 import type { EngineCheck, EngineState } from "./types";
+import { t } from "../lib/i18n";
 
 const KIND_LABEL = { cpu: "CPU", cuda: "NVIDIA GPU" } as const;
 
@@ -35,7 +36,7 @@ export function EnginesPanel({ recording, whisperModel }: { recording: boolean; 
       listen<string | null>("engines://done", (e) => {
         refresh();
         retryRef.current(); // the local backend was stopped for the install; bring it back
-        if (e.payload) toast.error(`Pemasangan gagal: ${e.payload}`); else { toast.success("Pemasangan selesai."); void desktop.checkEngines().then(setCheck).catch(() => undefined); }
+        if (e.payload) toast.error(t("Pemasangan gagal: {err}", { err: e.payload })); else { toast.success(t("Pemasangan selesai.")); void desktop.checkEngines().then(setCheck).catch(() => undefined); }
       }),
     ])).then(([a, b]) => { off2 = () => { a(); b(); }; if (dead) off2(); }).catch(() => undefined);
     return () => { dead = true; off2?.(); };
@@ -51,50 +52,50 @@ export function EnginesPanel({ recording, whisperModel }: { recording: boolean; 
     <section aria-labelledby="engines-h" className="flex flex-col gap-4 rounded-lg border border-border p-4">
       <div className="flex flex-wrap items-center gap-2">
         <Cpu className="size-4 text-primary" aria-hidden />
-        <h3 id="engines-h" className="font-semibold">Mesin transkripsi</h3>
+        <h3 id="engines-h" className="font-semibold">{t("Mesin transkripsi")}</h3>
         {installed
-          ? <Badge tone="success">Terpasang{pack?.kind ? ` · ${KIND_LABEL[pack.kind]}` : ""}</Badge>
-          : <Badge tone="warning">Belum dipasang</Badge>}
-        {pack?.diarize && <Badge tone="neutral">Pemisah pembicara</Badge>}
+          ? <Badge tone="success">{pack?.kind ? t("Terpasang · {kind}", { kind: KIND_LABEL[pack.kind] }) : t("Terpasang")}</Badge>
+          : <Badge tone="warning">{t("Belum dipasang")}</Badge>}
+        {pack?.diarize && <Badge tone="neutral">{t("Pemisah pembicara")}</Badge>}
       </div>
       <p className="text-sm text-muted">
         {installed
-          ? "Transkripsi berjalan di komputer ini. Model suara diunduh sekali, saat pertama dipakai (atau tombol di bawah)."
-          : "Pemasangan mengunduh beberapa GB (lebih besar untuk NVIDIA). Hanya perlu sekali. Rekaman tetap bisa dilakukan tanpa ini."}
+          ? t("Transkripsi berjalan di komputer ini. Model suara diunduh sekali, saat pertama dipakai (atau tombol di bawah).")
+          : t("Pemasangan mengunduh beberapa GB (lebih besar untuk NVIDIA). Hanya perlu sekali. Rekaman tetap bisa dilakukan tanpa ini.")}
       </p>
 
       {!running && (
         <>
           <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-0.5 size-4 accent-[var(--primary)]" checked={diarize} onChange={(e) => setDiarize(e.target.checked)} />
-            <span>Sertakan pemisah pembicara (pyannote, tambahan ± beberapa GB; perlu token Hugging Face)</span></label>
+            <span>{t("Sertakan pemisah pembicara (pyannote, tambahan ± beberapa GB; perlu token Hugging Face)")}</span></label>
           <div className="flex flex-wrap gap-2">
-            <Button variant={installed ? "secondary" : "primary"} disabled={recording} onClick={() => act(() => desktop.installEngines("cpu", diarize))}><Download className="size-4" aria-hidden /> {installed ? "Pasang ulang" : "Pasang"} untuk CPU</Button>
-            <Button variant="secondary" disabled={recording} onClick={() => act(() => desktop.installEngines("cuda", diarize))}><Zap className="size-4" aria-hidden /> {installed ? "Pasang ulang" : "Pasang"} untuk NVIDIA GPU</Button>
-            {installed && <Button variant="ghost" onClick={() => act(() => desktop.warmupModel())}>Unduh model {whisperModel} sekarang</Button>}
-            {installed && <Button variant="ghost" onClick={() => { setCheck(null); desktop.checkEngines().then(setCheck).catch((e: Error) => setError(e.message)); }}><ShieldCheck className="size-4" aria-hidden /> Uji mesin</Button>}
+            <Button variant={installed ? "secondary" : "primary"} disabled={recording} onClick={() => act(() => desktop.installEngines("cpu", diarize))}><Download className="size-4" aria-hidden /> {installed ? t("Pasang ulang untuk CPU") : t("Pasang untuk CPU")}</Button>
+            <Button variant="secondary" disabled={recording} onClick={() => act(() => desktop.installEngines("cuda", diarize))}><Zap className="size-4" aria-hidden /> {installed ? t("Pasang ulang untuk NVIDIA GPU") : t("Pasang untuk NVIDIA GPU")}</Button>
+            {installed && <Button variant="ghost" onClick={() => act(() => desktop.warmupModel())}>{t("Unduh model {model} sekarang", { model: whisperModel })}</Button>}
+            {installed && <Button variant="ghost" onClick={() => { setCheck(null); desktop.checkEngines().then(setCheck).catch((e: Error) => setError(e.message)); }}><ShieldCheck className="size-4" aria-hidden /> {t("Uji mesin")}</Button>}
           </div>
         </>
       )}
 
       {running && (
         <div className="flex flex-col gap-2">
-          <p role="status" className="flex items-center gap-2 text-sm font-medium"><Loader2 className="size-4 animate-spin" aria-hidden /> {running.startsWith("install") ? "Memasang mesin…" : "Mengunduh model…"}</p>
-          <Button variant="ghost" size="sm" className="self-start" onClick={() => act(() => desktop.cancelEngines())}>Batalkan</Button>
+          <p role="status" className="flex items-center gap-2 text-sm font-medium"><Loader2 className="size-4 animate-spin" aria-hidden /> {running.startsWith("install") ? t("Memasang mesin…") : t("Mengunduh model…")}</p>
+          <Button variant="ghost" size="sm" className="self-start" onClick={() => act(() => desktop.cancelEngines())}>{t("Batalkan")}</Button>
         </div>
       )}
 
       {lines.length > 0 && (
-        <pre ref={logRef} tabIndex={0} aria-label="Keluaran pemasangan" className="max-h-40 overflow-auto rounded-lg bg-bg p-3 text-xs leading-relaxed text-muted">{lines.join("\n")}</pre>
+        <pre ref={logRef} tabIndex={0} aria-label={t("Keluaran pemasangan")} className="max-h-40 overflow-auto rounded-lg bg-bg p-3 text-xs leading-relaxed text-muted">{lines.join("\n")}</pre>
       )}
 
       {check && (
         check.ok
-          ? <p role="status" className="text-sm text-success">Mesin berfungsi (faster-whisper {check.faster_whisper}). {check.cuda_devices > 0 ? `GPU NVIDIA terdeteksi: ${check.cuda_devices}.` : "GPU NVIDIA tidak terdeteksi; memakai CPU (lebih lambat)."}</p>
-          : <p role="alert" className="text-sm text-danger">Mesin terpasang tetapi tidak bisa dimuat: {check.error}</p>
+          ? <p role="status" className="text-sm text-success">{t("Mesin berfungsi (faster-whisper {version}).", { version: check.faster_whisper ?? "" })} {check.cuda_devices > 0 ? t("GPU NVIDIA terdeteksi: {n}.", { n: check.cuda_devices }) : t("GPU NVIDIA tidak terdeteksi; memakai CPU (lebih lambat).")}</p>
+          : <p role="alert" className="text-sm text-danger">{t("Mesin terpasang tetapi tidak bisa dimuat: {err}", { err: check.error ?? "" })}</p>
       )}
-      {state?.job.last_error && !running && <p role="alert" className="text-sm text-danger">Pemasangan terakhir gagal: {state.job.last_error}</p>}
+      {state?.job.last_error && !running && <p role="alert" className="text-sm text-danger">{t("Pemasangan terakhir gagal: {err}", { err: state.job.last_error ?? "" })}</p>}
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-      <p className="text-xs text-muted">Lokasi: <code className="rounded bg-bg px-1.5 py-0.5">{pack?.pack_dir ?? "…"}</code></p>
+      <p className="text-xs text-muted">{t("Lokasi:")} <code className="rounded bg-bg px-1.5 py-0.5">{pack?.pack_dir ?? "…"}</code></p>
     </section>
   );
 }

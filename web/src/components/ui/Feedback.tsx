@@ -1,12 +1,13 @@
 import { AlertTriangle, Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "../../lib/cn";
+import { t } from "../../lib/i18n";
 import { Button } from "./Button";
 
-export function Spinner({ label = "Memuat…" }: { label?: string }) {
+export function Spinner({ label }: { label?: string }) {
   return (
     <div role="status" className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
-      <Loader2 className="size-4 animate-spin" aria-hidden /> {label}
+      <Loader2 className="size-4 animate-spin" aria-hidden /> {label ?? t("Memuat…")}
     </div>
   );
 }
@@ -26,8 +27,8 @@ export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () =>
   return (
     <div role="alert" className="flex flex-col items-center gap-3 px-6 py-14 text-center">
       <div className="grid size-12 place-items-center rounded-2xl bg-danger-soft text-danger" aria-hidden><AlertTriangle className="size-6" /></div>
-      <p className="max-w-md text-sm">{error instanceof Error ? error.message : "Terjadi kesalahan."}</p>
-      {onRetry && <Button onClick={onRetry}>Coba lagi</Button>}
+      <p className="max-w-md text-sm">{error instanceof Error ? error.message : t("Terjadi kesalahan.")}</p>
+      {onRetry && <Button onClick={onRetry}>{t("Coba lagi")}</Button>}
     </div>
   );
 }

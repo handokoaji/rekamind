@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { desktop, onChanged } from "./bridge";
 import type { UiState } from "./types";
+import { t } from "../lib/i18n";
 
 interface Ctx {
   state: UiState | null;
@@ -31,7 +32,7 @@ export function RecorderProvider({ children }: { children: ReactNode }) {
       const s = await desktop.state();
       if (alive.current) { setState(s); setError(null); }
     } catch (e) {
-      if (alive.current) setError(e instanceof Error ? e.message : "Tidak bisa membaca status perekam.");
+      if (alive.current) setError(e instanceof Error ? e.message : t("Tidak bisa membaca status perekam."));
     }
   }, []);
 
