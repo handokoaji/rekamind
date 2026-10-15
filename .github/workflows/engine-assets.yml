@@ -191,7 +191,7 @@ jobs:
           print(open("dl/manifest.json").read())
           PY
       - name: Publish (rolling release "engine-assets")
-        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}", GH_REPO: "${{ github.repository }}" }  # no checkout in this job
         run: |
           notes="Native engine programs downloaded on demand by the Rekamind desktop app (not for manual download). whisper.cpp ${WHISPERCPP_TAG}, Vulkan backend, MIT licence. Each file's SHA-256 is in manifest.json."
           if gh release view engine-assets >/dev/null 2>&1; then
