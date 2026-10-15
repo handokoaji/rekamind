@@ -16,7 +16,7 @@ class FakeTranscriber:
 
 
 class FakeDiarizer:
-    def diarize(self, wav: Path) -> list[SpeakerTurn]:
+    def diarize(self, wav: Path, num_speakers: int | None = None) -> list[SpeakerTurn]:
         return [SpeakerTurn(4500, 9500, "SPEAKER_00"), SpeakerTurn(9800, 14500, "SPEAKER_01")]
 
 
@@ -59,7 +59,7 @@ class DemoTranscriber:
 
 
 class DemoDiarizer:
-    def diarize(self, wav: Path) -> list[SpeakerTurn]:
+    def diarize(self, wav: Path, num_speakers: int | None = None) -> list[SpeakerTurn]:
         return [SpeakerTurn(7000, 25000, "SPEAKER_00"), SpeakerTurn(39000, 47000, "SPEAKER_01"),
                 SpeakerTurn(70000, 79000, "SPEAKER_00")]
 

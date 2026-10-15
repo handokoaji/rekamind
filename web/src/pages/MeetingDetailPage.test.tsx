@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -38,5 +38,24 @@ describe("a meeting whose summary could not be made", () => {
       : json(meeting({ error: "Pemisah pembicara gagal (X); semua suara komputer ditandai satu pembicara.", summary: { overview: "ok", decisions: [], minutes: [] } })));
     expect(await screen.findByText(/Pemisah pembicara gagal/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Buat ulang ringkasan" })).toBeNull();
+  });
+});
+
+
+describe("speaker count hint", () => {
+  it("saves the number the user picks, then processes the meeting again", async () => {
+    const calls = show((u, init) => u.includes("/capabilities") ? json({ processing_ready: true, engines: {} })
+      : u.includes("/process") ? json({ id: "j", status: "queued" }, 202)
+      : init?.method === "PATCH" ? json(meeting({ num_speakers: 3 }))
+      : json(meeting({ summary: { overview: "ok", decisions: [], minutes: [] } })));
+    await userEvent.click(await screen.findByRole("tab", { name: "Pembicara" }));
+    expect(await screen.findByText(/Terdeteksi 1 pembicara/)).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Jumlah pembicara sebenarnya"), "3");
+    await userEvent.click(screen.getByRole("button", { name: "Pisahkan ulang" }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Pisahkan ulang" }));
+    await waitFor(() => expect(calls.some((c) => c.startsWith("POST") && c.includes("/process"))).toBe(true));
+    const patch = calls.findIndex((c) => c.startsWith("PATCH"));
+    expect(patch).toBeGreaterThan(-1);
+    expect(patch).toBeLessThan(calls.findIndex((c) => c.startsWith("POST") && c.includes("/process"))); // hint first
   });
 });

@@ -8,6 +8,8 @@ export interface Meeting {
   id: string; title: string; status: MeetingStatus; language: string;
   started_at: string; ended_at: string | null; error: string | null; job: JobBrief | null;
   owner_email: string | null;
+  /** The user's hint for speaker separation (how many people spoke on the computer's audio); null = detect. */
+  num_speakers?: number | null;
 }
 export interface Participant { id: string; label: string; name: string | null; is_local_user: boolean }
 export interface Segment { id: number; participant_id: string | null; source: Source; start_ms: number; end_ms: number; text: string }

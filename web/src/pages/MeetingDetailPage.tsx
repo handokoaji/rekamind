@@ -245,6 +245,49 @@ function VirtualTranscript<G>({ groups, row }: { groups: G[]; row: (g: G) => Rea
 }
 
 // ---------------------------------------------------------------- Pembicara
+/** Pyannote often merges similar voices (three people heard as two). Telling it the real number fixes that. */
+function SpeakerCountCard({ m }: { m: MeetingDetail }) {
+  const caps = useCapabilities();
+  const process = useProcessMeeting();
+  const invalidate = useInvalidate();
+  const detected = m.participants.filter((p) => !p.is_local_user).length;
+  const [n, setN] = useState<string>(m.num_speakers ? String(m.num_speakers) : "");
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  if (!(caps.data?.processing_ready ?? false) || detected === 0) return null;
+  const changed = n !== (m.num_speakers ? String(m.num_speakers) : "");
+  const run = async () => {
+    setBusy(true);
+    try {
+      await api.setNumSpeakers(m.id, n ? Number(n) : null);
+      await invalidate();
+      process.mutate(m.id, { onSuccess: () => setConfirm(false), onError: (e) => toast.error(e.message) });
+    } catch (e) { toast.error(e instanceof Error ? e.message : t("Tidak bisa menyimpan jumlah pembicara.")); } finally { setBusy(false); }
+  };
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
+      <div>
+        <p className="font-semibold">{t("Jumlah pembicara")}</p>
+        <p className="mt-0.5 text-sm text-muted">{t("Terdeteksi {n} pembicara di suara komputer. Jika sebenarnya lebih banyak, pilih jumlah yang benar lalu pisahkan ulang: suara yang mirip kadang tergabung.", { n: detected })}</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Select aria-label={t("Jumlah pembicara sebenarnya")} value={n} onChange={(e) => setN(e.target.value)} className="w-44">
+          <option value="">{t("Otomatis")}</option>
+          {[2, 3, 4, 5, 6, 7, 8].map((k) => <option key={k} value={k}>{t("{n} pembicara", { n: k })}</option>)}
+        </Select>
+        <Button variant={changed ? "primary" : "secondary"} onClick={() => setConfirm(true)}>{t("Pisahkan ulang")}</Button>
+      </div>
+      <Dialog open={confirm} onOpenChange={setConfirm} title={t("Pisahkan ulang pembicara?")} description={t("Rapat diproses ulang dari awal (transkrip, ringkasan, dan task dibuat ulang).")}>
+        <p className="mb-4 rounded-lg bg-warning-soft px-3 py-2 text-sm text-warning">{t("Peninjauan task yang sudah Anda lakukan akan hilang, dan nama pembicara perlu diperiksa lagi karena urutan pembicara bisa berubah.")}</p>
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setConfirm(false)}>{t("Batal")}</Button>
+          <Button variant="primary" loading={busy || process.isPending} onClick={() => void run()}>{t("Pisahkan ulang")}</Button>
+        </div>
+      </Dialog>
+    </div>
+  );
+}
+
 function SpeakersTab({ m }: { m: MeetingDetail }) {
   const invalidate = useInvalidate();
   const process = useProcessMeeting();
@@ -257,6 +300,7 @@ function SpeakersTab({ m }: { m: MeetingDetail }) {
   if (!m.participants.length) return <EmptyState icon={<Users className="size-6" />} title={t("Belum ada pembicara")}>{t("Pembicara dikenali setelah rapat diproses.")}</EmptyState>;
   return (
     <div className="flex flex-col gap-5">
+      <SpeakerCountCard m={m} />
       <p className="text-sm text-muted">{t("Beri nama pembicara agar transkrip dan PIC task mudah dibaca.")}</p>
       <ul className="flex flex-col gap-3">{m.participants.map((p, i) => (
         <li key={p.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-4">
@@ -366,7 +410,7 @@ export function MeetingDetailPage() {
           <ProgressBar value={m.job?.progress ?? 0} label={t("Kemajuan pemrosesan")} />
           <p className="text-sm text-muted">{t("Anda boleh menutup halaman ini; pemrosesan tetap berjalan di server.")}</p>
         </Card>)}
-      {m.status === "review" && m.error && (
+      {(m.status === "review" || m.status === "done") && m.error && (
         <Card className="flex flex-wrap items-center gap-3 border-warning/40 bg-warning-soft p-4 text-warning" role="status">
           <ShieldAlert className="size-5 shrink-0" aria-hidden />
           <p className="min-w-60 flex-1 text-sm">{m.error}</p>

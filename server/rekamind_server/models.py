@@ -112,6 +112,8 @@ class Meeting(Base):
     # recording -> recorded -> queued -> processing -> review -> done, or failed
     status: Mapped[str] = mapped_column(default="recording")
     local_user_name: Mapped[str | None] = mapped_column(default=None)
+    # How many people the user says spoke on the computer's audio; a hint for speaker separation (None = detect).
+    num_speakers: Mapped[int | None] = mapped_column(default=None)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     error: Mapped[str | None] = mapped_column(Text, default=None)

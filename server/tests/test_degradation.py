@@ -7,7 +7,7 @@ from rekamind_server.worker import Worker
 
 
 class BrokenDiarizer:
-    def diarize(self, wav):
+    def diarize(self, wav, num_speakers=None):
         raise ModuleNotFoundError("No module named 'pickletools'")
 
 
@@ -99,5 +99,71 @@ async def test_a_recording_without_speech_does_not_call_the_llm(client):
     await client.post(f"/api/meetings/{m}/process")
     await _run(client)
     d = (await client.get(f"/api/meetings/{m}")).json()
-    assert d["status"] == "review" and d["segments"] == [] and d["summary"] is None
+    # nothing to review (no tasks can exist), so it is finished; the warning still says why it is empty
+    assert d["status"] == "done" and d["segments"] == [] and d["summary"] is None
     assert "Tidak ada ucapan terdeteksi" in d["error"]
+
+
+class RecordingDiarizer:
+    """Remembers the speaker-count hint it was given."""
+
+    def __init__(self):
+        self.seen = []
+
+    def diarize(self, wav, num_speakers=None):
+        self.seen.append(num_speakers)
+        return []
+
+
+async def test_the_users_speaker_count_reaches_the_diarizer_and_survives_reprocessing(client):
+    rec = RecordingDiarizer()
+    client.app.state.engines.diarizer = rec
+    m = await _upload(client)
+
+    await client.post(f"/api/meetings/{m}/process")
+    await _run(client)
+    assert rec.seen == [None], "nothing was set: let pyannote detect"
+
+    r = await client.patch(f"/api/meetings/{m}", json={"num_speakers": 3})
+    assert r.status_code == 200 and r.json()["num_speakers"] == 3
+    await client.post(f"/api/meetings/{m}/process")
+    await _run(client)
+    assert rec.seen == [None, 3]
+    assert (await client.get(f"/api/meetings/{m}")).json()["num_speakers"] == 3
+
+
+async def test_num_speakers_is_validated_and_clearable_and_renaming_leaves_it_alone(client):
+    m = await _upload(client)
+    for bad in ({"num_speakers": 0}, {"num_speakers": 99}, {"num_speakers": "tiga"}, {}, {"title": None}):
+        assert (await client.patch(f"/api/meetings/{m}", json=bad)).status_code == 422, bad
+    assert (await client.patch(f"/api/meetings/{m}", json={"num_speakers": 4})).json()["num_speakers"] == 4
+    r = await client.patch(f"/api/meetings/{m}", json={"title": "Baru"})
+    assert r.json()["title"] == "Baru" and r.json()["num_speakers"] == 4, "a rename must not clear the hint"
+    r = await client.patch(f"/api/meetings/{m}", json={"num_speakers": None})
+    assert r.status_code == 200 and r.json()["num_speakers"] is None and r.json()["title"] == "Baru"
+
+
+class NoTaskExtractor:
+    def extract(self, inp):
+        r = FakeExtractor().extract(inp)
+        r.tasks = []
+        return r
+
+
+async def test_a_meeting_with_nothing_to_review_is_done_not_stuck_in_review(client):
+    client.app.state.engines.extractor = NoTaskExtractor()
+    m = await _upload(client)
+    await client.post(f"/api/meetings/{m}/process")
+    await _run(client)
+    d = (await client.get(f"/api/meetings/{m}")).json()
+    assert d["status"] == "done" and d["tasks"] == [] and d["summary"] is not None
+
+
+async def test_a_failed_summary_still_needs_attention_and_keeps_its_retry(client):
+    flaky = FlakyExtractor()
+    client.app.state.engines.extractor = flaky
+    m = await _upload(client)
+    await client.post(f"/api/meetings/{m}/process")
+    await _run(client)
+    d = (await client.get(f"/api/meetings/{m}")).json()
+    assert d["status"] == "review" and d["summary"] is None and "Ringkasan dan task belum dibuat" in d["error"]

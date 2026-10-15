@@ -33,7 +33,7 @@ class PyannoteDiarizer:
                 self._pipeline = p
             return self._pipeline
 
-    def diarize(self, wav: Path) -> list[SpeakerTurn]:
+    def diarize(self, wav: Path, num_speakers: int | None = None) -> list[SpeakerTurn]:
         import numpy as np
         import soundfile as sf
         import torch
@@ -48,7 +48,9 @@ class PyannoteDiarizer:
         audio, sr = sf.read(str(wav), dtype="float32")
         if audio.ndim == 1:
             audio = audio[:, np.newaxis]
-        output = self._load()({"waveform": torch.from_numpy(audio.T), "sample_rate": sr})
+        # Left to itself pyannote often merges similar voices; the user's count fixes that (3 people were heard as 2).
+        hint = {"num_speakers": num_speakers} if num_speakers else {}
+        output = self._load()({"waveform": torch.from_numpy(audio.T), "sample_rate": sr}, **hint)
         annotation = getattr(output, "exclusive_speaker_diarization", output)
         numbers: dict[str, int] = {}
         turns = []
@@ -74,5 +76,5 @@ class PyannoteDiarizer:
 class SingleSpeakerDiarizer:
     """Used when diarization is off: the whole speaker channel is one voice."""
 
-    def diarize(self, wav: Path) -> list[SpeakerTurn]:
+    def diarize(self, wav: Path, num_speakers: int | None = None) -> list[SpeakerTurn]:
         return [SpeakerTurn(0, 10**9, "SPEAKER_00")]

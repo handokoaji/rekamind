@@ -126,7 +126,8 @@ async def run_process_job(
         if result is not None:
             s.add(Summary(meeting_id=job.meeting_id, overview=result.overview, decisions=result.decisions,
                           minutes=[m.model_dump() for m in result.minutes]))
-        for t in dedupe_tasks(result.tasks if result is not None else []):
+        new_tasks = dedupe_tasks(result.tasks if result is not None else [])
+        for t in new_tasks:
             who = match_participant(t.assignee, participants)
             if who is None and t.assignee and t.assignee.strip().lower() in FIRST_PERSON and t.evidence_start_ms is not None:
                 who = speaker_at(rows, t.evidence_start_ms)  # "Saya kirim laporan" -> whoever said it
@@ -141,7 +142,11 @@ async def run_process_job(
                 evidence_start_ms=t.evidence_start_ms, evidence_quote=t.evidence_quote,
             ))
         m = await s.get(Meeting, job.meeting_id)
-        m.status = "review"  # a human confirms tasks before anything is exported
+        # A human confirms tasks before anything is exported. With no task to confirm there is nothing to review (the
+        # only way out of "review" is deciding a task, so it would stay there forever); a failed summary stays in
+        # "review" because it has a retry ("Buat ulang ringkasan").
+        summary_failed = result is None and bool(rows)
+        m.status = "review" if (new_tasks or summary_failed) else "done"
         m.error = " ".join(notes) or None
         await s.commit()
 
@@ -163,7 +168,10 @@ async def _transcribe_and_store(sf, storage, engines, job, language, local_name,
     fallback_label = None
     if spk and spk_segs:
         try:
-            turns = await asyncio.to_thread(engines.diarizer.diarize, spk)
+            async with sf() as s:
+                m = await s.get(Meeting, job.meeting_id)
+                num_speakers = m.num_speakers if m else None
+            turns = await asyncio.to_thread(engines.diarizer.diarize, spk, num_speakers)
         except Exception as exc:  # noqa: BLE001 - a missing optional model must not throw the transcript away
             log.warning("diarization failed for %s: %s", job.meeting_id, exc)
             notes.append(f"Pemisah pembicara gagal ({type(exc).__name__}: {exc}); semua suara komputer ditandai satu pembicara.")

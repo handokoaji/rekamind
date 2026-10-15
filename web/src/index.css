@@ -73,5 +73,8 @@
 
 html { background: var(--bg); }
 body { @apply bg-bg font-sans text-fg antialiased; font-feature-settings: "cv11", "ss01"; }
+/* A native <select> popup is painted by the OS; without explicit colours its options inherit the page's text colour
+   (light in dark mode) over the system's white list, so every label turned white-on-white when hovered. */
+select option { background-color: var(--card); color: var(--fg); }
 :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 6px; }
 @media (prefers-reduced-motion: reduce) { * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }

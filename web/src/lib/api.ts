@@ -104,6 +104,7 @@ export const api = {
   createMeeting: (b: { title: string; language: string; local_user_name?: string | null }) =>
     request<Meeting>("POST", "/meetings", b),
   renameMeeting: (id: string, title: string) => request<Meeting>("PATCH", `/meetings/${id}`, { title }),
+  setNumSpeakers: (id: string, numSpeakers: number | null) => request<Meeting>("PATCH", `/meetings/${id}`, { num_speakers: numSpeakers }),
   finishMeeting: (id: string) => request<Meeting>("POST", `/meetings/${id}/finish`),
   deleteMeeting: (id: string) => request<void>("DELETE", `/meetings/${id}`),
   /** Removes audio, transcript and tasks for good (the plain delete is undoable and purged after 30 days). */

@@ -274,7 +274,10 @@ def create_app(settings: Settings | None = None, *, engines: Engines | None = No
     @app.patch("/api/meetings/{meeting_id}", response_model=MeetingSummaryOut)
     async def rename_meeting(meeting_id: str, body: MeetingPatch, db: Db, user: User_):
         m = await _meeting(db, meeting_id, user)
-        m.title = body.title.strip()
+        if "title" in body.model_fields_set and body.title is not None:
+            m.title = body.title.strip()
+        if "num_speakers" in body.model_fields_set:
+            m.num_speakers = body.num_speakers
         await db.commit()
         return m
 

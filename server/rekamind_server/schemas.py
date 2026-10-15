@@ -144,11 +144,23 @@ class MeetingSummaryOut(_ORM):
     ended_at: datetime | None
     error: str | None
     owner_email: str | None = None  # who it belongs to (matters to super admins looking at everyone's)
+    num_speakers: int | None = None  # the user's hint for speaker separation; None = detect
     job: JobBrief | None = None  # the in-flight processing job, if any
 
 
 class MeetingPatch(BaseModel):
-    title: str = Field(min_length=1, max_length=200)
+    """Only the fields present in the request are changed (so `num_speakers: null` clears the hint)."""
+
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    num_speakers: int | None = Field(default=None, ge=1, le=12)
+
+    @model_validator(mode="after")
+    def _something_to_change(self):
+        if not self.model_fields_set & {"title", "num_speakers"}:
+            raise ValueError("title atau num_speakers harus diisi")
+        if "title" in self.model_fields_set and self.title is None:
+            raise ValueError("title tidak boleh kosong")
+        return self
 
 
 class TaskWithMeeting(TaskOut):

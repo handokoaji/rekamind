@@ -30,7 +30,7 @@ class Transcriber(Protocol):
 
 
 class Diarizer(Protocol):
-    def diarize(self, wav: Path) -> list[SpeakerTurn]: ...
+    def diarize(self, wav: Path, num_speakers: int | None = None) -> list[SpeakerTurn]: ...
 
 
 @dataclass
