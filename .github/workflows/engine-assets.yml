@@ -58,13 +58,39 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $v = (Invoke-RestMethod "https://vulkan.lunarg.com/sdk/latest/windows.txt").Trim()
-          Write-Host "Vulkan SDK $v"
-          curl.exe -L -o "$env:RUNNER_TEMP\vulkan-sdk.exe" "https://sdk.lunarg.com/sdk/download/$v/windows/VulkanSDK-$v-Installer.exe"
-          & "$env:RUNNER_TEMP\vulkan-sdk.exe" --accept-licenses --default-answer --confirm-command install
-          Add-Content $env:GITHUB_ENV "VULKAN_SDK=C:\VulkanSDK\$v"
-          Add-Content $env:GITHUB_ENV "VULKAN_SDK_VERSION=$v"
-          Add-Content $env:GITHUB_PATH "C:\VulkanSDK\$v\Bin"
+          $ErrorActionPreference = "Continue"
+          $v = ""
+          try { $v = (Invoke-RestMethod "https://vulkan.lunarg.com/sdk/latest/windows.txt").ToString().Trim() } catch { Write-Host "version query failed: $_" }
+          Write-Host "latest SDK version: '$v'"
+          # LunarG has changed its installer URLs before: try the known forms in turn and accept only a real installer.
+          $urls = @("https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe")
+          if ($v) {
+            $urls += "https://sdk.lunarg.com/sdk/download/$v/windows/vulkan-sdk.exe"
+            $urls += "https://sdk.lunarg.com/sdk/download/$v/windows/VulkanSDK-$v-Installer.exe"
+          }
+          $exe = "$env:RUNNER_TEMP\vulkan-sdk.exe"
+          $ok = $false
+          foreach ($u in $urls) {
+            Write-Host "trying $u"
+            curl.exe -sSL -o $exe $u
+            $size = (Get-Item $exe -ErrorAction SilentlyContinue).Length
+            Write-Host "  -> $size bytes"
+            if ($size -gt 20MB) { $ok = $true; break }
+            if ($size -lt 2KB) { Get-Content $exe -ErrorAction SilentlyContinue | Write-Host }
+          }
+          if ($ok) {
+            Start-Process -FilePath $exe -ArgumentList "--accept-licenses","--default-answer","--confirm-command","install" -Wait
+          } else {
+            Write-Host "falling back to Chocolatey"
+            choco install vulkan-sdk -y --no-progress
+          }
+          $root = Get-ChildItem "C:\VulkanSDK" -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $root) { Write-Error "Vulkan SDK not found after install"; exit 1 }
+          Write-Host "Vulkan SDK at $($root.FullName)"
+          Add-Content $env:GITHUB_ENV "VULKAN_SDK=$($root.FullName)"
+          Add-Content $env:GITHUB_ENV "VULKAN_SDK_VERSION=$($root.Name)"
+          Add-Content $env:GITHUB_PATH "$($root.FullName)\Bin"
+          if (-not (Test-Path "$($root.FullName)\Bin\glslc.exe")) { Write-Error "glslc.exe missing"; exit 1 }
       - name: Vulkan SDK (Linux)
         if: runner.os == 'Linux'
         run: |
