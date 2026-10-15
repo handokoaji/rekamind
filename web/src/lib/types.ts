@@ -24,7 +24,7 @@ export interface TaskWithMeeting extends Task { meeting_title: string }
 export interface MeetingDetail extends Meeting {
   participants: Participant[]; segments: Segment[]; summary: Summary | null; tasks: Task[];
 }
-export interface Capabilities { processing_ready: boolean; engines: Record<string, string> }
+export interface Capabilities { processing_ready: boolean; engines: Record<string, string>; timezone?: string; timezone_label?: string }
 export interface TaskPatch {
   title?: string; description?: string; assignee_participant_id?: string | null; assignee_name?: string | null;
   deadline?: string | null; estimate_minutes?: number | null; priority?: Priority; status?: TaskStatus;

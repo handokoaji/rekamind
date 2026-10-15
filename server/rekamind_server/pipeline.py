@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from datetime import date
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -12,6 +13,8 @@ from .engines.llm import LlmError
 from .models import Job, Meeting, Participant, Segment, Summary, Task
 from .schemas import ExtractedTask
 from .storage import Storage
+from .tz import DEFAULT as DEFAULT_TZ
+from .tz import to_zone, zone
 
 log = logging.getLogger(__name__)
 
@@ -69,15 +72,18 @@ def dedupe_tasks(tasks: list[ExtractedTask]) -> list[ExtractedTask]:
 
 
 async def run_process_job(
-    sf: async_sessionmaker[AsyncSession], storage: Storage, engines: Engines, job: Job
+    sf: async_sessionmaker[AsyncSession], storage: Storage, engines: Engines, job: Job, tz: ZoneInfo | None = None
 ) -> None:
     """transcribe -> diarize -> merge -> extract. Heavy engine calls run in worker
     threads so the API stays responsive; each stage reports progress for the UI."""
+    tz = tz or zone(DEFAULT_TZ)
     async with sf() as s:
         meeting = await s.get(Meeting, job.meeting_id)
         if meeting is None:
             raise RuntimeError("meeting no longer exists")
-        language, title, started_at, local_name = meeting.language, meeting.title, meeting.started_at, meeting.local_user_name
+        language, title, local_name = meeting.language, meeting.title, meeting.local_user_name
+        # In the meeting's own zone: "besok" at 01:00 WIB is the day after the WIB date, not after the UTC date.
+        started_at = to_zone(meeting.started_at, tz)
 
     notes: list[str] = []  # things that went wrong without making the meeting useless; shown to the user
     if job.kind == "extract":

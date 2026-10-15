@@ -9,13 +9,13 @@ from typing import Annotated, Literal
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select, true, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from . import __version__, jobs, trash
+from . import __version__, export, jobs, trash
 from .audio import UnsupportedAudio, is_wav, to_wav_16k_mono
 from .auth import routes as auth_routes
 from .auth import service as auth_service
@@ -41,6 +41,8 @@ from .schemas import (
     TaskWithMeeting,
 )
 from .storage import LocalStorage, S3Storage, Storage
+from .tz import label as tz_label
+from .tz import zone
 from .worker import Worker
 
 
@@ -65,6 +67,7 @@ LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 def validate_auth_settings(s: Settings) -> None:
     """Refuse to start in a configuration that would leave the server open or unusable, with a message
     that says exactly what to set. Failing loudly at boot beats failing quietly in production."""
+    zone(s.timezone)  # raises a ValueError that names the setting and gives examples
     if s.auth == "google":
         missing = [n for n, v in (("REKAMIND_GOOGLE_CLIENT_ID", s.google_client_id), ("REKAMIND_GOOGLE_CLIENT_SECRET", s.google_client_secret),
                                   ("REKAMIND_PUBLIC_URL", s.public_url), ("REKAMIND_SUPERADMINS", s.superadmins)) if not v.strip()]
@@ -128,7 +131,7 @@ def create_app(settings: Settings | None = None, *, engines: Engines | None = No
         app.state.engines = engines if engines is not None else build_engines(settings)
         task = None
         if settings.worker_inprocess and app.state.engines:
-            worker = Worker(app.state.sf, app.state.storage, app.state.engines, settings.worker_poll_seconds)
+            worker = Worker(app.state.sf, app.state.storage, app.state.engines, settings.worker_poll_seconds, settings.timezone)
             task = asyncio.create_task(worker.run_forever())
         sweep = asyncio.create_task(trash.sweep_forever(app.state.sf, app.state.storage, settings.trash_days))
         yield
@@ -210,7 +213,9 @@ def create_app(settings: Settings | None = None, *, engines: Engines | None = No
     @app.get("/api/capabilities")
     async def capabilities(request: Request, _: User_):
         e: Engines | None = request.app.state.engines
-        return {"processing_ready": e is not None, "engines": e.description if e else {}}
+        tz = zone(request.app.state.settings.timezone)
+        return {"processing_ready": e is not None, "engines": e.description if e else {},
+                "timezone": request.app.state.settings.timezone, "timezone_label": tz_label(tz)}
 
     @app.post("/api/meetings", status_code=201, response_model=MeetingSummaryOut)
     async def create_meeting(body: MeetingCreate, db: Db, user: User_):
@@ -239,6 +244,17 @@ def create_app(settings: Settings | None = None, *, engines: Engines | None = No
     @app.get("/api/meetings/{meeting_id}", response_model=MeetingDetail)
     async def get_meeting(meeting_id: str, db: Db, user: User_):
         return await _meeting(db, meeting_id, user)
+
+    @app.get("/api/meetings/{meeting_id}/export")
+    async def export_meeting(meeting_id: str, request: Request, db: Db, user: User_, format: Literal["docx", "md", "json"] = "docx",
+                             transcript: bool = True, tasks: Literal["confirmed", "all"] = "confirmed"):
+        m = await _meeting(db, meeting_id, user)
+        if m.status in ("recording", "recorded", "queued", "processing"):
+            raise HTTPException(409, "Rapat belum selesai diproses; tidak ada yang bisa diekspor.")
+        body = export.render(export.build_document(m, transcript=transcript, tasks=tasks, tz=zone(request.app.state.settings.timezone)), format)
+        name = export.filename(m.title, m.started_at, format)
+        return Response(body, media_type=export.MEDIA[format], headers={
+            "Content-Disposition": f'attachment; filename="{name}"', "X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"})
 
     @app.patch("/api/meetings/{meeting_id}", response_model=MeetingSummaryOut)
     async def rename_meeting(meeting_id: str, body: MeetingPatch, db: Db, user: User_):

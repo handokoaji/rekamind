@@ -35,6 +35,8 @@ datas = (
     + collect_data_files("alembic")
     + collect_data_files("pip")
     + collect_data_files("certifi")
+    + collect_data_files("docx")  # the default Word template
+    + collect_data_files("tzdata")  # WIB/WITA/WIT on Windows
 )
 # The ML stack is never frozen in: it is installed on demand (see rekamind_server/enginepack.py).
 excludes = ["torch", "torchaudio", "pyannote", "faster_whisper", "ctranslate2", "onnxruntime", "tkinter",

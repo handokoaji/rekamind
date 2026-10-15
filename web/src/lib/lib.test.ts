@@ -70,3 +70,21 @@ describe("task export (the contract the task manager will consume)", () => {
     expect(md).toContain("Estimasi: 2 jam");
   });
 });
+
+import { formatDateTime, setDisplayTimeZone } from "./format";
+
+describe("meeting times are shown in the chosen zone and name it", () => {
+  afterEach(() => setDisplayTimeZone(undefined));
+  it("WIB by default setting, WITA and UTC on request", () => {
+    setDisplayTimeZone("Asia/Jakarta");
+    expect(formatDateTime("2026-10-15T02:30:00Z")).toMatch(/09[.:]30\s+WIB/);
+    setDisplayTimeZone("Asia/Makassar");
+    expect(formatDateTime("2026-10-15T02:30:00Z")).toMatch(/10[.:]30\s+WITA/);
+    setDisplayTimeZone("UTC");
+    expect(formatDateTime("2026-10-15T02:30:00Z")).toMatch(/02[.:]30\s+UTC/);
+  });
+  it("shows the late-evening meeting on the date participants lived it", () => {
+    setDisplayTimeZone("Asia/Jakarta");
+    expect(formatDateTime("2026-10-14T18:00:00Z")).toContain("15 Okt 2026");
+  });
+});

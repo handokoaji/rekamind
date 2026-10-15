@@ -8,13 +8,17 @@ from .engines.base import Engines
 from .models import Meeting
 from .pipeline import run_process_job
 from .storage import Storage
+from .tz import DEFAULT as DEFAULT_TZ
+from .tz import zone
 
 log = logging.getLogger(__name__)
 
 
 class Worker:
-    def __init__(self, sf: async_sessionmaker[AsyncSession], storage: Storage, engines: Engines, poll: float = 1.0):
+    def __init__(self, sf: async_sessionmaker[AsyncSession], storage: Storage, engines: Engines, poll: float = 1.0,
+                 tz: str = DEFAULT_TZ):
         self._sf, self._storage, self._engines, self._poll = sf, storage, engines, poll
+        self._tz = zone(tz)
 
     async def run_once(self) -> bool:
         job = await jobs.claim_next(self._sf)
@@ -26,7 +30,7 @@ class Worker:
                 m.status = "processing"
                 await s.commit()
         try:
-            await run_process_job(self._sf, self._storage, self._engines, job)
+            await run_process_job(self._sf, self._storage, self._engines, job, self._tz)
             await jobs.finish(self._sf, job.id)
         except Exception as exc:  # the job fails, the worker loop must not
             log.exception("job %s failed", job.id)

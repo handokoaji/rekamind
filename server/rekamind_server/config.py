@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     worker_inprocess: bool = True
     worker_poll_seconds: float = 1.0
     language: str = "id"
+    # The zone meetings are read in (dates for deadlines, the times in exports). Default WIB.
+    timezone: str = "Asia/Jakarta"
     # Deleted meetings stay recoverable this long, then audio and data are removed for good (0 = keep forever).
     trash_days: int = 30
 
@@ -41,6 +43,11 @@ class Settings(BaseSettings):
     allowed_emails: str = ""
     allowed_domains: str = ""
     session_days: int = 14
+    # Encrypts third-party tokens stored for integrations (>= 32 random characters). Optional in single-user modes.
+    secret_key: str = ""
+    # Integrations may reach private/loopback addresses (a self-hosted GitLab, a local webhook). Off on a shared
+    # server by default: otherwise any user could make the server probe its own network (SSRF).
+    integrations_allow_private: bool = False
     desktop_session_days: int = 30
     max_upload_mb: int = 4096
     # Built SPA to serve at "/" (the Docker image sets this); empty = API only.

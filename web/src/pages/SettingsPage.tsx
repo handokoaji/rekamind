@@ -7,7 +7,22 @@ import { isDesktop } from "../desktop/bridge";
 import { DesktopSettings } from "../desktop/DesktopSettings";
 import { Field, Input } from "../components/ui/Field";
 import { useCapabilities, useHealth } from "../hooks/queries";
+import { useTimeZoneChoice, ZONES } from "../hooks/timezone";
+import { Select } from "../components/ui/Field";
 import { getBackendUrl, normalizeBackendUrl, setBackendUrl } from "../lib/api";
+
+function TimeZoneCard({ serverZone, serverLabel }: { serverZone?: string; serverLabel?: string }) {
+  const { choice, setChoice } = useTimeZoneChoice();
+  return (
+    <Card className="flex flex-col gap-3 p-6">
+      <h2 className="font-semibold">Zona waktu</h2>
+      <Field label="Tampilkan jam rapat dalam" hint={`Server memakai ${serverLabel ?? "WIB"} (${serverZone ?? "Asia/Jakarta"}); ini juga zona untuk tenggat "besok"/"Jumat depan" dan jam di berkas ekspor. Pilihan di sini hanya mengubah tampilan di perangkat ini.`}>
+        {(id, d) => <Select id={id} aria-describedby={d} value={choice} onChange={(e) => setChoice(e.target.value)}>
+          {ZONES.map((z) => <option key={z.value} value={z.value}>{z.label}</option>)}</Select>}
+      </Field>
+    </Card>
+  );
+}
 
 export function SettingsPage() {
   const [url, setUrl] = useState(getBackendUrl());
@@ -47,8 +62,9 @@ export function SettingsPage() {
           <Button onClick={() => void test()} loading={testing} disabled={invalid}>Uji koneksi</Button>
           <Button variant="primary" onClick={save} disabled={invalid || normalized === getBackendUrl()}>Simpan</Button>
         </div>
-        <p className="text-xs text-muted">Catatan: login pengguna belum aktif. Jangan arahkan ke server yang terbuka ke internet.</p>
       </Card>}
+
+      <TimeZoneCard serverZone={caps.data?.timezone} serverLabel={caps.data?.timezone_label} />
 
       <Card className="flex flex-col gap-3 p-6">
         <h2 className="font-semibold">Status server</h2>

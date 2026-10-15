@@ -8,6 +8,7 @@ import { Spinner } from "./components/ui/Feedback";
 import { ErrorState } from "./components/ui/Feedback";
 import { AuthProvider, useAuthState } from "./hooks/auth";
 import { PlayerProvider } from "./components/Player";
+import { TimeZoneProvider } from "./hooks/timezone";
 import { BackendProvider } from "./desktop/backend";
 import { isDesktop } from "./desktop/bridge";
 import { DesktopSync } from "./desktop/DesktopSync";
@@ -43,6 +44,7 @@ export default function App() {
       <BrowserRouter>
         <Desktop>
         <Authenticated>
+        <TimeZoneProvider>
         <PlayerProvider>
           <Routes>
             <Route element={<AppShell />}>
@@ -55,6 +57,7 @@ export default function App() {
             </Route>
           </Routes>
         </PlayerProvider>
+        </TimeZoneProvider>
         </Authenticated>
         </Desktop>
       </BrowserRouter>
