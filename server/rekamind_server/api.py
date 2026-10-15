@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import shutil
 import uuid
 from contextlib import asynccontextmanager
@@ -57,6 +58,9 @@ from .tz import label as tz_label
 from .tz import zone
 from .vault import Vault, VaultUnavailable, load_vault
 from .worker import Worker
+
+
+logger = logging.getLogger(__name__)
 
 
 def build_storage(settings: Settings) -> Storage:
@@ -451,8 +455,9 @@ def create_app(settings: Settings | None = None, *, engines: Engines | None = No
                 await asyncio.to_thread(check_destination, url, allow_private=_allow_private())
             async with make_http(getattr(request.app.state, "integration_transport", None)) as http:
                 message = await ADAPTERS[i.kind](http, i.config, secret).test()
-        except IntegrationError as exc:
-            return {"ok": False, "message": str(exc)}
+        except IntegrationError:
+            logger.exception("Integration test failed for integration_id=%s", integration_id)
+            return {"ok": False, "message": "Gagal menguji integrasi. Periksa konfigurasi dan coba lagi."}
         return {"ok": True, "message": message}
 
     @app.post("/api/meetings/{meeting_id}/push")
