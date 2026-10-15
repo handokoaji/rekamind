@@ -518,10 +518,10 @@ def describe_environment(kind: str, log=print, probe: bool = True, with_diarize:
 
     log(f"Rekamind {__version__}, build {build_id()}")
     log(f"Diagnostik: pip {'.'.join(map(str, pip_version()))}, Python {sys.version_info.major}.{sys.version_info.minor}{frozen}, {sys.platform}")
-    envs = [f"{k}={mask_secrets(os.environ[k])}" for k in (
+    envs = [k for k in (
         "PIP_INDEX_URL", "PIP_EXTRA_INDEX_URL", "PIP_FIND_LINKS", "PIP_CONFIG_FILE", "HTTP_PROXY", "HTTPS_PROXY",
         "NO_PROXY", "http_proxy", "https_proxy") if os.environ.get(k)]
-    log("Variabel lingkungan pip/proxy: " + ("; ".join(envs) if envs else "tidak ada (bawaan: pypi.org)"))
+    log("Variabel lingkungan pip/proxy yang terdeteksi: " + (", ".join(envs) if envs else "tidak ada (bawaan: pypi.org)"))
     cfgs = [str(p) for p in (Path(os.environ.get("APPDATA", "")) / "pip" / "pip.ini", Path.home() / ".pip" / "pip.conf",
                              Path.home() / ".config" / "pip" / "pip.conf") if p.is_file()]
     if cfgs:
