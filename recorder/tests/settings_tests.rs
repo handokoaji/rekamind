@@ -294,3 +294,14 @@ fn an_old_settings_file_without_the_new_fields_still_loads_and_keeps_its_choices
     assert_eq!((s.local_port, s.local_program.as_str()), (9000, "python"));
     assert_eq!(s.whisper_model, "large-v3");
 }
+
+#[test]
+fn a_successful_install_with_speaker_separation_turns_it_on_but_never_overrides_a_choice() {
+    let mut s = Settings::default();
+    assert_eq!(s.diarizer, "none");
+    assert!(s.enable_diarizer_after_install());
+    assert_eq!(s.diarizer, "pyannote");
+    // already on: nothing to do, and calling it again must not flip anything
+    assert!(!s.enable_diarizer_after_install());
+    assert_eq!(s.diarizer, "pyannote");
+}

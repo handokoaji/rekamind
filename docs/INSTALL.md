@@ -16,7 +16,8 @@
 > **GPU support:** CPU and NVIDIA CUDA are supported. **Intel GPU** (integrated, e.g. Core Ultra 7 155H) is **experimental** through OpenVINO: choose **Pasang untuk Intel GPU** (Install for Intel GPU), then **Uji mesin**; it should list `GPU` among the devices. Not yet verified in v2 on real hardware. The first meeting converts the model (minutes, several GB of RAM) and caches it. The glossary is not applied on this engine. **AMD GPU** (integrated Radeon 680M/780M/860M and other Vulkan-capable GPUs) is **experimental** through Vulkan (whisper.cpp): choose **Pasang untuk GPU AMD (Vulkan)** (Install for AMD GPU), then **Unduh model ... sekarang** and **Uji mesin**; it should list your Radeon under "GPU detected". The install downloads a small program from this project's GitHub release `engine-assets` (checked against a SHA-256) and the model from Hugging Face (large-v3 quantised, ~1 GB); the glossary is not applied. Not yet verified on real hardware. Other machines run on the CPU.
 
 Speaker separation (pyannote) is optional: tick it during installation, enter a Hugging Face token, and accept the terms of the
-`pyannote/speaker-diarization-3.1` model on your Hugging Face account.
+`pyannote/speaker-diarization-3.1` model on your Hugging Face account. Step-by-step guide for the Hugging Face token and for a
+summary-service key (Groq or any OpenAI-compatible service): [API_KEYS.md](API_KEYS.md).
 
 App data (Windows: `%LOCALAPPDATA%\\id.rekamind.desktop`): `recordings\\` (recordings), `backend\\` (SQLite, models,
 `engine-pack\\`, `logs\\backend.log`). Deleting the `engine-pack` folder returns things to the state before installation.

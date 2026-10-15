@@ -279,6 +279,17 @@ impl Settings {
         }
     }
 
+    /// After an install that included speaker separation succeeded: start using it. Only `none` becomes
+    /// `pyannote`, so a choice the user made on purpose is never overridden. True when something changed.
+    pub fn enable_diarizer_after_install(&mut self) -> bool {
+        if self.diarizer == "none" {
+            self.diarizer = "pyannote".into();
+            true
+        } else {
+            false
+        }
+    }
+
     /// Missing or unreadable file -> defaults; a corrupt file must never stop the app from opening.
     pub fn load(path: &Path) -> Self {
         fs::read_to_string(path)

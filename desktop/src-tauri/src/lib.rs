@@ -425,6 +425,8 @@ async fn engines_check(sh: State<'_, Shared>) -> Result<serde_json::Value, Strin
 }
 
 fn start_engine_job(app: AppHandle, label: String, args: Vec<String>) -> Result<(), String> {
+    // An install that includes speaker separation, when it succeeds, also turns it on (see below).
+    let installs_diarizer = label.starts_with("install") && args.iter().any(|a| a == "--diarize");
     let sh = app.state::<Shared>();
     if sh.ctl.is_recording() {
         return Err("Selesaikan rekaman dulu: pemasangan memakai banyak CPU dan jaringan.".into());
@@ -459,6 +461,13 @@ fn start_engine_job(app: AppHandle, label: String, args: Vec<String>) -> Result<
             let mut job = sh.engine_job.lock().unwrap();
             job.running = None;
             job.last_error = Some(res.as_ref().err().cloned());
+        }
+        // Speaker separation was installed on purpose: use it, without a hidden second step in Settings.
+        if res.is_ok() && installs_diarizer {
+            let mut cur = sh.settings.lock().unwrap();
+            if cur.enable_diarizer_after_install() {
+                let _ = cur.save(&sh.settings_path);
+            }
         }
         // A finished install changes what the backend may do (REKAMIND_ENGINES), so rebuild it.
         let current = sh.settings.lock().unwrap().clone();
