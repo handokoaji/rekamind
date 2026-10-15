@@ -62,17 +62,17 @@ def cargo_names() -> dict[Path, str]:
     out = {}
     for lock, _ in CARGO_LOCKS:
         toml = lock.with_name("Cargo.toml")
-        out[lock] = re.search(r'^name = "([^"]+)"', toml.read_text(), re.M)[1]
+        out[lock] = re.search(r'^name = "([^"]+)"', toml.read_text(encoding="utf-8"), re.M)[1]
     return out
 
 
 def npm_lock(path: Path, v: str, write: bool) -> bool:
-    d = json.loads(path.read_text())
+    d = json.loads(path.read_text(encoding="utf-8"))
     ok = d.get("version") == v and d["packages"][""]["version"] == v
     if write and not ok:
         d["version"] = v
         d["packages"][""]["version"] = v
-        path.write_text(json.dumps(d, indent=2, ensure_ascii=False) + "\n")
+        path.write_text(json.dumps(d, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return ok
 
 
@@ -86,19 +86,19 @@ def main() -> int:
         return 2
     bad = []
     for path, pat, repl in targets(a.version):
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
         new = _sub(text, pat, repl, path, many=path.name.startswith("README"))
         if new != text:
             bad.append(path)
             if not a.check:
-                path.write_text(new)
+                path.write_text(new, encoding="utf-8")
     for lock, name in cargo_names().items():
-        text = lock.read_text()
+        text = lock.read_text(encoding="utf-8")
         new = _sub(text, lock_pattern(name), rf"\g<1>{a.version}\2", lock)
         if new != text:
             bad.append(lock)
             if not a.check:
-                lock.write_text(new)
+                lock.write_text(new, encoding="utf-8")
     for pkg in ("web", "desktop"):
         if not npm_lock(ROOT / pkg / "package-lock.json", a.version, write=not a.check):
             bad.append(ROOT / pkg / "package-lock.json")

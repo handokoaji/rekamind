@@ -1,15 +1,14 @@
 """Downloading the prebuilt whisper.cpp (Vulkan) program and its models, with verification.
 
 The Vulkan engine is a small native program (`whisper-cli`) built by this project's CI from a pinned whisper.cpp
-release and published as a GitHub release asset next to a `manifest.json` that lists, per platform, its URL and
-SHA-256. The program is verified against that hash before it is unpacked. The manifest and the program come from
-the same release, so this guards against corrupt or truncated downloads and tampering in transit, not against a
-compromised release; see SECURITY.md. Models are plain files from the whisper.cpp Hugging Face repository.
+release and published as a GitHub release asset. Its URL, size and SHA-256 are pinned in `engine_pins.py`, i.e. in the
+source of the app version you run: the program is checked against that hash before it is unpacked, and a release that
+was replaced on GitHub (a different hash) is refused. The `manifest.json` next to the release is informational and is
+never used to decide what to run. Models are plain files from the whisper.cpp Hugging Face repository.
 """
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import platform
 import ssl
@@ -22,7 +21,8 @@ import zipfile
 from collections.abc import Callable
 from pathlib import Path
 
-MANIFEST_URL = "https://github.com/handokoaji/rekamind/releases/download/engine-assets/manifest.json"
+from . import engine_pins
+
 MODEL_REPO_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
 ALLOWED_HOSTS = ("github.com", "githubusercontent.com", "huggingface.co", "hf.co")
 CHUNK = 1024 * 1024
@@ -74,28 +74,17 @@ def _open(url: str, timeout: float = 30):
     return urllib.request.urlopen(req, timeout=timeout, context=_ssl_context())  # noqa: S310 - https + allow-list above
 
 
-def manifest_url() -> str:
-    return os.environ.get("REKAMIND_ENGINE_ASSETS_URL") or MANIFEST_URL
-
-
-def fetch_manifest() -> dict:
-    try:
-        with _open(manifest_url()) as r:
-            data = json.loads(r.read().decode("utf-8"))
-    except (urllib.error.URLError, OSError, ValueError) as e:
-        raise AssetError(f"Tidak bisa mengambil daftar mesin dari {manifest_url()}: {e}") from e
-    if data.get("schema") != 1 or "whispercpp" not in data:
-        raise AssetError("Daftar mesin tidak dikenali (skema berbeda). Perbarui Rekamind.")
-    return data
-
-
-def pick_asset(manifest: dict, key: str | None = None) -> dict:
+def pinned_asset(key: str | None = None, version: str | None = None) -> dict:
+    """The pinned program for this platform. Fails closed: no pin, no install."""
     key = key or platform_key()
-    asset = manifest["whispercpp"].get("assets", {}).get(key)
-    if not asset or not asset.get("url") or not asset.get("sha256"):
-        raise AssetError(f"Tidak ada paket whisper.cpp untuk {key} di daftar mesin.")
-    return asset
-
+    version = version or engine_pins.DEFAULT_VERSION
+    asset = engine_pins.PINS.get(version, {}).get(key)
+    if not asset or not asset.get("url") or not str(asset.get("sha256", "")).strip():
+        raise AssetError(f"Tidak ada paket whisper.cpp {version} untuk {key} yang dipercaya aplikasi ini. Perbarui Rekamind.")
+    sha = str(asset["sha256"]).lower()
+    if len(sha) != 64 or any(c not in "0123456789abcdef" for c in sha):
+        raise AssetError(f"Hash tertanam untuk {key} tidak valid.")
+    return {**asset, "sha256": sha, "version": version}
 
 def sha256_file(path: Path) -> str:
     h = hashlib.sha256()
@@ -173,16 +162,16 @@ def find_binary(pack: Path) -> Path | None:
 
 
 def install_program(pack: Path, log: Callable[[str], None] = print) -> Path:
-    """Fetch the manifest, download the program for this platform, verify, unpack into `pack/whispercpp`."""
-    log(f"Mengambil daftar mesin: {manifest_url()}")
-    manifest = fetch_manifest()
-    asset = pick_asset(manifest)
-    wc = manifest["whispercpp"]
-    log(f"whisper.cpp {wc.get('version', '?')} untuk {platform_key()} (SHA-256 {asset['sha256'][:12]}...)")
+    """Download the pinned program for this platform, verify it, unpack into `pack/whispercpp`."""
+    asset = pinned_asset()
+    log(f"whisper.cpp {asset['version']} untuk {platform_key()} (SHA-256 tertanam {asset['sha256'][:12]}...)")
     target = pack / "whispercpp"
     zip_path = pack / "whispercpp.zip"
-    download(asset["url"], zip_path, asset["sha256"], log)
+    download(str(asset["url"]), zip_path, asset["sha256"], log)
     try:
+        want = asset.get("size")
+        if want and zip_path.stat().st_size != int(want):  # type: ignore[arg-type]
+            raise AssetError(f"Ukuran paket tidak sama dengan yang tertanam ({zip_path.stat().st_size} dari {want} byte).")
         if target.exists():
             import shutil
 

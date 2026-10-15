@@ -28,7 +28,7 @@ apa yang diterapkan **di repo** dan apa yang harus diaktifkan **di pengaturan Gi
 | Release and engine-asset publishing run in the `release` environment, so a required reviewer can gate them | `environment: release` |
 | No `pull_request_target`; fork PRs get no secrets | workflow triggers |
 | Engine packages install with `--only-binary=:all:` (no `setup.py` from source packages) and only from `pypi.org`, `files.pythonhosted.org`, `download.pytorch.org` | `server/rekamind_server/enginepack.py` |
-| The native engine zip is checked against a SHA-256 and unpacked with a path check; download hosts are allow-listed | `server/rekamind_server/engine_assets.py` |
+| The native engine zip (`whisper-cli`) is checked against a **SHA-256 pinned in the app source** (`engine_pins.py`), not one published next to the file; size is pinned too; it is unpacked with a path check; download hosts are allow-listed. A replaced release is refused. | `server/rekamind_server/engine_pins.py`, `engine_assets.py` |
 | Lockfiles for npm and Cargo are committed and CI installs from them (`npm ci`) | `web/`, `desktop/`, `recorder/` |
 
 ## In GitHub settings (do these once) / Di pengaturan GitHub (sekali saja)
@@ -55,9 +55,10 @@ apa yang diterapkan **di repo** dan apa yang harus diaktifkan **di pengaturan Gi
 
 ## Known gaps, not fixed yet / Celah yang belum ditutup
 
-- **Engine download trust.** `whisper-cli` is verified against a SHA-256 that sits in `manifest.json` on the same release
-  page as the file. Whoever can write that release can replace both. Better: ship the expected hash (or a public key
-  that verifies a signed manifest) **inside the app**, so a compromised release alone cannot change what the app runs.
+- **Engine download: pinned, but only for the Vulkan `whisper-cli`.** Its hash is in the app (closed). The CPU, NVIDIA and
+  Intel engines are installed with `pip` from PyPI and are **not** covered by that pin (see the next item). Apps up to
+  v0.4.0-beta.4 still trust the `manifest.json` of the `engine-assets` release, so never modify or delete that release.
+  A signed manifest (Ed25519, key kept offline) would allow engine updates without an app release.
 - **Python packages are not hash-pinned.** The engine pack and the frozen backend install `>=` ranges from PyPI at install
   or build time. A malicious new release of a dependency would be picked up. Better: a lock file with hashes
   (`--require-hashes`) per engine kind and for the build.

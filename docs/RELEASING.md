@@ -20,6 +20,12 @@ Tags ending in `-alpha.N`, `-beta.N` or `-rc.N` become a GitHub **pre-release**.
    If pushing a tag is not possible from where you work, use *Actions → Release → Run workflow* on `master` with the tag name; it builds that commit and creates the tag.
 6. Download and try each installer on a clean machine before announcing.
 
+Engine program (AMD/Vulkan `whisper-cli`): apps only install a build whose SHA-256 is pinned in
+`server/rekamind_server/engine_pins.py`. To ship a new build, run *Actions → Engine assets* (it creates a new release
+`engine-assets-<whisper.cpp tag>-r<run>`; it never overwrites one), copy the "Pin for engine_pins.py" block from the run
+summary into `engine_pins.py` through a reviewed pull request, then release the app. Never edit or delete a published
+engine-assets release: apps that pin it would refuse to install.
+
 App icons are generated from `docs/assets/logo.svg` (`scripts/make_icons.mjs`); the UI logo, favicon and README use the same shape.
 README screenshots: `cd web && npm run build && npx playwright test -c playwright.docs.config.ts`.
 

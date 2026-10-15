@@ -181,25 +181,32 @@ jobs:
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with: { path: dl, pattern: "asset-*", merge-multiple: true }
+      # Every build gets its OWN release (never overwritten): apps pin the SHA-256 of a specific build in
+      # server/rekamind_server/engine_pins.py, so replacing an already published file would break them (by design).
+      - name: Release tag
+        run: echo "RELEASE_TAG=engine-assets-${WHISPERCPP_TAG}-r${{ github.run_number }}" >> "$GITHUB_ENV"
       - name: Manifest
         run: |
           python3 - <<'PY'
-          import glob, json
+          import glob, json, os
           assets = {}
-          base = "https://github.com/${{ github.repository }}/releases/download/engine-assets"
+          base = "https://github.com/${{ github.repository }}/releases/download/" + os.environ["RELEASE_TAG"]
           for p in glob.glob("dl/asset-*.json"):
               a = json.load(open(p))
               assets[a["key"]] = {"url": f"{base}/{a['file']}", "sha256": a["sha256"], "size": a["size"]}
           json.dump({"schema": 1, "whispercpp": {"version": "${{ env.WHISPERCPP_TAG }}", "assets": assets}}, open("dl/manifest.json", "w"), indent=2)
           print(open("dl/manifest.json").read())
+          # The block to paste into server/rekamind_server/engine_pins.py (reviewed pull request, then an app release).
+          lines = ['"${{ env.WHISPERCPP_TAG }}": {']
+          for key, a in sorted(assets.items()):
+              lines.append(f'    "{key}": {{"url": "{a["url"]}", "sha256": "{a["sha256"]}", "size": {a["size"]}}},')
+          lines.append("},")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as s:
+              s.write("### Pin for engine_pins.py\n\n```python\n" + "\n".join(lines) + "\n```\n")
           PY
-      - name: Publish (rolling release "engine-assets")
+      - name: Publish (a new release per build, never overwritten)
         env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}", GH_REPO: "${{ github.repository }}" }  # no checkout in this job
         run: |
-          notes="Native engine programs downloaded on demand by the Rekamind desktop app (not for manual download). whisper.cpp ${WHISPERCPP_TAG}, Vulkan backend, MIT licence. Each file's SHA-256 is in manifest.json."
-          if gh release view engine-assets >/dev/null 2>&1; then
-            gh release upload engine-assets dl/*.zip dl/manifest.json --clobber
-            gh release edit engine-assets --notes "$notes"
-          else
-            gh release create engine-assets dl/*.zip dl/manifest.json --prerelease --title "Engine assets" --notes "$notes" --target "${{ github.sha }}"
-          fi
+          notes="Native engine programs downloaded on demand by the Rekamind desktop app (not for manual download). whisper.cpp ${WHISPERCPP_TAG}, Vulkan backend, MIT licence. Apps trust the SHA-256 pinned in their own source (engine_pins.py); manifest.json is informational. This release must not be modified after it is published."
+          # "gh release create" fails if the tag already exists: a published build is never replaced.
+          gh release create "$RELEASE_TAG" dl/*.zip dl/manifest.json --prerelease --title "Engine assets $RELEASE_TAG" --notes "$notes" --target "${{ github.sha }}"

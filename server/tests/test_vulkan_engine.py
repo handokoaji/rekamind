@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from rekamind_server import engine_assets, enginepack
+from rekamind_server import engine_assets, engine_pins, enginepack
 from rekamind_server.config import Settings
 from rekamind_server.engines import whispercpp as wc
 from rekamind_server.engines.registry import use_vulkan
@@ -69,7 +69,8 @@ def env(monkeypatch, tmp_path, server):
     return base, www
 
 
-def publish(www: Path, base: str, *, tamper: bool = False) -> None:
+def publish(www: Path, base: str, monkeypatch, *, tamper: bool = False) -> None:
+    """Serve the fake program and pin its hash in the app (the app trusts engine_pins, never the release's manifest)."""
     z = www / "whisper-vulkan.zip"
     with zipfile.ZipFile(z, "w") as f:
         f.writestr("whisper-cli", FAKE_CLI)
@@ -78,8 +79,8 @@ def publish(www: Path, base: str, *, tamper: bool = False) -> None:
     if tamper:
         digest = "0" * 64
     key = engine_assets.platform_key()
-    (www / "manifest.json").write_text(json.dumps({"schema": 1, "whispercpp": {"version": "v1.9.5", "assets": {
-        key: {"url": f"{base}/whisper-vulkan.zip", "sha256": digest}}}}))
+    monkeypatch.setattr(engine_pins, "PINS", {engine_pins.DEFAULT_VERSION: {key: {
+        "url": f"{base}/whisper-vulkan.zip", "sha256": digest, "size": z.stat().st_size}}})
 
 
 def test_url_policy():
@@ -101,8 +102,7 @@ def test_zip_slip_is_rejected(tmp_path):
 
 def test_install_downloads_verifies_and_makes_the_program_runnable(env, tmp_path, monkeypatch):
     base, www = env
-    publish(www, base)
-    monkeypatch.setenv("REKAMIND_ENGINE_ASSETS_URL", f"{base}/manifest.json")
+    publish(www, base, monkeypatch)
     pack = tmp_path / "data" / "engine-pack"
     pack.mkdir(parents=True)
     exe = engine_assets.install_program(pack, log=lambda m: None)
@@ -112,23 +112,12 @@ def test_install_downloads_verifies_and_makes_the_program_runnable(env, tmp_path
 
 def test_checksum_mismatch_installs_nothing(env, tmp_path, monkeypatch):
     base, www = env
-    publish(www, base, tamper=True)
-    monkeypatch.setenv("REKAMIND_ENGINE_ASSETS_URL", f"{base}/manifest.json")
+    publish(www, base, monkeypatch, tamper=True)
     pack = tmp_path / "data" / "engine-pack"
     pack.mkdir(parents=True)
     with pytest.raises(engine_assets.AssetError, match="SHA-256"):
         engine_assets.install_program(pack, log=lambda m: None)
     assert engine_assets.find_binary(pack) is None and not list(pack.glob("*.part")) and not (pack / "whispercpp.zip").exists()
-
-
-def test_manifest_with_unknown_schema_or_platform(env, monkeypatch, tmp_path):
-    base, www = env
-    (www / "manifest.json").write_text(json.dumps({"schema": 2}))
-    monkeypatch.setenv("REKAMIND_ENGINE_ASSETS_URL", f"{base}/manifest.json")
-    with pytest.raises(engine_assets.AssetError, match="skema"):
-        engine_assets.fetch_manifest()
-    with pytest.raises(engine_assets.AssetError, match="Tidak ada paket"):
-        engine_assets.pick_asset({"whispercpp": {"assets": {}}}, "windows-x64")
 
 
 def test_model_download_falls_back_to_the_plain_file_when_the_quantised_one_is_missing(env, monkeypatch):
@@ -145,10 +134,9 @@ def test_model_download_falls_back_to_the_plain_file_when_the_quantised_one_is_m
 @pytest.fixture
 def installed(env, tmp_path, monkeypatch):
     base, www = env
-    publish(www, base)
+    publish(www, base, monkeypatch)
     (www / "ggml-large-v3-q5_0.bin").write_bytes(b"m" * 2_000_000)
     monkeypatch.setattr(engine_assets, "MODEL_REPO_URL", base)
-    monkeypatch.setenv("REKAMIND_ENGINE_ASSETS_URL", f"{base}/manifest.json")
     assert enginepack.install("vulkan") == 0
     return tmp_path / "data" / "engine-pack"
 
