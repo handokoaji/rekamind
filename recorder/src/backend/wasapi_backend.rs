@@ -194,6 +194,28 @@ enum End {
     DeviceLost,
 }
 
+/// Upper bound on packets taken in one poll (~10 ms each, so ~10 s): a stuck driver that keeps
+/// reporting a packet must not wedge the capture thread.
+const MAX_PACKETS_PER_POLL: usize = 1000;
+
+/// Read every packet that is ready. `wasapi`'s `read_from_device_to_deque` takes exactly ONE
+/// packet (~10 ms) per call, so reading once per 100 ms poll kept ~10% of the audio and let the
+/// pacer pad the rest with zeros -- choppy audio that the VAD then discarded entirely.
+fn drain_packets<E>(
+    mut next_size: impl FnMut() -> Result<Option<u32>, E>,
+    mut read_one: impl FnMut() -> Result<(), E>,
+) -> Result<usize, E> {
+    let mut n = 0;
+    while n < MAX_PACKETS_PER_POLL {
+        match next_size()? {
+            Some(frames) if frames > 0 => read_one()?,
+            _ => break,
+        }
+        n += 1;
+    }
+    Ok(n)
+}
+
 fn run_stream(ctx: &SourceCtx, stream: &mut Stream, stop: &AtomicBool, pacer: &mut Pacer) -> End {
     let mut queue: VecDeque<u8> = VecDeque::with_capacity(64 * 1024);
     let mut bytes: Vec<u8> = Vec::new();
@@ -201,11 +223,12 @@ fn run_stream(ctx: &SourceCtx, stream: &mut Stream, stop: &AtomicBool, pacer: &m
     let mut last_check = Instant::now();
     while !stop.load(Ordering::Relaxed) {
         thread::sleep(POLL);
-        if let Err(e) = stream.capture.read_from_device_to_deque(&mut queue) {
-            {
-                let _ = e; // any read failure here means the device went away
-                return End::DeviceLost;
-            }
+        let drained = drain_packets(
+            || stream.capture.get_next_packet_size(),
+            || stream.capture.read_from_device_to_deque(&mut queue).map(|_| ()),
+        );
+        if drained.is_err() {
+            return End::DeviceLost; // any read failure here means the device went away
         }
         samples.clear();
         if !queue.is_empty() {
@@ -297,5 +320,54 @@ impl Backend for WasapiBackend {
                 Err("perangkat audio tidak merespons".into())
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `packets` ready frames, then idle (0), like a loopback that has caught up.
+    fn run(packets: usize) -> (usize, usize) {
+        let left = std::cell::Cell::new(packets);
+        let read = std::cell::Cell::new(0);
+        let n = drain_packets::<()>(
+            || Ok(Some(if left.get() > 0 { 160 } else { 0 })),
+            || {
+                left.set(left.get() - 1);
+                read.set(read.get() + 1);
+                Ok(())
+            },
+        )
+        .unwrap();
+        (n, read.get())
+    }
+
+    #[test]
+    fn drains_every_queued_packet_not_just_one() {
+        // 100 ms poll over a 10 ms packet cadence leaves ~10 packets waiting.
+        assert_eq!(run(10), (10, 10));
+    }
+
+    #[test]
+    fn idle_loopback_reads_nothing() {
+        assert_eq!(run(0), (0, 0));
+    }
+
+    #[test]
+    fn stuck_driver_is_bounded() {
+        let n = drain_packets::<()>(|| Ok(Some(160)), || Ok(())).unwrap();
+        assert_eq!(n, MAX_PACKETS_PER_POLL);
+    }
+
+    #[test]
+    fn exclusive_mode_none_does_not_spin() {
+        let n = drain_packets::<()>(|| Ok(None), || Ok(())).unwrap();
+        assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn read_error_is_propagated() {
+        assert!(drain_packets(|| Ok(Some(160)), || Err("gone")).is_err());
     }
 }
