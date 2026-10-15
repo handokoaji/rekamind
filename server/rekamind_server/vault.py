@@ -17,6 +17,8 @@ from cryptography.fernet import Fernet, InvalidToken
 from .config import Settings
 
 MIN_KEY_CHARS = 32
+PBKDF2_ITERATIONS = 600_000
+VAULT_KDF_SALT = b"rekamind-vault-kdf-v1"
 
 
 class VaultUnavailable(RuntimeError):
@@ -27,7 +29,14 @@ class Vault:
     def __init__(self, passphrase: str):
         if len(passphrase) < MIN_KEY_CHARS:
             raise VaultUnavailable(f"REKAMIND_SECRET_KEY harus minimal {MIN_KEY_CHARS} karakter acak")
-        self._f = Fernet(base64.urlsafe_b64encode(hashlib.sha256(passphrase.encode()).digest()))
+        key = hashlib.pbkdf2_hmac(
+            "sha256",
+            passphrase.encode(),
+            VAULT_KDF_SALT,
+            PBKDF2_ITERATIONS,
+            dklen=32,
+        )
+        self._f = Fernet(base64.urlsafe_b64encode(key))
 
     def seal(self, plain: str) -> str:
         return self._f.encrypt(plain.encode()).decode()
