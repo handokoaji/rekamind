@@ -4,6 +4,13 @@ import uuid
 from pathlib import Path
 
 _APP_DIR_NAME = "MeetingRecorder"
+_SENSITIVE_CONFIG_ENV_MAP = {
+    "groq_api_key": "MEETINGRECORDER_GROQ_API_KEY",
+    "hf_token": "MEETINGRECORDER_HF_TOKEN",
+    "minio_access_key": "MEETINGRECORDER_MINIO_ACCESS_KEY",
+    "minio_secret_key": "MEETINGRECORDER_MINIO_SECRET_KEY",
+    "postgres_password": "MEETINGRECORDER_POSTGRES_PASSWORD",
+}
 
 
 def config_dir() -> Path:
@@ -43,6 +50,15 @@ def save_packaged_config(data: dict) -> None:
     if not to_save.get("device_id"):
         existing = load_packaged_config() or {}
         to_save["device_id"] = existing.get("device_id") or uuid.uuid4().hex
+
+    # Never persist clear-text secrets in config.json.
+    # Store an environment-variable placeholder instead.
+    for key, env_name in _SENSITIVE_CONFIG_ENV_MAP.items():
+        value = to_save.get(key)
+        if isinstance(value, str) and value.strip():
+            os.environ[env_name] = value
+            to_save[key] = f"${{{env_name}}}"
+
     config_dir().mkdir(parents=True, exist_ok=True)
     config_path().write_text(json.dumps(to_save, indent=2), encoding="utf-8")
 
