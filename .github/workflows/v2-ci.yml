@@ -6,6 +6,9 @@ on:
   pull_request:
     paths: ["server/**", "web/**", "docker-compose.yml", ".github/workflows/v2-ci.yml"]
 
+permissions:
+  contents: read
+
 jobs:
   server:
     runs-on: ubuntu-latest
