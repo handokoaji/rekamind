@@ -251,7 +251,8 @@ def _check_vulkan(out: dict, pack: Path | None) -> dict:
             w.setframerate(16000)
             w.writeframes(struct.pack("<h", 0) * 16000)
         try:
-            p = subprocess.run([str(exe), "-m", str(model), "-f", str(wav), "-l", "id", "-np"],  # noqa: S603
+            # No "-np": it silences all of whisper.cpp's logging, including the "ggml_vulkan: 0 = ..." line parse_devices reads.
+            p = subprocess.run([str(exe), "-m", str(model), "-f", str(wav), "-l", "id", "-nt"],  # noqa: S603
                                capture_output=True, text=True, timeout=300, **flags)
             out["vulkan_devices"] = parse_devices(p.stderr or "")
             out["gpu"] = bool(out["vulkan_devices"])
