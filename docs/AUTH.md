@@ -1,90 +1,92 @@
-# Login dan hak akses Rekamind
+🌐 **English** · [Bahasa Indonesia](AUTH.id.md)
 
-Rekamind open source (MIT). Siapa pun boleh memasangnya di servernya sendiri. Karena itu **tidak ada
-kredensial Google bawaan**: setiap pemasang membuat OAuth client Google sendiri dan memasukkannya lewat
-variabel lingkungan. Rahasia tidak pernah ada di repo, di browser, atau di aplikasi desktop.
+# Rekamind login and access rights
 
-## Aturan akses
+Rekamind is open source (MIT). Anyone may install it on their own server. For that reason there are **no default
+Google credentials**: each installer creates their own Google OAuth client and supplies it through
+environment variables. Secrets are never in the repo, in the browser, or in the desktop app.
 
-| Peran | Boleh |
+## Access rules
+
+| Role | Allowed |
 |---|---|
-| **User** | Hanya melihat dan mengubah rapat, task, dan peserta **miliknya sendiri**. Data orang lain dijawab `404` (bukan `403`, supaya keberadaannya tidak bocor). |
-| **Super admin** | Semua: melihat semua rapat (tombol "Semua pengguna"), mengundang/menonaktifkan pengguna, menaikkan/menurunkan peran. Daftar super admin awal datang dari `REKAMIND_SUPERADMINS`. Super admin aktif terakhir tidak bisa diturunkan atau dinonaktifkan. |
+| **User** | Can only see and modify meetings, tasks, and participants **that they own**. Other people's data is answered with `404` (not `403`, so its existence does not leak). |
+| **Super admin** | Everything: sees all meetings (the **"Semua pengguna"** (All users) button), invites/deactivates users, promotes/demotes roles. The initial list of super admins comes from `REKAMIND_SUPERADMINS`. The last active super admin cannot be demoted or deactivated. |
 
-Siapa yang boleh membuat akun:
-- `REKAMIND_SIGNUP=allowlist` (bawaan): hanya email di `REKAMIND_ALLOWED_EMAILS`, domain di `REKAMIND_ALLOWED_DOMAINS`, super admin, atau yang diundang super admin.
-- `REKAMIND_SIGNUP=open`: setiap akun Google dengan email terverifikasi. Hanya pakai ini bila Anda memang ingin server terbuka.
+Who may create an account:
+- `REKAMIND_SIGNUP=allowlist` (default): only emails in `REKAMIND_ALLOWED_EMAILS`, domains in `REKAMIND_ALLOWED_DOMAINS`, super admins, or those invited by a super admin.
+- `REKAMIND_SIGNUP=open`: any Google account with a verified email. Only use this if you really want an open server.
 
-## 1. Membuat OAuth client Google (sekali, oleh pemasang)
+## 1. Creating the Google OAuth client (once, by the installer)
 
-> Langkah di Google Cloud Console berubah dari waktu ke waktu dan **tidak bisa saya verifikasi dari
-> lingkungan pengembangan ini** (host Google diblokir). Perlakukan nama menu di bawah sebagai petunjuk, dan
-> cocokkan dengan dokumentasi Google terbaru.
+> The steps in Google Cloud Console change over time and **I cannot verify them from this
+> development environment** (Google hosts are blocked). Treat the menu names below as hints, and
+> check them against Google's latest documentation.
 
-1. Buka Google Cloud Console, buat project, lalu atur layar persetujuan OAuth (OAuth consent screen).
-   Untuk pemakaian internal organisasi Google Workspace pilih tipe *Internal*; selain itu *External*.
-   Status "Testing" membatasi ke daftar test user dan bisa membuat refresh token kedaluwarsa. Itu tidak
-   masalah di sini karena Rekamind hanya meminta scope `openid email profile` dan membuat sesinya sendiri.
-2. Buat kredensial: *OAuth client ID*, tipe *Web application*.
-3. **Authorized redirect URI** diisi persis: `{REKAMIND_PUBLIC_URL}/auth/callback`
-   (contoh `https://rekamind.kantor.id/auth/callback`).
-4. Salin Client ID dan Client secret ke env server.
+1. Open Google Cloud Console, create a project, then set up the OAuth consent screen.
+   For internal use within a Google Workspace organization choose the *Internal* type; otherwise *External*.
+   The "Testing" status limits access to a list of test users and can make refresh tokens expire. That is
+   not a problem here because Rekamind only requests the `openid email profile` scope and creates its own session.
+2. Create credentials: *OAuth client ID*, type *Web application*.
+3. **Authorized redirect URI** is filled in exactly as: `{REKAMIND_PUBLIC_URL}/auth/callback`
+   (example `https://rekamind.kantor.id/auth/callback`).
+4. Copy the Client ID and Client secret into the server env.
 
-## 2. Konfigurasi server
+## 2. Server configuration
 
 ```env
 REKAMIND_AUTH=google
-REKAMIND_PUBLIC_URL=https://rekamind.kantor.id   # harus https (kecuali localhost)
+REKAMIND_PUBLIC_URL=https://rekamind.kantor.id   # must be https (except localhost)
 REKAMIND_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
 REKAMIND_GOOGLE_CLIENT_SECRET=xxxx
-REKAMIND_SUPERADMINS=anda@kantor.id              # pisahkan koma
+REKAMIND_SUPERADMINS=anda@kantor.id              # comma-separated
 REKAMIND_SIGNUP=allowlist
 REKAMIND_ALLOWED_DOMAINS=kantor.id
-# opsional: REKAMIND_ALLOWED_EMAILS, REKAMIND_SESSION_DAYS (14), REKAMIND_DESKTOP_SESSION_DAYS (30)
+# optional: REKAMIND_ALLOWED_EMAILS, REKAMIND_SESSION_DAYS (14), REKAMIND_DESKTOP_SESSION_DAYS (30)
 ```
 
-Server **menolak start** bila konfigurasinya tidak aman: Google tanpa client id/secret/public URL, public URL
-bukan https, `signup` tidak dikenal, atau `REKAMIND_AUTH=none` di alamat selain loopback (kecuali
-`REKAMIND_INSECURE_NO_AUTH=true`, yang sengaja dibuat canggung diketik).
+The server **refuses to start** if the configuration is unsafe: Google without client id/secret/public URL, a public URL
+that is not https, an unknown `signup` value, or `REKAMIND_AUTH=none` on an address other than loopback (unless
+`REKAMIND_INSECURE_NO_AUTH=true`, which is deliberately awkward to type).
 
-Pasang di belakang reverse proxy HTTPS. Cookie sesi bertanda `Secure` hanya bila `PUBLIC_URL` https.
+Install it behind an HTTPS reverse proxy. The session cookie is marked `Secure` only if `PUBLIC_URL` is https.
 
-## 3. Cara kerjanya (ringkas)
+## 3. How it works (summary)
 
-- Authorization code + **PKCE** (S256) + `state` + `nonce`. Server (confidential client) yang menukar kode.
-- ID token diverifikasi ketat: tanda tangan RS256 dari JWKS penerbit, `iss`, `aud`, `exp`, `iat`, `nonce`,
-  `azp`, dan `email_verified` harus `true`.
-- Akun diidentifikasi dengan klaim **`sub`**, bukan email, sehingga email Google yang didaur ulang tidak
-  mewarisi data pemilik lama. Pengguna yang diundang (belum punya `sub`) dikaitkan pada login pertamanya.
-  Catatan: ini kepercayaan pada penggunaan pertama (TOFU); undang hanya email yang Anda yakin milik orangnya.
-- Sesi: id acak `rks_…`; hanya hash SHA-256 yang disimpan. Cookie `rk_session` (HttpOnly, SameSite=Lax).
-  Percobaan login terikat ke cookie `rk_flow` (anti login-CSRF) dan sekali pakai. Request yang mengubah data
-  lewat cookie diperiksa `Origin`. Rate limit pada login. Menonaktifkan pengguna mencabut semua sesinya.
-- **Aplikasi desktop (mode server)**: membuka browser sistem, server mengembalikan kode sekali-pakai ke
-  `http://127.0.0.1:<port>`, aplikasi menukarnya dengan verifier PKCE miliknya, lalu menyimpan token sesi di
-  penyimpanan kredensial OS (Windows Credential Manager / Secret Service). Aplikasi tidak pernah melihat
-  rahasia Google.
-- **Mode lokal** (backend di laptop yang sama): tidak ada login Google; backend hanya mendengarkan loopback dan
-  dilindungi rahasia acak per peluncuran yang diketahui aplikasi desktop saja.
-- Alat baris perintah: `rekamind-rec login --server URL --print-token`.
+- Authorization code + **PKCE** (S256) + `state` + `nonce`. The server (a confidential client) exchanges the code.
+- The ID token is verified strictly: RS256 signature from the issuer's JWKS, `iss`, `aud`, `exp`, `iat`, `nonce`,
+  `azp`, and `email_verified` must be `true`.
+- Accounts are identified by the **`sub`** claim, not by email, so a recycled Google email does not
+  inherit the previous owner's data. An invited user (who does not have a `sub` yet) is linked on their first login.
+  Note: this is trust on first use (TOFU); only invite emails that you are sure belong to the person.
+- Sessions: random id `rks_…`; only the SHA-256 hash is stored. Cookie `rk_session` (HttpOnly, SameSite=Lax).
+  A login attempt is bound to the `rk_flow` cookie (anti login-CSRF) and is single-use. Requests that modify data
+  via cookie are checked for `Origin`. Rate limit on login. Deactivating a user revokes all of their sessions.
+- **Desktop app (server mode)**: opens the system browser, the server returns a single-use code to
+  `http://127.0.0.1:<port>`, the app exchanges it with its own PKCE verifier, then stores the session token in the
+  OS credential store (Windows Credential Manager / Secret Service). The app never sees the
+  Google secret.
+- **Local mode** (backend on the same laptop): no Google login; the backend only listens on loopback and is
+  protected by a random per-launch secret known only to the desktop app.
+- Command-line tool: `rekamind-rec login --server URL --print-token`.
 
-## 4. Yang sudah terbukti dan yang belum
+## 4. What is proven and what is not
 
-Terbukti (otomatis, terhadap IdP tiruan yang menandatangani token RS256 sungguhan lewat HTTP): seluruh alur
-login, penolakan token/klaim yang salah, isolasi data antar pengguna pada **setiap rute API** (tes inventori
-rute gagal bila ada rute baru tanpa aturan kepemilikan), panel admin, login desktop lintas proses.
+Proven (automated, against a fake IdP that signs real RS256 tokens over HTTP): the entire login flow,
+rejection of wrong tokens/claims, data isolation between users on **every API route** (the route inventory test
+fails if a new route has no ownership rule), the admin panel, cross-process desktop login.
 
-**Belum terbukti**: Google asli (tidak terjangkau dari lingkungan pengembangan; perilaku consent screen,
-verifikasi aplikasi, dan format token terbaru perlu dicoba sekali di server Anda) dan penyimpanan kredensial
-OS di Windows. Coba login pertama Anda sebelum mengandalkannya.
+**Not proven**: real Google (not reachable from the development environment; the consent screen behavior,
+app verification, and the latest token format need to be tried once on your server) and the OS credential
+store on Windows. Try your first login before relying on it.
 
-## Rencana lanjutan
+## Future plans
 
-- Opsi login OAuth lain (mis. IdP kampus) bisa ditambahkan nanti sebagai penyedia kedua; saat ini hanya Google.
-- Kredensial layanan terpisah untuk worker GPU jarak jauh belum ada.
+- Other OAuth login options (e.g. a campus IdP) can be added later as a second provider; for now only Google.
+- Separate service credentials for a remote GPU worker do not exist yet.
 
-## Penghapusan data
+## Data deletion
 
-Hapus di UI = pindah ke tong sampah (bisa diurungkan 10 detik, dan tetap pulih lewat API). Data benar-benar
-dihapus (audio di disk/S3, transkrip, task, peserta) lewat **Hapus permanen** atau otomatis setelah
-`REKAMIND_TRASH_DAYS` hari (bawaan 30; 0 = simpan selamanya). Rapat yang sedang diproses tidak bisa dihapus permanen (409).
+Deleting in the UI = moving to the trash (undoable for 10 seconds, and still recoverable via the API). Data is actually
+deleted (audio on disk/S3, transcripts, tasks, participants) through **Hapus permanen** (Delete permanently) or automatically after
+`REKAMIND_TRASH_DAYS` days (default 30; 0 = keep forever). A meeting that is being processed cannot be permanently deleted (409).

@@ -7,18 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.0-beta.1] - 2026-10-15
 
-Rilis pertama generasi v2 (pre-release, untuk diuji). Aplikasi v1 (Tkinter) digantikan; tidak kompatibel.
+First release of the v2 generation (pre-release, for testing). Replaces the v1 (Tkinter) app; not compatible with it.
 
-### Ditambahkan
-- Perekam Rust (mikrofon + suara sistem) dan aplikasi desktop Tauri untuk Windows dan Linux, dengan backend lokal dibundel.
-- Backend FastAPI: antrean job, transkripsi (faster-whisper), pemisahan pembicara (opsional), ekstraksi ringkasan/task via LLM kompatibel OpenAI.
-- Antarmuka web React: rapat, ringkasan, task, transkrip, pembicara, pengaturan.
-- Ekspor Word/Markdown/JSON; integrasi GitHub, GitLab, webhook bertanda tangan; zona waktu (bawaan WIB).
-- Login Google (OIDC + PKCE) dan kepemilikan per pengguna untuk server bersama; Docker Compose.
-- Pemasangan mesin transkripsi on-demand dari aplikasi (CPU atau NVIDIA).
+### Added
+- Rust recorder (microphone + system audio) and Tauri desktop app for Windows and Linux, with the local backend bundled.
+- FastAPI backend: job queue, transcription (faster-whisper), optional speaker separation, summary/task extraction via an OpenAI-compatible LLM.
+- React web interface: meetings, summary, tasks, transcript, speakers, settings.
+- Word/Markdown/JSON export; GitHub, GitLab and signed-webhook integrations; time zone setting (default WIB).
+- Google sign-in (OIDC + PKCE) and per-user ownership for the shared server; Docker Compose.
+- On-demand transcription engine install from the app (CPU or NVIDIA).
+- English (default) and Indonesian documentation.
 
-### Diketahui
-- Installer belum bertanda tangan; Linux desktop belum diuji di mesin sungguhan. Lihat catatan rilis.
+### Known issues
+- Installers are unsigned; Linux desktop untested on real hardware; AMD/Intel GPUs unsupported (CPU only) and untested. See the release notes.
 
 ## [0.3.0] - 2026-09-23
 

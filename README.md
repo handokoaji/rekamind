@@ -1,187 +1,195 @@
 <div align="center">
 
-<img src="docs/assets/logo.svg" alt="Logo Rekamind" width="96" height="96">
+🌐 **English** · [Bahasa Indonesia](README.id.md)
+
+<img src="docs/assets/logo.svg" alt="Rekamind logo" width="96" height="96">
 
 # Rekamind
 
-**Rekam rapat. Dapatkan transkrip per pembicara, ringkasan, dan daftar task. Data tetap milik Anda.**
+**Record meetings. Get a per-speaker transcript, a summary and a task list. Your data stays yours.**
 
-[![Rilis](https://img.shields.io/badge/rilis-v0.4.0--beta.1-f59e0b?style=for-the-badge)](https://github.com/handokoaji/rekamind/releases/tag/v0.4.0-beta.1)
-[![Platform](https://img.shields.io/badge/Windows%20%C2%B7%20Linux-4f46e5?style=for-the-badge)](#-unduh)
-[![Lisensi](https://img.shields.io/badge/lisensi-MIT-16a34a?style=for-the-badge)](LICENSE)
+[![Release](https://img.shields.io/badge/release-v0.4.0--beta.1-f59e0b?style=for-the-badge)](https://github.com/handokoaji/rekamind/releases/tag/v0.4.0-beta.1)
+[![Platform](https://img.shields.io/badge/Windows%20%C2%B7%20Linux-4f46e5?style=for-the-badge)](#-download)
+[![License](https://img.shields.io/badge/license-MIT-16a34a?style=for-the-badge)](LICENSE)
 
-[**Unduh**](#-unduh) · [Panduan mulai](#-panduan-dari-pemasangan-sampai-terpakai) · [Fitur](#-fitur) · [Server tim](#-server-bersama-untuk-tim) · [Masalah umum](#-masalah-umum)
+[**Download**](#-download) · [Getting started](#-guide-from-install-to-first-use) · [Features](#-features) · [Team server](#-shared-server-for-teams) · [Troubleshooting](#-troubleshooting)
 
 <br>
 
-<img src="docs/screenshots/05-ringkasan.png" alt="Ringkasan rapat di Rekamind" width="880">
+<img src="docs/screenshots/05-ringkasan.png" alt="Meeting summary in Rekamind" width="880">
 
 </div>
 
 > [!WARNING]
-> **Ini rilis beta (0.x) untuk diuji, bukan rilis final.** Fungsi utama sudah diuji otomatis dan di satu PC
-> Windows, tetapi belum di banyak mesin. **Jangan jadikan Rekamind satu-satunya salinan rekaman yang penting.**
-> Daftar batasan yang jujur ada di [Batasan rilis beta](#-batasan-rilis-beta).
+> **This is a beta (0.x) release for testing, not a final release.** The core features are covered by automated
+> tests and have been tried on one Windows PC, but not on many machines. **Do not make Rekamind the only copy of a
+> recording that matters.** See the honest list of [beta limitations](#-beta-limitations).
 
-## Kenapa Rekamind
+> [!NOTE]
+> **Language:** the app interface and the meeting output (summary, tasks) are currently **Indonesian only**. The
+> screenshots below therefore show Indonesian. Transcription language is configurable in Settings; the interface
+> itself has not been translated yet.
 
-- **Ringan saat merekam.** Perekam kecil (Rust) yang menangkap mikrofon dan suara sistem. Tidak ada model AI yang
-  berjalan selama rapat; jendela boleh ditutup.
-- **Lokal dulu.** Transkripsi (Whisper) dan pemisahan pembicara berjalan di komputer Anda. Hanya teks transkrip
-  yang dikirim ke layanan ringkasan pilihan Anda, dan itu opsional.
-- **Dari rekaman jadi pekerjaan.** Hasilnya bukan hanya teks: ada keputusan, jalannya rapat, dan **task** lengkap
-  dengan PIC, tenggat, dan kutipan bukti yang bisa diputar ulang.
-- **Satu orang atau satu tim.** Pasang di laptop sendiri, atau di server kantor dengan login Google.
-- **Terbuka.** Lisensi MIT. Tidak ada akun, telemetri, atau kredensial bawaan.
+## Why Rekamind
 
-## ✨ Fitur
+- **Light while recording.** A tiny recorder (Rust) captures the microphone and system audio. No AI model runs during
+  the meeting, and the window can be closed.
+- **Local first.** Transcription (Whisper) and speaker separation run on your computer. Only the transcript text goes
+  to the summary service you choose, and that step is optional.
+- **From recording to work.** The result is more than text: decisions, the flow of the meeting, and **tasks** with
+  assignee, deadline and an evidence quote you can replay.
+- **One person or a whole team.** Install on your own laptop, or on an office server with Google sign-in.
+- **Open.** MIT licensed. No accounts, no telemetry, no bundled credentials.
+
+## ✨ Features
 
 <table>
 <tr>
 <td width="50%" valign="top">
 
-### Rekam dari desktop
-Satu tombol atau `Ctrl+Alt+R`. Merekam mikrofon + suara rapat (Zoom, Meet, Teams, dll.) ke dua jalur terpisah,
-jadi pembicara lokal dan peserta jarak jauh mudah dibedakan.
+### Record from the desktop
+One button or `Ctrl+Alt+R`. Records the microphone and the meeting audio (Zoom, Meet, Teams, ...) as two separate
+tracks, so local and remote speakers are easy to tell apart.
 
 </td>
 <td width="50%" valign="top">
 
-<img src="docs/screenshots/14-desktop-merekam.png" alt="Bilah perekam saat merekam">
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-<img src="docs/screenshots/03-unggah.png" alt="Unggah rekaman">
-
-</td>
-<td width="50%" valign="top">
-
-### Atau unggah rekaman
-Sudah punya rekaman? Unggah WAV, MP3, atau M4A. Judul diisi otomatis dari nama berkas.
+<img src="docs/screenshots/14-desktop-merekam.png" alt="Recorder bar while recording">
 
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
 
-### Ringkasan, keputusan, jalannya rapat
-Dibuat dari transkrip lengkap, dalam Bahasa Indonesia. Rapat panjang dipecah otomatis bila layanan ringkasan
-membatasi ukuran.
+<img src="docs/screenshots/03-unggah.png" alt="Upload a recording">
 
 </td>
 <td width="50%" valign="top">
 
-<img src="docs/screenshots/04-daftar-rapat.png" alt="Daftar rapat dengan pencarian dan filter">
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-<img src="docs/screenshots/08-task.png" alt="Tinjau dan konfirmasi task">
-
-</td>
-<td width="50%" valign="top">
-
-### Task yang bisa Anda periksa
-Setiap task membawa PIC, tenggat, estimasi, dan **kutipan bukti**. Anda meninjau dan mengonfirmasi dulu; tidak
-ada yang dikirim ke mana pun sebelum Anda memutuskan.
+### Or upload a recording
+Already have a recording? Upload WAV, MP3 or M4A. The title is filled from the file name.
 
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
 
-### Transkrip per pembicara
-Mikrofon dan suara sistem dipisah, lalu pembicara dikenali dan bisa Anda beri nama. Transkrip panjang tetap
-mulus (daftar virtual).
+### Summary, decisions, flow of the meeting
+Built from the full transcript. Long meetings are split automatically when the summary service limits request size.
 
 </td>
 <td width="50%" valign="top">
 
-<img src="docs/screenshots/06-transkrip.png" alt="Transkrip per pembicara">
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-<img src="docs/screenshots/09-ekspor.png" alt="Dialog ekspor">
-
-</td>
-<td width="50%" valign="top">
-
-### Ekspor lengkap
-Satu berkas berisi ringkasan, keputusan, task, dan (opsional) transkrip: **Word (.docx)**, **Markdown**, atau
-**JSON**. Waktu memakai zona waktu pilihan Anda (bawaan WIB).
+<img src="docs/screenshots/04-daftar-rapat.png" alt="Meeting list with search and filters">
 
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
 
-### Kirim task ke tempat kerja Anda
-**GitHub Issues**, **GitLab Issues**, atau **webhook** bertanda tangan (HMAC) untuk task manager apa pun.
-Mengirim dua kali tidak membuat duplikat.
+<img src="docs/screenshots/08-task.png" alt="Review and confirm tasks">
 
 </td>
 <td width="50%" valign="top">
 
-<img src="docs/screenshots/10-kirim-task.png" alt="Kirim task ke webhook">
+### Tasks you can verify
+Every task carries an assignee, deadline, estimate and an **evidence quote**. You review and confirm first; nothing
+is sent anywhere before you decide.
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### Per-speaker transcript
+Microphone and system audio are separated, speakers are recognised and can be named. Long transcripts stay smooth
+(virtualised list).
+
+</td>
+<td width="50%" valign="top">
+
+<img src="docs/screenshots/06-transkrip.png" alt="Per-speaker transcript">
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+<img src="docs/screenshots/09-ekspor.png" alt="Export dialog">
+
+</td>
+<td width="50%" valign="top">
+
+### Complete export
+One file with summary, decisions, tasks and (optionally) the transcript: **Word (.docx)**, **Markdown** or **JSON**.
+Times use your chosen time zone (default WIB, Asia/Jakarta).
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### Send tasks to where you work
+**GitHub Issues**, **GitLab Issues**, or a signed (HMAC) **webhook** for any task manager. Sending twice does not
+create duplicates.
+
+</td>
+<td width="50%" valign="top">
+
+<img src="docs/screenshots/10-kirim-task.png" alt="Send tasks to a webhook">
 
 </td>
 </tr>
 </table>
 
 <details>
-<summary><b>Lebih banyak tampilan</b> (pembicara, semua task, pengaturan, mode gelap, login)</summary>
+<summary><b>More views</b> (speakers, all tasks, settings, dark mode, sign-in)</summary>
 <br>
 
 | | |
 |---|---|
-| ![Pembicara](docs/screenshots/07-pembicara.png) <br> **Beri nama pembicara** | ![Semua task](docs/screenshots/11-semua-task.png) <br> **Semua task lintas rapat** |
-| ![Pengaturan](docs/screenshots/12-pengaturan.png) <br> **Pengaturan: integrasi dan zona waktu** | ![Mesin](docs/screenshots/15-desktop-mesin.png) <br> **Pengaturan desktop: pasang mesin lokal** |
-| ![Gelap](docs/screenshots/05b-ringkasan-gelap.png) <br> **Mode gelap otomatis** | ![Login](docs/screenshots/01-login.png) <br> **Login Google (mode server)** |
+| ![Speakers](docs/screenshots/07-pembicara.png) <br> **Name the speakers** | ![All tasks](docs/screenshots/11-semua-task.png) <br> **All tasks across meetings** |
+| ![Settings](docs/screenshots/12-pengaturan.png) <br> **Settings: integrations and time zone** | ![Engine](docs/screenshots/15-desktop-mesin.png) <br> **Desktop settings: install the local engine** |
+| ![Dark](docs/screenshots/05b-ringkasan-gelap.png) <br> **Automatic dark mode** | ![Login](docs/screenshots/01-login.png) <br> **Google sign-in (server mode)** |
 
 </details>
 
-> Screenshot dibuat dari aplikasi sungguhan dengan isi rapat contoh (mesin "demo"), bukan hasil model asli.
-> Kualitas transkrip dan ringkasan Anda bergantung pada audio, model, dan layanan ringkasan yang dipakai.
+> Screenshots are taken from the real app with sample meeting content (a "demo" engine), not real model output. The
+> quality of your transcripts and summaries depends on the audio, the models and the summary service you use.
 
-## 📥 Unduh
+## 📥 Download
 
-Buka halaman rilis dan pilih berkas sesuai sistem Anda:
+Pick the file for your system:
 
-| Sistem | Berkas | Catatan |
+| System | File | Notes |
 |---|---|---|
-| **Windows 10/11 (64-bit)** | [`Rekamind-Windows-x64-setup.exe`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.1/Rekamind-Windows-x64-setup.exe) | Pemasang `.exe`. Tanpa hak admin. |
-| **Linux (64-bit)** | [`Rekamind-Linux-x64.deb`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.1/Rekamind-Linux-x64.deb) | Debian/Ubuntu dan turunannya. |
-| Linux, distro lain | [`Rekamind-Linux-x64.AppImage`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.1/Rekamind-Linux-x64.AppImage) | Bila tersedia di rilis. |
+| **Windows 10/11 (64-bit)** | [`Rekamind-Windows-x64-setup.exe`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.1/Rekamind-Windows-x64-setup.exe) | `.exe` installer. No admin rights needed. |
+| **Linux (64-bit)** | [`Rekamind-Linux-x64.deb`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.1/Rekamind-Linux-x64.deb) | Debian/Ubuntu and derivatives. |
+| Linux, other distros | [`Rekamind-Linux-x64.AppImage`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.1/Rekamind-Linux-x64.AppImage) | Only if attached to the release. |
 
-Semua berkas disertai `SHA256SUMS.txt`. Semua halaman rilis: [Releases](https://github.com/handokoaji/rekamind/releases).
+Every file comes with `SHA256SUMS.txt`. All releases: [Releases](https://github.com/handokoaji/rekamind/releases).
 
-**Installer belum bertanda tangan digital** (rilis beta). Windows SmartScreen akan menampilkan "Windows protected
-your PC": klik **More info → Run anyway**. Itu perilaku normal untuk aplikasi tanpa sertifikat berbayar; bandingkan
-checksum bila ragu.
+**The installers are not code-signed** (beta). Windows SmartScreen will show "Windows protected your PC": click
+**More info → Run anyway**. This is normal for apps without a paid certificate; compare the checksum if in doubt.
 
-## 🚀 Panduan: dari pemasangan sampai terpakai
+**Not supported yet:** macOS, ARM machines, and **AMD or Intel GPUs for acceleration** (see
+[GPU support](#gpu-support)).
 
-Sekitar 15 menit, sebagian besar menunggu unduhan sekali saja.
+## 🚀 Guide: from install to first use
 
-### Langkah 1: Pasang aplikasi
+About 15 minutes, most of it a one-time download.
+
+### Step 1: Install the app
 
 <details open>
 <summary><b>Windows</b></summary>
 
-1. Unduh `Rekamind-Windows-x64-setup.exe`, jalankan.
-2. Bila SmartScreen muncul: **More info → Run anyway**.
-3. Ikuti pemasang (bahasa Indonesia tersedia). Rekamind terpasang untuk pengguna Anda saja, tanpa hak admin.
-4. Buka **Rekamind** dari Start Menu.
+1. Download `Rekamind-Windows-x64-setup.exe` and run it.
+2. If SmartScreen appears: **More info → Run anyway**.
+3. Follow the installer (Indonesian and English are offered). Rekamind installs for your user only, without admin rights.
+4. Open **Rekamind** from the Start menu.
 
-Syarat: Windows 10/11 64-bit. WebView2 sudah bawaan Windows 11 dan terpasang otomatis bila belum ada.
+Requirements: 64-bit Windows 10/11. WebView2 ships with Windows 11 and is installed automatically if missing.
 
 </details>
 
@@ -189,129 +197,147 @@ Syarat: Windows 10/11 64-bit. WebView2 sudah bawaan Windows 11 dan terpasang oto
 <summary><b>Linux (Debian / Ubuntu)</b></summary>
 
 ```bash
-sudo apt install ./Rekamind-Linux-x64.deb      # menarik juga pulseaudio-utils dan WebKitGTK
-rekamind                                        # atau buka dari menu aplikasi
+sudo apt install ./Rekamind-Linux-x64.deb      # also pulls in pulseaudio-utils and WebKitGTK
+rekamind                                        # or open it from the application menu
 ```
 
-Perekaman memakai PulseAudio atau PipeWire (lewat `parec`). Di sistem PipeWire, pastikan paket `pipewire-pulse`
-terpasang (bawaan di Ubuntu 22.10+ dan Fedora). Untuk AppImage: `chmod +x Rekamind-Linux-x64.AppImage` lalu jalankan.
+Recording uses PulseAudio or PipeWire (through `parec`). On PipeWire systems make sure `pipewire-pulse` is installed
+(default on Ubuntu 22.10+ and Fedora). For the AppImage: `chmod +x Rekamind-Linux-x64.AppImage`, then run it.
 
 </details>
 
-### Langkah 2: Coba merekam
+### Step 2: Try a recording
 
-1. Di halaman **Rapat**, ketik judul lalu klik **Mulai merekam**, atau tekan `Ctrl+Alt+R` dari aplikasi mana pun.
-2. Rapat berjalan seperti biasa. Jendela Rekamind boleh ditutup; perekam tetap berjalan di baki sistem.
-3. Selesai: **Stop** (ada konfirmasi supaya tidak terhenti tak sengaja). Rekaman diserahkan ke mesin lokal. Bila **Proses otomatis** aktif di Pengaturan (bawaan), pemrosesan langsung berjalan setelah mesin terpasang.
+1. On the **Rapat** (Meetings) page, type a title and click **Mulai merekam** (Start recording), or press `Ctrl+Alt+R` from any app.
+2. Hold your meeting as usual. The Rekamind window can be closed; the recorder keeps running in the system tray.
+3. When done, press **Stop** (there is a confirmation so you do not stop by accident). The recording is handed to the
+   local engine. If **Proses otomatis** (Auto-process) is on in Settings (default), processing starts automatically
+   once the engine is installed.
 
-Anda sudah bisa merekam di titik ini, bahkan sebelum mesin AI terpasang. Rekaman menunggu dengan aman.
+You can already record at this point, even before the AI engine is installed. Recordings wait safely.
 
-### Langkah 3: Pasang mesin transkripsi (sekali saja)
+### Step 3: Install the transcription engine (once)
 
-Buka **Pengaturan → Mesin transkripsi → Pasang**.
+Open **Pengaturan → Mesin transkripsi → Pasang** (Settings → Transcription engine → Install).
 
-| Pilihan | Untuk | Ukuran unduhan |
+| Choice | For | Download size |
 |---|---|---|
-| **CPU** | Semua komputer. Lebih lambat. | unduhan lebih kecil |
-| **NVIDIA GPU** | Kartu NVIDIA dengan VRAM cukup (pada uji kami model `large-v3` memakai 3,3 sampai 4,2 GB). Jauh lebih cepat. | lebih besar (pustaka CUDA) |
+| **CPU** | Every computer, including AMD/Intel GPU machines. Slower. | smaller |
+| **NVIDIA GPU** | NVIDIA cards with enough VRAM (in our test `large-v3` used 3.3 to 4.2 GB). Much faster. | larger (CUDA libraries) |
 
-Ada progres dan tombol batal. Setelah selesai klik **Uji mesin**; harus muncul "Terpasang". Model suara
-diunduh saat rapat pertama diproses (beberapa GB), atau klik **Unduh model ... sekarang** agar tidak menunggu nanti.
-Ukuran unduhan pasti bergantung pada versi pustaka saat Anda memasang; periksa ruang disk dan koneksi.
+There is a progress bar and a cancel button. When it finishes click **Uji mesin** (Test engine); it should say
+"Terpasang" (Installed). The speech model downloads when the first meeting is processed (several GB), or click
+**Unduh model ... sekarang** (Download model now) to avoid waiting later. The exact download size depends on the
+library versions at install time; check your disk space and connection.
 
-> Pemisah pembicara (pyannote) bersifat opsional dan perlu token Hugging Face. Tanpa itu, semua suara dianggap satu
-> pembicara per jalur (mikrofon = Anda). Lihat [INSTALL.md](docs/INSTALL.md).
+> Speaker separation (pyannote) is optional and needs a Hugging Face token. Without it every track is treated as one
+> speaker (microphone = you). See [INSTALL.md](docs/INSTALL.md).
 
-### Langkah 4: Isi layanan ringkasan
+#### GPU support
 
-Ringkasan dan task dibuat oleh model bahasa lewat API yang kompatibel dengan OpenAI. Bawaan: **Groq**
-(ada paket gratis dengan batas pemakaian). Di **Pengaturan → Layanan ringkasan** isi:
+| Hardware | Status |
+|---|---|
+| **CPU** (any) | Supported. Tested. |
+| **NVIDIA GPU** (CUDA) | Supported. Tested on one PC (Windows 11, GTX 1080 Ti). |
+| **AMD GPU** (ROCm, Vulkan, DirectML) | **Not supported.** The engine installer only offers CPU and NVIDIA CUDA. An AMD machine runs on the CPU. Never tested with an AMD GPU. |
+| **Intel GPU / NPU** | **Not supported** in v2 and not tested. |
 
-- **Kunci API**: dibuat di akun penyedia Anda. Disimpan di Credential Manager (Windows) atau Secret Service (Linux),
-  **tidak** di berkas pengaturan.
-- Alamat dan model sudah terisi untuk Groq; ganti bila memakai penyedia lain (OpenAI, OpenRouter, server lokal).
+### Step 4: Set up the summary service
 
-> Privasi: yang dikirim ke penyedia ini hanyalah **teks transkrip**, bukan audio. Bila itu tidak boleh keluar
-> dari organisasi Anda, arahkan ke model yang Anda jalankan sendiri atau lewati langkah ini (transkrip tetap jadi).
+Summaries and tasks are produced by a language model through an OpenAI-compatible API. Default: **Groq** (it has a
+free tier with usage limits). Under **Pengaturan → Layanan ringkasan** (Settings → Summary service) fill in:
 
-### Langkah 5: Proses rapat dan tinjau
+- **API key**: created in your provider account. Stored in Windows Credential Manager or Linux Secret Service, **not**
+  in a settings file.
+- The address and model are pre-filled for Groq; change them to use another provider (OpenAI, OpenRouter, a local server).
 
-Bila **Proses otomatis** mati, buka rapat → **Proses sekarang**. Anda akan melihat statusnya berjalan (transkripsi → pembicara → ringkasan). Setelah
-**Perlu ditinjau**:
+> Privacy: only the **transcript text** is sent to this provider, never audio. If the text must not leave your
+> organisation, point it at a model you run yourself, or skip this step (the transcript is still produced).
 
-1. **Ringkasan**: baca keputusan dan jalannya rapat.
-2. **Pembicara**: beri nama (Rina, Dewi, ...), lalu **proses ulang** agar PIC task terhubung ke nama.
-3. **Task**: periksa tiap task (tombol putar pada kutipan bukti memutar bagian rekamannya), ubah bila perlu, lalu **Konfirmasi**.
+### Step 5: Process the meeting and review
 
-### Langkah 6: Ekspor atau kirim
+If **Proses otomatis** is off, open the meeting → **Proses sekarang** (Process now). You will see the status move
+(transcription → speakers → summary). Once it reads **Perlu ditinjau** (Needs review):
 
-- **Ekspor**: Word, Markdown, atau JSON.
-- **Kirim task**: tambahkan tujuan di **Pengaturan → Integrasi** (GitHub, GitLab, atau webhook), lalu pada tab Task
-  klik **Kirim N task**. Panduan token dan izin ada di [INTEGRATIONS.md](docs/INTEGRATIONS.md).
+1. **Ringkasan** (Summary): read the decisions and the flow of the meeting.
+2. **Pembicara** (Speakers): name them (Rina, Dewi, ...), then **reprocess** so task assignees link to names.
+3. **Task**: check each task (the play button on the evidence quote plays that part of the recording), edit if
+   needed, then **Konfirmasi** (Confirm).
 
-### Zona waktu
+### Step 6: Export or send
 
-Bawaan **WIB (Asia/Jakarta)**. Ubah di **Pengaturan**; tenggat seperti "besok" dihitung menurut zona waktu ini.
+- **Ekspor** (Export): Word, Markdown or JSON.
+- **Send tasks**: add a destination under **Pengaturan → Integrasi** (GitHub, GitLab or webhook), then on the Task tab
+  click **Kirim N task** (Send N tasks). Token and permission guide: [INTEGRATIONS.md](docs/INTEGRATIONS.md).
 
-## 🏢 Server bersama untuk tim
+### Time zone
 
-Untuk kantor: satu server, banyak pengguna, login Google, tiap orang hanya melihat rapat miliknya
-(super admin melihat semua). Aplikasi desktop lalu dipilih ke mode **Server terpisah**.
+Default **WIB (Asia/Jakarta)**. Change it in **Pengaturan**; deadlines such as "tomorrow" are computed in this zone.
+
+## 🏢 Shared server for teams
+
+For an office: one server, many users, Google sign-in, each person sees only their own meetings (super admins see
+all). The desktop app is then switched to **Server terpisah** (Remote server) mode.
 
 ```bash
-cp server/.env.example .env         # isi PUBLIC_URL, kunci OAuth Google, dan SUPERADMINS
+cp server/.env.example .env         # fill in PUBLIC_URL, Google OAuth keys and SUPERADMINS
 docker compose up -d --build
 ```
 
-**Login Google sudah terimplementasi** (OIDC authorization code + PKCE). Karena proyek ini open source,
-**tidak ada kredensial Google bawaan**: pemasang membuat OAuth client sendiri di Google Cloud Console dan
-memasukkan Client ID/Secret lewat variabel lingkungan server (bukan lewat antarmuka). Langkah lengkap, variabel,
-dan model keamanannya ada di **[docs/AUTH.md](docs/AUTH.md)**. Di belakang reverse proxy, lihat catatan unggahan
-besar di [docs/INSTALL.md](docs/INSTALL.md).
+**Google sign-in is implemented** (OIDC authorization code + PKCE) but so far tested only against a mock identity
+provider, not real Google. Because the project is open source there are **no bundled Google credentials**: the
+installer creates their own OAuth client in Google Cloud Console and supplies the Client ID/Secret through server
+environment variables (not through the UI). Full steps, variables and the security model are in
+**[docs/AUTH.md](docs/AUTH.md)**. Behind a reverse proxy, see the large-upload notes in
+[docs/INSTALL.md](docs/INSTALL.md).
 
-## 🧰 Masalah umum
+## 🧰 Troubleshooting
 
-| Gejala | Penyebab & solusi |
+| Symptom | Cause and fix |
 |---|---|
-| SmartScreen memblokir installer | Installer beta belum bertanda tangan. **More info → Run anyway**. |
-| "Mesin belum terpasang" | Selesaikan **Langkah 3**. Lalu **Uji mesin**. |
-| Ringkasan gagal, transkrip ada | Kunci API salah atau kena batas pemakaian. Transkrip tetap tersimpan; klik **Buat ulang ringkasan** setelah diperbaiki. |
-| Tidak ada suara rapat (hanya mikrofon) | Windows: pastikan ada perangkat output aktif. Linux: pasang `pulseaudio-utils`/`pipewire-pulse`. |
-| `Ctrl+Alt+R` tidak bereaksi | Bentrok dengan aplikasi lain. Ganti di Pengaturan. |
-| GPU kehabisan memori | Rekamind otomatis turun ke mode lebih hemat, lalu CPU. Tutup aplikasi GPU lain. |
+| SmartScreen blocks the installer | The beta installer is unsigned. **More info → Run anyway**. |
+| "Engine not installed" | Finish **Step 3**, then **Uji mesin**. |
+| Summary failed but transcript exists | Wrong API key or usage limit hit. The transcript is kept; click **Buat ulang ringkasan** (Regenerate summary) once fixed. |
+| No meeting audio (microphone only) | Windows: make sure an active output device exists. Linux: install `pulseaudio-utils` / `pipewire-pulse`. |
+| `Ctrl+Alt+R` does nothing | Conflicts with another app. Change it in Settings. |
+| GPU out of memory | Rekamind automatically falls back to a lighter mode, then to CPU. Close other GPU apps. |
+| Slow on an AMD/Intel GPU machine | Expected: those GPUs are not used; transcription runs on the CPU. |
 
-Log backend ada di folder data aplikasi: `backend\logs\backend.log` (Windows: `%LOCALAPPDATA%\id.rekamind.desktop`; lokasi persis di Linux tertera di Pengaturan → folder backend).
-Saat melapor bug, **jangan** lampirkan rekaman atau kunci API. Gunakan [template laporan](https://github.com/handokoaji/rekamind/issues/new/choose).
+Backend log lives in the app data folder: `backend\logs\backend.log` (Windows: `%LOCALAPPDATA%\id.rekamind.desktop`;
+on Linux the exact location is shown in Settings → backend folder).
+When reporting a bug, **do not** attach recordings or API keys. Use the
+[issue template](https://github.com/handokoaji/rekamind/issues/new/choose).
 
-## ⚠️ Batasan rilis beta
+## ⚠️ Beta limitations
 
-Dinyatakan apa adanya supaya Anda tahu apa yang sedang diuji:
+Stated plainly so you know what is being tested:
 
-- **Installer belum bertanda tangan** (Windows akan memperingatkan).
-- **Linux desktop (baki sistem, hotkey global, perekaman audio) belum diuji di mesin sungguhan.** Backend dan
-  antarmukanya diuji di Linux; shell desktop-nya baru dibangun di CI.
-- **Windows**: diuji di satu PC (Windows 11, GTX 1080 Ti). Rekam panjang dengan jendela tertutup, mati paksa saat
-  merekam, ekspor Word di aplikasi Word asli, dan penyimpanan di Credential Manager masih dalam pengujian manual.
-- **GitHub, GitLab, Google login, dan S3/MinIO asli** baru diuji dengan server tiruan/otomatis, belum dengan layanan
-  sungguhan.
-- **Kualitas** transkrip, pemisahan pembicara, dan ekstraksi task belum diukur pada banyak jenis audio. Tinjau
-  hasilnya, terutama nama dan tenggat.
-- Aplikasi lama (v1, Tkinter) ada di riwayat git dan tag `v0.1.0` sampai `v0.3.0`; v2 tidak kompatibel dengannya.
+- **Installers are unsigned** (Windows will warn you).
+- **Linux desktop (tray, global hotkey, audio capture) has not been tested on a real machine.** The backend and UI are
+  tested on Linux; the desktop shell is only built in CI.
+- **Windows**: tested on one PC (Windows 11, GTX 1080 Ti). Long recordings with the window closed, force-kill during
+  recording, Word export in real Microsoft Word, and Credential Manager storage are still being tested manually.
+- **GPU**: only CPU and NVIDIA CUDA exist. **AMD and Intel GPUs are not supported and have never been tested.**
+- **Real GitHub, GitLab, Google sign-in and S3/MinIO** have only been tested against mock/automated servers.
+- **Quality** of transcripts, speaker separation and task extraction has not been measured across many kinds of
+  audio. Review the output, especially names and deadlines.
+- **Interface and generated output are Indonesian only.**
+- The old v1 app (Tkinter) lives in git history and tags `v0.1.0` to `v0.3.0`; v2 is not compatible with it.
 
-## 🛠️ Untuk pengembang
+## 🛠️ For developers
 
 ```bash
 pip install -e "server[dev]" && pytest server          # backend
-cd web && npm ci && npm test && npm run build          # antarmuka
-cd recorder && cargo test                              # perekam Rust
-python scripts/build_desktop.py                        # installer lokal (Windows: nsis, Linux: deb)
+cd web && npm ci && npm test && npm run build          # interface
+cd recorder && cargo test                              # Rust recorder
+python scripts/build_desktop.py                        # local installer (Windows: nsis, Linux: deb)
 ```
 
-Arsitektur: [docs/v2/ARCHITECTURE.md](docs/v2/ARCHITECTURE.md) · Rilis: [docs/RELEASING.md](docs/RELEASING.md) ·
-Kontribusi: [CONTRIBUTING.md](CONTRIBUTING.md) · Keamanan: [SECURITY.md](SECURITY.md) ·
-Riwayat perubahan: [CHANGELOG.md](CHANGELOG.md)
+Architecture: [docs/v2/ARCHITECTURE.md](docs/v2/ARCHITECTURE.md) (Indonesian) · Releasing: [docs/RELEASING.md](docs/RELEASING.md) ·
+Contributing: [CONTRIBUTING.md](CONTRIBUTING.md) · Security: [SECURITY.md](SECURITY.md) ·
+Changelog: [CHANGELOG.md](CHANGELOG.md)
 
-## Lisensi
+## License
 
-[MIT](LICENSE). Pustaka dan model pihak ketiga memiliki lisensinya sendiri (mis. model pyannote memerlukan
-persetujuan syarat di Hugging Face).
+[MIT](LICENSE). Third-party libraries and models have their own licences (e.g. the pyannote models require accepting
+terms on Hugging Face).

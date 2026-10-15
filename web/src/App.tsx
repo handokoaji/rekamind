@@ -8,6 +8,7 @@ import { Spinner } from "./components/ui/Feedback";
 import { ErrorState } from "./components/ui/Feedback";
 import { AuthProvider, useAuthState } from "./hooks/auth";
 import { PlayerProvider } from "./components/Player";
+import { I18nProvider } from "./lib/i18n";
 import { TimeZoneProvider } from "./hooks/timezone";
 import { BackendProvider } from "./desktop/backend";
 import { isDesktop } from "./desktop/bridge";
@@ -41,6 +42,7 @@ function Authenticated({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <QueryClientProvider client={client}>
+      <I18nProvider>
       <BrowserRouter>
         <Desktop>
         <Authenticated>
@@ -61,6 +63,7 @@ export default function App() {
         </Authenticated>
         </Desktop>
       </BrowserRouter>
+      </I18nProvider>
       <Toaster position="bottom-right" closeButton toastOptions={{ style: { fontFamily: "inherit" } }} />
     </QueryClientProvider>
   );

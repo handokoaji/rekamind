@@ -1,10 +1,12 @@
-# Keamanan
+🌐 **English** · [Bahasa Indonesia](SECURITY.id.md)
 
-Laporkan celah keamanan **secara privat** lewat GitHub Security Advisories (tab *Security* → *Report a
-vulnerability*) di repo ini, bukan lewat issue publik. Sertakan langkah reproduksi dan versi.
+# Security
 
-Cakupan utama: autentikasi/otorisasi (`server/rekamind_server/auth`), isolasi data antar pengguna, unggahan
-audio, dan penyimpanan token di aplikasi desktop. Model ancaman dan batasan yang diketahui ada di
+Report security vulnerabilities **privately** through GitHub Security Advisories (the *Security* tab → *Report a
+vulnerability*) in this repo, not through a public issue. Include reproduction steps and the version.
+
+Main scope: authentication/authorization (`server/rekamind_server/auth`), data isolation between users, audio
+uploads, and token storage in the desktop app. The threat model and known limitations are in
 `docs/AUTH.md`.
 
-Jangan memasukkan rahasia (client secret Google, token, `.env`) ke commit, issue, atau log.
+Do not put secrets (Google client secret, tokens, `.env`) in commits, issues, or logs.

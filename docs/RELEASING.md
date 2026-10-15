@@ -1,25 +1,25 @@
-# Merilis
+🌐 **English** · [Bahasa Indonesia](RELEASING.id.md)
 
-Rilis dibuat otomatis oleh `.github/workflows/release.yml` saat sebuah tag `v*` didorong.
-Tag berakhiran `-alpha.N`, `-beta.N`, atau `-rc.N` menjadi **pre-release** di GitHub.
+# Releasing
 
-1. Samakan versi di semua berkas: `python scripts/set_version.py 0.4.0-beta.2`
-   (Python memakai bentuk PEP 440 `0.4.0b2` secara otomatis; `--check` memverifikasi).
-2. Tambahkan entri di `CHANGELOG.md` dan tulis `docs/release-notes/v0.4.0-beta.2.md` (jujur soal batasan).
-3. Jalankan tes: `pytest server`, `cd web && npm test`, `cd recorder && cargo test`.
-4. Commit, gabungkan ke `master`, lalu:
+Releases are produced by `.github/workflows/release.yml` when a `v*` tag is pushed.
+Tags ending in `-alpha.N`, `-beta.N` or `-rc.N` become a GitHub **pre-release**.
+
+1. Sync the version in every file: `python scripts/set_version.py 0.4.0-beta.2`
+   (Python uses the PEP 440 form `0.4.0b2` automatically; `--check` verifies).
+2. Add a `CHANGELOG.md` entry and write `docs/release-notes/v0.4.0-beta.2.md` (English + Indonesian, honest about limitations).
+3. Run the tests: `pytest server`, `cd web && npm test`, `cd recorder && cargo test`.
+4. Commit, merge to `master`, then:
    ```bash
    git tag -a v0.4.0-beta.2 -m "Rekamind v0.4.0-beta.2"
    git push origin v0.4.0-beta.2
    ```
-5. Workflow memverifikasi versi = tag, membangun installer Windows (NSIS) dan Linux (.deb, plus AppImage bila
-   berhasil), menjalankan smoke test backend beku, membuat `SHA256SUMS.txt`, dan menerbitkan release.
-   Bila satu job gagal, tidak ada yang terbit; perbaiki lalu jalankan ulang lewat *Actions → Release → Run workflow*
-   (isi tag yang sama).
-6. Unduh dan coba tiap installer di mesin bersih sebelum mengumumkan.
+5. The workflow checks version = tag, builds the Windows (NSIS) and Linux (.deb, plus AppImage if it succeeds) installers,
+   runs the frozen-backend smoke test, creates `SHA256SUMS.txt` and publishes the release. If a job fails nothing is
+   published; fix it and re-run via *Actions → Release → Run workflow* (enter the same tag).
+6. Download and try each installer on a clean machine before announcing.
 
-Ikon aplikasi dibuat dari `docs/assets/logo.svg` (`scripts/make_icons.mjs`); logo di UI, favicon, dan README memakai
-bentuk yang sama.
-Screenshot README: `cd web && npm run build && npx playwright test -c playwright.docs.config.ts`.
+App icons are generated from `docs/assets/logo.svg` (`scripts/make_icons.mjs`); the UI logo, favicon and README use the same shape.
+README screenshots: `cd web && npm run build && npx playwright test -c playwright.docs.config.ts`.
 
-Penandatanganan kode (Windows Authenticode, GPG) belum dikonfigurasi; itu syarat sebelum rilis final.
+Code signing (Windows Authenticode, GPG) is not configured yet; it is a prerequisite for a final release.
