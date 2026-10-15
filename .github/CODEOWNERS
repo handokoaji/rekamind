@@ -1,0 +1,13 @@
+# Every change needs a review from the owner, and anything that decides what runs on users' machines or in CI is listed
+# explicitly. Pair this with a branch ruleset that requires code-owner review (see docs/REPO_SECURITY.md).
+*                                              @handokoaji
+/.github/                                      @handokoaji
+/scripts/                                      @handokoaji
+/server/rekamind_server/enginepack.py          @handokoaji
+/server/rekamind_server/engine_assets.py       @handokoaji
+/server/rekamind_server/auth/                  @handokoaji
+/desktop/src-tauri/                            @handokoaji
+/recorder/                                     @handokoaji
+/server/Dockerfile                             @handokoaji
+/LICENSE                                       @handokoaji
+/SECURITY.md                                   @handokoaji

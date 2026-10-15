@@ -6,12 +6,16 @@ on:
   pull_request:
     paths: ["server/**", "web/**", "docker-compose.yml", ".github/workflows/v2-ci.yml"]
 
+permissions:
+  contents: read
+
 jobs:
   server:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with: { python-version: "3.12", cache: pip, cache-dependency-path: server/pyproject.toml }
       - run: pip install -e "server[dev,postgres]" ruff
       - run: ruff check server
@@ -20,10 +24,11 @@ jobs:
   web:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 22, cache: npm, cache-dependency-path: web/package-lock.json }
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with: { python-version: "3.12" }
       - run: pip install -e "server[dev]"
       - run: npm ci
@@ -45,8 +50,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     defaults: { run: { working-directory: recorder } }
     steps:
-      - uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: { persist-credentials: false }
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with: { workspaces: recorder }
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
@@ -54,7 +60,7 @@ jobs:
       - run: cargo test --no-fail-fast
       - run: cargo build --release
       # Download this on a real Windows PC and run:  rekamind-rec.exe record --stats
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: matrix.os == 'windows-latest'
         with: { name: rekamind-rec-windows, path: recorder/target/release/rekamind-rec.exe }
 
@@ -67,8 +73,9 @@ jobs:
         os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with: { python-version: "3.13" }
       - run: pip install -e "server[dev]"
       - run: python scripts/check_engine_pack_resolves.py
@@ -82,12 +89,13 @@ jobs:
           - { os: ubuntu-latest, bundles: deb, exe: desktop/src-tauri/resources/backend/rekamind-backend, art: "desktop/src-tauri/target/release/bundle/deb/*.deb" }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 22, cache: npm, cache-dependency-path: "web/package-lock.json\ndesktop/package-lock.json" }
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with: { python-version: "3.13" }
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with: { workspaces: "desktop/src-tauri" }
       - if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libasound2-dev libpulse-dev patchelf
@@ -102,7 +110,7 @@ jobs:
       - name: Engine install through a pipe (frozen backend)
         timeout-minutes: 30
         run: python scripts/smoke_engine_install.py ${{ matrix.exe }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with: { name: "rekamind-installer-${{ matrix.os }}", path: "${{ matrix.art }}" }
 
   image:
@@ -112,10 +120,11 @@ jobs:
       matrix:
         extras: ["postgres,s3", "postgres,s3,asr", "postgres,s3,asr,cuda"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: { persist-credentials: false }
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       # Same three variants the release publishes to GHCR (API only, -cpu, -cuda); built here, never pushed.
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           file: server/Dockerfile

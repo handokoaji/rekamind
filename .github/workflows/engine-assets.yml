@@ -16,7 +16,7 @@ on:
     branches: ["feat/**"]  # build (and smoke test) on feature branches, but only publish from a manual run
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   WHISPERCPP_TAG: ${{ github.event.inputs.whispercpp_tag || 'v1.9.5' }}
@@ -46,7 +46,8 @@ jobs:
           - { os: ubuntu-22.04, key: linux-x64, exe: whisper-cli }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: { persist-credentials: false }
       - name: Get whisper.cpp
         shell: bash
         run: |
@@ -168,15 +169,17 @@ jobs:
           json.dump({"key": "${{ matrix.key }}", "file": f, "sha256": h, "size": os.path.getsize(f)}, open("asset-${{ matrix.key }}.json", "w"))
           print(f, h)
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with: { name: "asset-${{ matrix.key }}", path: "out/*.zip\nout/asset-*.json", if-no-files-found: error }
 
   publish:
     needs: [models, build]
+    environment: release
+    permissions: { contents: write }
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with: { path: dl, pattern: "asset-*", merge-multiple: true }
       - name: Manifest
         run: |

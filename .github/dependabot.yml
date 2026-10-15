@@ -1,0 +1,10 @@
+# Dependency updates arrive as pull requests, so they pass the same review as any other change.
+version: 2
+updates:
+  - { package-ecosystem: github-actions, directory: "/", schedule: { interval: weekly }, groups: { actions: { patterns: ["*"] } } }
+  - { package-ecosystem: pip, directory: "/server", schedule: { interval: weekly }, open-pull-requests-limit: 5 }
+  - { package-ecosystem: npm, directory: "/web", schedule: { interval: weekly }, open-pull-requests-limit: 5 }
+  - { package-ecosystem: npm, directory: "/desktop", schedule: { interval: weekly }, open-pull-requests-limit: 3 }
+  - { package-ecosystem: cargo, directory: "/recorder", schedule: { interval: weekly }, open-pull-requests-limit: 5 }
+  - { package-ecosystem: cargo, directory: "/desktop/src-tauri", schedule: { interval: weekly }, open-pull-requests-limit: 5 }
+  - { package-ecosystem: docker, directory: "/server", schedule: { interval: weekly } }
