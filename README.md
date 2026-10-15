@@ -280,7 +280,10 @@ Default **WIB (Asia/Jakarta)**. Change it in **Pengaturan**; deadlines such as "
 For an office: one server, many users, Google sign-in, each person sees only their own meetings (super admins see
 all). The desktop app is then switched to **Server terpisah** (Remote server) mode.
 
+**No build needed:** a prebuilt image is published on GHCR. In Portainer paste [`docker-compose.image.yml`](docker-compose.image.yml) (CPU) or [`docker-compose.image-gpu.yml`](docker-compose.image-gpu.yml) (NVIDIA GPU) as a stack (or `docker compose -f <file> up -d`); details in [docs/INSTALL.md](docs/INSTALL.md).
+
 ```bash
+# or build from source:
 cp server/.env.example .env         # fill in PUBLIC_URL, Google OAuth keys and SUPERADMINS
 docker compose up -d --build
 ```

@@ -23,9 +23,9 @@ def pep440(v: str) -> str:
     return base + ({"alpha": "a", "beta": "b", "rc": "rc"}[m[4]] + m[5] if m[4] else "")
 
 
-def _sub(text: str, pattern: str, repl: str, path: Path) -> str:
-    new, n = re.subn(pattern, repl, text, count=1, flags=re.M)
-    if n != 1:
+def _sub(text: str, pattern: str, repl: str, path: Path, many: bool = False) -> str:
+    new, n = re.subn(pattern, repl, text, count=0 if many else 1, flags=re.M)
+    if n < 1 or (n != 1 and not many):
         raise SystemExit(f"pola tidak ditemukan di {path}: {pattern}")
     return new
 
@@ -42,6 +42,12 @@ def targets(v: str) -> list[tuple[Path, str, str]]:
     ]
     for pkg in ("web", "desktop"):
         t.append((ROOT / pkg / "package.json", r'^(  "version": ")[^"]+(")', rf"\g<1>{v}\2"))
+    # Defaults users copy-paste: prebuilt-image tag in the compose files, download links and badge in the READMEs.
+    for f, suffix in (("docker-compose.image.yml", "cpu"), ("docker-compose.image-gpu.yml", "cuda")):
+        t.append((ROOT / f, rf"(REKAMIND_IMAGE_TAG:-)[^}}]+?(-{suffix}\}})", rf"\g<1>{v}\2"))
+    for f in ("README.md", "README.id.md"):
+        t.append((ROOT / f, r"(releases/(?:download|tag)/v)[^/)\s]+", rf"\g<1>{v}"))
+        t.append((ROOT / f, r"(badge/(?:release|rilis)-v)[^-]+(?:--[a-z]+\.\d+)?(-f59e0b)", rf"\g<1>{v.replace('-', '--')}\2"))
     return t
 
 
@@ -81,7 +87,7 @@ def main() -> int:
     bad = []
     for path, pat, repl in targets(a.version):
         text = path.read_text()
-        new = _sub(text, pat, repl, path)
+        new = _sub(text, pat, repl, path, many=path.name.startswith("README"))
         if new != text:
             bad.append(path)
             if not a.check:

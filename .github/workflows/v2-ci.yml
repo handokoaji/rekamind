@@ -86,10 +86,29 @@ jobs:
 
   image:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        extras: ["postgres,s3", "postgres,s3,asr", "postgres,s3,asr,cuda"]
     steps:
       - uses: actions/checkout@v4
-      # compose refuses to interpolate without these; the values only need to be non-empty to build the image.
-      - run: docker compose build
+      - uses: docker/setup-buildx-action@v3
+      # Same three variants the release publishes to GHCR (API only, -cpu, -cuda); built here, never pushed.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: server/Dockerfile
+          build-args: EXTRAS=${{ matrix.extras }}
+          push: false
+          load: true
+          tags: rekamind-server:ci
+      - name: The image starts and answers /api/health
+        run: |
+          docker run -d --name rk -p 8787:8787 -e REKAMIND_AUTH=none -e REKAMIND_INSECURE_NO_AUTH=true -e REKAMIND_ENGINES=none rekamind-server:ci
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8787/api/health && exit 0; sleep 1; done
+          docker logs rk; exit 1
+      - name: compose from source still builds
+        run: docker compose build
         env:
           REKAMIND_PUBLIC_URL: https://rekamind.example.org
           REKAMIND_GOOGLE_CLIENT_ID: ci-placeholder

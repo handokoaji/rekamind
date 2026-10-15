@@ -54,3 +54,18 @@ def test_demo_engines_produce_realistic_content(tmp_path):
     mic = e.transcriber.transcribe(tmp_path / "mic.wav", "id")
     assert len(mic) >= 3 and all(s.end_ms > s.start_ms for s in mic)
     assert e.diarizer.diarize(tmp_path / "speaker.wav")
+
+
+def test_prebuilt_image_compose_files_stay_in_sync():
+    """The CPU and GPU paste-into-Portainer files must expose the same settings; only image tag, device and GPU reservation differ."""
+    from pathlib import Path
+
+    import yaml
+
+    root = Path(__file__).resolve().parents[2]
+    cpu = yaml.safe_load((root / "docker-compose.image.yml").read_text())["services"]["rekamind"]
+    gpu = yaml.safe_load((root / "docker-compose.image-gpu.yml").read_text())["services"]["rekamind"]
+    assert set(cpu["environment"]) == set(gpu["environment"])
+    assert cpu["image"].endswith("-cpu}") and gpu["image"].endswith("-cuda}")
+    assert gpu["environment"]["REKAMIND_WHISPER_DEVICE"] == "cuda" and cpu["environment"]["REKAMIND_WHISPER_DEVICE"] == "cpu"
+    assert gpu["deploy"]["resources"]["reservations"]["devices"][0]["driver"] == "nvidia"

@@ -273,7 +273,10 @@ Bawaan **WIB (Asia/Jakarta)**. Ubah di **Pengaturan**; tenggat seperti "besok" d
 Untuk kantor: satu server, banyak pengguna, login Google, tiap orang hanya melihat rapat miliknya
 (super admin melihat semua). Aplikasi desktop lalu dipilih ke mode **Server terpisah**.
 
+**Tanpa build:** image siap-pakai tersedia di GHCR. Di Portainer tempel [`docker-compose.image.yml`](docker-compose.image.yml) (CPU) atau [`docker-compose.image-gpu.yml`](docker-compose.image-gpu.yml) (GPU NVIDIA) sebagai stack (atau `docker compose -f <berkas> up -d`); detail di [docs/INSTALL.id.md](docs/INSTALL.id.md).
+
 ```bash
+# atau bangun dari sumber:
 cp server/.env.example .env         # isi PUBLIC_URL, kunci OAuth Google, dan SUPERADMINS
 docker compose up -d --build
 ```

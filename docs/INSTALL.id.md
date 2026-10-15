@@ -23,6 +23,27 @@ Data aplikasi (Windows: `%LOCALAPPDATA%\\id.rekamind.desktop`): `recordings\\` (
 
 ## Server bersama (kantor)
 
+### Tercepat: image siap-pakai (Portainer atau Docker biasa, tanpa build)
+
+Image dipublikasikan di GitHub Container Registry pada setiap rilis:
+
+| Image | Fungsi |
+|---|---|
+| `ghcr.io/handokoaji/rekamind-server:<versi>-cpu` | Backend lengkap, **transkripsi di CPU**. Disarankan. Mengunduh model Whisper saat pertama dipakai ke volume data. |
+| `ghcr.io/handokoaji/rekamind-server:<versi>-cuda` | Sama, **transkripsi di GPU NVIDIA** (CUDA 12; host perlu driver NVIDIA + NVIDIA Container Toolkit). Pakai [`docker-compose.image-gpu.yml`](../docker-compose.image-gpu.yml). Ditujukan untuk kartu seperti RTX 4060 (8 GB); belum diverifikasi di perangkat keras sungguhan. |
+| `ghcr.io/handokoaji/rekamind-server:<versi>` | Hanya API: rekam/unggah/lihat/ekspor. **Tidak memproses rapat.** |
+
+`<versi>` contohnya `0.4.0-beta.1`; `beta` / `beta-cpu` / `beta-cuda` selalu menunjuk beta terbaru. Image `-cpu` memakai model Whisper `small` (bawaan; terima proses lebih lambat bila memakai yang lebih besar); `-cuda` memakai `large-v3`. GPU AMD/Intel belum didukung (pakai `-cpu`). Pemisah pembicara (pyannote) tidak termasuk dalam image.
+
+1. Buat OAuth client Google ([AUTH.id.md](AUTH.id.md)).
+2. **Portainer:** *Stacks → Add stack → Web editor*, tempel [`docker-compose.image.yml`](../docker-compose.image.yml), isi variabel lingkungan (`REKAMIND_PUBLIC_URL`, `REKAMIND_GOOGLE_CLIENT_ID`, `REKAMIND_GOOGLE_CLIENT_SECRET`, `REKAMIND_SUPERADMINS`, dan `REKAMIND_LLM_API_KEY` untuk ringkasan), lalu **Deploy**.
+   **Docker biasa:** `docker compose -f docker-compose.image.yml up -d` dengan variabel itu di berkas `.env`.
+3. Pasang reverse proxy HTTPS di depannya (lihat di bawah) dan arahkan aplikasi desktop ke alamat itu (**Server terpisah**).
+
+> **Bila pull ditolak:** saat pertama kali dipublikasikan, paket GHCR bisa berstatus *private*. Pemilik repositori perlu mengubahnya menjadi **Public** sekali (GitHub → profil → Packages → `rekamind-server` → Package settings → Change visibility). Image baru dibangun dan dijalankan di CI/sandbox; transkripsi di dalam container belum diverifikasi dengan rapat sungguhan (beta).
+
+### Bangun sendiri
+
 `docker compose up -d --build`, atau tempel `docker-compose.yml` sebagai stack di Portainer. Wajib mengisi login Google
 milik Anda sendiri: lihat [AUTH.id.md](AUTH.id.md). Aplikasi desktop lalu dipilih ke mode **Server terpisah**.
 

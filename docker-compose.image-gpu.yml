@@ -1,0 +1,55 @@
+# Rekamind backend, NVIDIA GPU variant, from the PREBUILT image (nothing to build).
+# Host needs: NVIDIA driver + NVIDIA Container Toolkit (docker run --gpus all must work). Intended for e.g. an RTX 4060 (8 GB); not yet verified on real hardware (beta).
+# Portainer: Stacks -> Add stack -> Web editor -> paste this file -> fill the environment variables.
+# Plain Docker:  docker compose -f docker-compose.image-gpu.yml up -d
+#
+# Uses ghcr.io/handokoaji/rekamind-server:<version>-cuda. The Whisper model downloads on first use into the data volume.
+# AMD/Intel GPUs are not supported (use docker-compose.image.yml, CPU). Speaker separation (pyannote) is not in the image.
+#
+# AUTH: Google sign-in with YOUR OWN OAuth client (docs/AUTH.md). The server refuses to start without
+# REKAMIND_PUBLIC_URL / REKAMIND_GOOGLE_CLIENT_ID / REKAMIND_GOOGLE_CLIENT_SECRET / REKAMIND_SUPERADMINS.
+# The port is published on loopback; put an HTTPS reverse proxy in front for other machines.
+services:
+  rekamind:
+    image: ghcr.io/handokoaji/rekamind-server:${REKAMIND_IMAGE_TAG:-0.4.0-beta.1-cuda}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${REKAMIND_PORT:-8787}:8787"
+    environment:
+      REKAMIND_AUTH: google
+      REKAMIND_PUBLIC_URL: ${REKAMIND_PUBLIC_URL:?set REKAMIND_PUBLIC_URL, e.g. https://rekamind.example.com}
+      REKAMIND_GOOGLE_CLIENT_ID: ${REKAMIND_GOOGLE_CLIENT_ID:?create a Google OAuth client, see docs/AUTH.md}
+      REKAMIND_GOOGLE_CLIENT_SECRET: ${REKAMIND_GOOGLE_CLIENT_SECRET:?create a Google OAuth client, see docs/AUTH.md}
+      REKAMIND_SUPERADMINS: ${REKAMIND_SUPERADMINS:?set at least one super admin email}
+      REKAMIND_SIGNUP: ${REKAMIND_SIGNUP:-allowlist}
+      REKAMIND_ALLOWED_EMAILS: ${REKAMIND_ALLOWED_EMAILS:-}
+      REKAMIND_ALLOWED_DOMAINS: ${REKAMIND_ALLOWED_DOMAINS:-}
+      REKAMIND_TIMEZONE: ${REKAMIND_TIMEZONE:-Asia/Jakarta}
+      # >= 32 random characters; needed to store GitHub/GitLab/webhook tokens.
+      REKAMIND_SECRET_KEY: ${REKAMIND_SECRET_KEY:-}
+      # Processing.
+      REKAMIND_ENGINES: ${REKAMIND_ENGINES:-local}
+      REKAMIND_WHISPER_DEVICE: cuda
+      REKAMIND_WHISPER_MODEL: ${REKAMIND_WHISPER_MODEL:-large-v3}   # int8 used 3.3-4.2 GB VRAM in our test (GTX 1080 Ti)
+      REKAMIND_LLM_API_KEY: ${REKAMIND_LLM_API_KEY:-}            # summary service key (e.g. Groq); without it no summary
+      REKAMIND_LLM_BASE_URL: ${REKAMIND_LLM_BASE_URL:-https://api.groq.com/openai/v1}
+      REKAMIND_LLM_MODEL: ${REKAMIND_LLM_MODEL:-openai/gpt-oss-120b}
+      # Empty = SQLite inside the volume. Shared server: postgresql+asyncpg://user:pass@host:5432/rekamind
+      REKAMIND_DATABASE_URL: ${REKAMIND_DATABASE_URL:-}
+      REKAMIND_STORAGE: ${REKAMIND_STORAGE:-local}
+      REKAMIND_S3_ENDPOINT_URL: ${REKAMIND_S3_ENDPOINT_URL:-}
+      REKAMIND_S3_BUCKET: ${REKAMIND_S3_BUCKET:-rekamind}
+      REKAMIND_S3_ACCESS_KEY: ${REKAMIND_S3_ACCESS_KEY:-}
+      REKAMIND_S3_SECRET_KEY: ${REKAMIND_S3_SECRET_KEY:-}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - rekamind-data:/data
+
+volumes:
+  rekamind-data:
