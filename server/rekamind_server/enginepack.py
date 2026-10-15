@@ -532,6 +532,9 @@ def describe_environment(kind: str, log=print, probe: bool = True, with_diarize:
     import ssl
     import time
 
+    tls_context = ssl.create_default_context()
+    tls_context.minimum_version = ssl.TLSVersion.TLSv1_2
+
     hosts = ["pypi.org", "files.pythonhosted.org"] + (["download.pytorch.org"] if kind == "openvino" or with_diarize else [])
     results: dict[str, str] = {}
 
@@ -540,7 +543,7 @@ def describe_environment(kind: str, log=print, probe: bool = True, with_diarize:
             t0 = time.monotonic()
             ip = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)[0][4][0]
             t1 = time.monotonic()
-            with socket.create_connection((host, 443), timeout=6) as s, ssl.create_default_context().wrap_socket(s, server_hostname=host):
+            with socket.create_connection((host, 443), timeout=6) as s, tls_context.wrap_socket(s, server_hostname=host):
                 results[host] = f"{ip}, DNS {t1 - t0:.2f} dtk, TLS {time.monotonic() - t1:.2f} dtk"
         except Exception as e:  # noqa: BLE001 - diagnostics only
             results[host] = f"GAGAL ({type(e).__name__}: {e})"
