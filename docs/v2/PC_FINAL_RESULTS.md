@@ -29,9 +29,15 @@ Status: bagian otomatis selesai; butir **[ANDA]** menunggu pengguna. Keputusan g
 B4/B5/G6 sebagian: rapat 85 mnt selesai (1173 segmen, 4 pembicara, 9 task, 9x 429 pulih), `loading whisper large-v3 on cuda (int8)`,
 VRAM 3,3-4,2 GB (puncak 5,3 GB saat diarisasi). B7 dan B8 belum terbukti pada kode terbaru (lihat di bawah).
 
-## Sedang berjalan
+## B8 / G8: backend stabil 30 menit
 
-B8/G8: pemantau 30 menit pada kode `ebc3f1c`, jendela terbuka sejak 10:23. Hasil ditambahkan setelah selesai.
+| Butir | Status | Bukti |
+|---|---|---|
+| B8/G8 tanpa startup/shutdown berulang | LULUS | 30,0 mnt (kode `ebc3f1c`, aplikasi dibuka 10:23, proses `rekamind.exe` hidup selama itu): 0 "Started server process" baru, 0 Traceback/ERROR/Shutting down, 129 baris log baru |
+| `GET /api/health` wajar (~2/menit) | CATATAN | 120 permintaan = ±4/menit (sekali per 15 dtk), dua kali target "~2/menit". Bukan masalah (dulu 1764 dalam 20 dtk), tapi lebih rapat dari yang dokumen sebut |
+
+Catatan: saya tidak memverifikasi bahwa jendela tetap terbuka (hanya proses UI yang hidup), dan tidak ada aksi pengguna selama 30 menit.
+Temuan lama "backend restart sendiri 5x" (08:31-09:36) **tidak muncul lagi** pada kode terbaru dalam jendela ini; penyebab tidak saya verifikasi.
 
 ## Menunggu pengguna [ANDA]
 
@@ -50,7 +56,7 @@ D1-D8 (Task, pemutar bukti, scroll, Word, Markdown, JSON, zona waktu, tengah mal
 | G5 rekaman berjalan tidak bisa dihapus | SEBAGIAN (tes otomatis lulus, manual belum) |
 | G6 rapat >= 50 mnt, "Buat ulang ringkasan" | SEBAGIAN (rapat 85 mnt lulus; tombol belum terpicu) |
 | G7 Word di Microsoft Word | TIDAK DIUJI |
-| G8 backend stabil 30 mnt | BERJALAN |
+| G8 backend stabil 30 mnt | LULUS (0 restart, 0 galat) |
 | G9 kredensial setelah keluar | TIDAK DIUJI |
 | G10 uninstall/install ulang | SEBAGIAN (pasang di atas lulus; uninstall bersih belum) |
 | G11 GitHub/GitLab asli | TIDAK DIUJI |
