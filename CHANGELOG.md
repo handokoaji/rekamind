@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-beta.2] - 2026-10-15
+
+Test release. Fixes the recorder bug that produced choppy audio and empty transcripts on Windows, and adds experimental Intel (OpenVINO) and AMD (Vulkan) engines.
+
 ### Fixed
 - **Recordings were choppy and transcripts came out empty on Windows** (`wasapi_backend.rs`): the `wasapi` crate reads a single ~10 ms packet per call, but the recorder called it once per 100 ms poll, so only ~10% of the audio was kept and the pacer padded the rest with silence; the VAD then removed all of it. It now drains every ready packet per poll (`drain_packets`, bounded).
 - Installing speaker separation could stall at ~0.01 MB/s: `--extra-index-url` PyTorch made pip prefer `pypi.nvidia.com` for every `nvidia-*` wheel. `torch`/`torchaudio` now come from the PyTorch wheel pages (`--find-links`) and the `nvidia-*` packages from PyPI.
@@ -35,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - AMD GPU (integrated Radeon 680M/780M/860M and other Vulkan GPUs) transcription through whisper.cpp built with Vulkan: engine kind `vulkan` (*Pasang untuk GPU AMD (Vulkan)*), `whisper_device=vulkan`, program built by CI (`engine-assets` workflow) and downloaded with SHA-256 verification, ggml models from Hugging Face. **Experimental: tested with a fake program only, not verified on real hardware.**
-- Intel GPU (integrated Arc/Iris Xe, e.g. Core Ultra 7 155H) transcription through OpenVINO: new engine kind `openvino` in the engine pack (*Pasang untuk Intel GPU*), `whisper_device=intel`, GPU detection to recommend it, falls back to the CPU when the GPU cannot load the model. **Experimental: unit-tested with fakes only, not verified on real hardware.**
+- Intel GPU (integrated Arc/Iris Xe, e.g. Core Ultra 7 155H) transcription through OpenVINO: new engine kind `openvino` in the engine pack (*Pasang untuk Intel GPU*), `whisper_device=intel`, GPU detection to recommend it, falls back to the CPU when the GPU cannot load the model. **Experimental: unit-tested with fakes, and reported working by hand on a Core Ultra 7 155H; no speed/accuracy measurements recorded.**
 
 ## [0.4.0-beta.1] - 2026-10-15
 

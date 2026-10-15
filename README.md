@@ -8,7 +8,7 @@
 
 **Record meetings. Get a per-speaker transcript, a summary and a task list. Your data stays yours.**
 
-[![Release](https://img.shields.io/badge/release-v0.4.0--beta.1-f59e0b?style=for-the-badge)](https://github.com/handokoaji/rekamind/releases/tag/v0.4.0-beta.1)
+[![Release](https://img.shields.io/badge/release-v0.4.0--beta.2-f59e0b?style=for-the-badge)](https://github.com/handokoaji/rekamind/releases/tag/v0.4.0-beta.2)
 [![Platform](https://img.shields.io/badge/Windows%20%C2%B7%20Linux-4f46e5?style=for-the-badge)](#-download)
 [![License](https://img.shields.io/badge/license-MIT-16a34a?style=for-the-badge)](LICENSE)
 
@@ -165,9 +165,9 @@ Pick the file for your system:
 
 | System | File | Notes |
 |---|---|---|
-| **Windows 10/11 (64-bit)** | [`Rekamind-Windows-x64-setup.exe`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.1/Rekamind-Windows-x64-setup.exe) | `.exe` installer. No admin rights needed. |
-| **Linux (64-bit)** | [`Rekamind-Linux-x64.deb`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.1/Rekamind-Linux-x64.deb) | Debian/Ubuntu and derivatives. |
-| Linux, other distros | [`Rekamind-Linux-x64.AppImage`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.1/Rekamind-Linux-x64.AppImage) | **Not available in beta.1** (the AppImage build failed; fix planned). Use the `.deb`. |
+| **Windows 10/11 (64-bit)** | [`Rekamind-Windows-x64-setup.exe`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.2/Rekamind-Windows-x64-setup.exe) | `.exe` installer. No admin rights needed. |
+| **Linux (64-bit)** | [`Rekamind-Linux-x64.deb`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.2/Rekamind-Linux-x64.deb) | Debian/Ubuntu and derivatives. |
+| Linux, other distros | [`Rekamind-Linux-x64.AppImage`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.2/Rekamind-Linux-x64.AppImage) | **Not available in beta.1** (the AppImage build failed; fix planned). Use the `.deb`. |
 
 Every file comes with `SHA256SUMS.txt`. All releases: [Releases](https://github.com/handokoaji/rekamind/releases).
 
@@ -249,8 +249,8 @@ that includes speaker separation finishes, the app switches the setting on for y
 |---|---|
 | **CPU** (any) | Supported. Tested. |
 | **NVIDIA GPU** (CUDA) | Supported. Tested on one PC (Windows 11, GTX 1080 Ti). |
-| **AMD GPU** (integrated Radeon 680M/780M/860M, e.g. Ryzen 7 7735HS, 8845HS, Ryzen AI 7 350, and other Vulkan-capable GPUs) | **Experimental, via Vulkan (whisper.cpp)** (*Install for AMD GPU (Vulkan)*; not in beta.1). A small native program is downloaded on demand; models are the quantised ggml files (~1 GB for large-v3). **Not yet verified on real hardware**; the first target is the Ryzen AI 7 350 (Radeon 860M). ROCm and DirectML are not used. |
-| **Intel GPU** (integrated Arc/Iris Xe, e.g. Core Ultra 7 155H) | **Experimental, via OpenVINO** (*Install for Intel GPU*; not in beta.1). Built on the path validated in v1 on a Core Ultra 7 155H, but **not yet verified in v2 on real hardware**. Large models need several GB of RAM during the one-time conversion; the first meeting is slower because of it. |
+| **AMD GPU** (integrated Radeon 680M/780M/860M, e.g. Ryzen 7 7735HS, 8845HS, Ryzen AI 7 350, and other Vulkan-capable GPUs) | **Experimental, via Vulkan (whisper.cpp)** (*Install for AMD GPU (Vulkan)*; from beta.2). A small native program is downloaded on demand; models are the quantised ggml files (~1 GB for large-v3). **Not yet verified on real hardware**; the first target is the Ryzen AI 7 350 (Radeon 860M). ROCm and DirectML are not used. |
+| **Intel GPU** (integrated Arc/Iris Xe, e.g. Core Ultra 7 155H) | **Experimental, via OpenVINO** (*Install for Intel GPU*; from beta.2). Built on the path validated in v1 on a Core Ultra 7 155H. In v2 it installs and runs on that machine according to the maintainer's manual check, but **no measurements (speed, accuracy) have been recorded yet**, so it stays experimental. Large models need several GB of RAM during the one-time conversion; the first meeting is slower because of it. |
 | **Intel NPU** | Not supported (evaluated in v1: unreliable on real speech). |
 
 ### Step 4: Set up the summary service
@@ -354,7 +354,7 @@ Stated plainly so you know what is being tested:
   tested on Linux; the desktop shell is only built in CI.
 - **Windows**: tested on one PC (Windows 11, GTX 1080 Ti). Long recordings with the window closed, force-kill during
   recording, Word export in real Microsoft Word, and Credential Manager storage are still being tested manually.
-- **GPU**: CPU and NVIDIA CUDA are supported; **Intel GPU is experimental** (OpenVINO, unverified in v2); AMD GPU (Vulkan) is experimental and unverified.
+- **GPU**: CPU and NVIDIA CUDA are supported; **Intel GPU is experimental** (OpenVINO; works on one Core Ultra 7 155H by manual check, not measured); AMD GPU (Vulkan) is experimental and has not been tested on real hardware.
 - **Real GitHub, GitLab, Google sign-in and S3/MinIO** have only been tested against mock/automated servers.
 - **Quality** of transcripts, speaker separation and task extraction has not been measured across many kinds of
   audio. Review the output, especially names and deadlines.
@@ -365,8 +365,9 @@ Stated plainly so you know what is being tested:
 
 Planned for the next releases (**not implemented yet**; listed so you know what to expect, and in no firm order):
 
-- **Intel GPU**: experimental support is implemented (OpenVINO); it graduates once verified on real hardware.
-- **AMD GPU**: experimental support is implemented (Vulkan / whisper.cpp) and is being tested on a Ryzen AI 7 350. Older/smaller iGPUs such as the Vega in a Ryzen 5 5600G are not targeted (little benefit expected). **Volunteer testers with other AMD machines welcome** (open an issue).
+- **Intel GPU**: experimental support is implemented (OpenVINO). Next: record real measurements (speed, accuracy) on the Core Ultra 7 155H and drop the "experimental" label once they hold up.
+- **AMD GPU**: experimental support is implemented (Vulkan / whisper.cpp) and has **not** been run on real hardware yet; the Ryzen AI 7 350 is the first test machine. Older/smaller iGPUs such as the Vega in a Ryzen 5 5600G are not targeted (little benefit expected). **Volunteer testers with other AMD machines welcome** (open an issue).
+- **Release hygiene:** signed installers, a working Linux AppImage, and a real-machine test of the Linux desktop app.
 - **More interface languages** beyond Indonesian and English, and a choice of output language for summaries and tasks.
 
 Machines without a supported GPU run on the CPU (see [GPU support](#gpu-support)).

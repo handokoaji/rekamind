@@ -8,7 +8,7 @@
 
 **Rekam rapat. Dapatkan transkrip per pembicara, ringkasan, dan daftar task. Data tetap milik Anda.**
 
-[![Rilis](https://img.shields.io/badge/rilis-v0.4.0--beta.1-f59e0b?style=for-the-badge)](https://github.com/handokoaji/rekamind/releases/tag/v0.4.0-beta.1)
+[![Rilis](https://img.shields.io/badge/rilis-v0.4.0--beta.2-f59e0b?style=for-the-badge)](https://github.com/handokoaji/rekamind/releases/tag/v0.4.0-beta.2)
 [![Platform](https://img.shields.io/badge/Windows%20%C2%B7%20Linux-4f46e5?style=for-the-badge)](#-unduh)
 [![Lisensi](https://img.shields.io/badge/lisensi-MIT-16a34a?style=for-the-badge)](LICENSE)
 
@@ -164,9 +164,9 @@ Buka halaman rilis dan pilih berkas sesuai sistem Anda:
 
 | Sistem | Berkas | Catatan |
 |---|---|---|
-| **Windows 10/11 (64-bit)** | [`Rekamind-Windows-x64-setup.exe`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.1/Rekamind-Windows-x64-setup.exe) | Pemasang `.exe`. Tanpa hak admin. |
-| **Linux (64-bit)** | [`Rekamind-Linux-x64.deb`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.1/Rekamind-Linux-x64.deb) | Debian/Ubuntu dan turunannya. |
-| Linux, distro lain | [`Rekamind-Linux-x64.AppImage`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.1/Rekamind-Linux-x64.AppImage) | **Belum tersedia di beta.1** (build AppImage gagal; perbaikan direncanakan). Pakai `.deb`. |
+| **Windows 10/11 (64-bit)** | [`Rekamind-Windows-x64-setup.exe`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.2/Rekamind-Windows-x64-setup.exe) | Pemasang `.exe`. Tanpa hak admin. |
+| **Linux (64-bit)** | [`Rekamind-Linux-x64.deb`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.2/Rekamind-Linux-x64.deb) | Debian/Ubuntu dan turunannya. |
+| Linux, distro lain | [`Rekamind-Linux-x64.AppImage`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.2/Rekamind-Linux-x64.AppImage) | **Belum tersedia di beta.1** (build AppImage gagal; perbaikan direncanakan). Pakai `.deb`. |
 
 Semua berkas disertai `SHA256SUMS.txt`. Semua halaman rilis: [Releases](https://github.com/handokoaji/rekamind/releases).
 
@@ -237,8 +237,8 @@ Ukuran unduhan pasti bergantung pada versi pustaka saat Anda memasang; periksa r
 |---|---|
 | **CPU** (apa pun) | Didukung. Diuji. |
 | **GPU NVIDIA** (CUDA) | Didukung. Diuji di satu PC (Windows 11, GTX 1080 Ti). |
-| **GPU AMD** (terintegrasi Radeon 680M/780M/860M, mis. Ryzen 7 7735HS, 8845HS, Ryzen AI 7 350, dan GPU lain yang mendukung Vulkan) | **Eksperimental, lewat Vulkan (whisper.cpp)** (*Pasang untuk GPU AMD (Vulkan)*; tidak ada di beta.1). Program native kecil diunduh sesuai kebutuhan; model memakai berkas ggml terkuantisasi (±1 GB untuk large-v3). **Belum diverifikasi di perangkat keras nyata**; target pertama Ryzen AI 7 350 (Radeon 860M). ROCm dan DirectML tidak dipakai. |
-| **GPU Intel** (terintegrasi Arc/Iris Xe, mis. Core Ultra 7 155H) | **Eksperimental, lewat OpenVINO** (*Pasang untuk Intel GPU*; tidak ada di beta.1). Dibangun dari jalur yang terbukti di v1 pada Core Ultra 7 155H, tetapi **belum diverifikasi di v2 pada perangkat keras nyata**. Model besar butuh beberapa GB RAM saat konversi sekali-jalan; rapat pertama lebih lambat karenanya. |
+| **GPU AMD** (terintegrasi Radeon 680M/780M/860M, mis. Ryzen 7 7735HS, 8845HS, Ryzen AI 7 350, dan GPU lain yang mendukung Vulkan) | **Eksperimental, lewat Vulkan (whisper.cpp)** (*Pasang untuk GPU AMD (Vulkan)*; mulai beta.2). Program native kecil diunduh sesuai kebutuhan; model memakai berkas ggml terkuantisasi (±1 GB untuk large-v3). **Belum diverifikasi di perangkat keras nyata**; target pertama Ryzen AI 7 350 (Radeon 860M). ROCm dan DirectML tidak dipakai. |
+| **GPU Intel** (terintegrasi Arc/Iris Xe, mis. Core Ultra 7 155H) | **Eksperimental, lewat OpenVINO** (*Pasang untuk Intel GPU*; mulai beta.2). Dibangun dari jalur yang terbukti di v1 pada Core Ultra 7 155H. Di v2 mesin ini terpasang dan berjalan di mesin itu menurut pengecekan manual pengelola, tetapi **belum ada pengukuran (kecepatan, akurasi) yang dicatat**, jadi statusnya tetap eksperimental. Model besar butuh beberapa GB RAM saat konversi sekali-jalan; rapat pertama lebih lambat karenanya. |
 | **NPU Intel** | Belum didukung (dievaluasi di v1: tidak andal pada ucapan nyata). |
 
 **Pemisah pembicara** (siapa bicara apa) tercentang secara bawaan. Fitur ini butuh **token Hugging Face** gratis, jadi
@@ -345,7 +345,7 @@ Dinyatakan apa adanya supaya Anda tahu apa yang sedang diuji:
   merekam, ekspor Word di aplikasi Word asli, dan penyimpanan di Credential Manager masih dalam pengujian manual.
 - **GitHub, GitLab, Google login, dan S3/MinIO asli** baru diuji dengan server tiruan/otomatis, belum dengan layanan
   sungguhan.
-- **GPU**: CPU dan NVIDIA CUDA didukung; **GPU Intel eksperimental** (OpenVINO, belum diverifikasi di v2); **GPU AMD eksperimental** (Vulkan / whisper.cpp, belum diverifikasi).
+- **GPU**: CPU dan NVIDIA CUDA didukung; **GPU Intel eksperimental** (OpenVINO; berjalan di satu Core Ultra 7 155H menurut pengecekan manual, belum diukur); **GPU AMD eksperimental** (Vulkan / whisper.cpp, belum diuji di perangkat keras nyata).
 - **Kualitas** transkrip, pemisahan pembicara, dan ekstraksi task belum diukur pada banyak jenis audio. Tinjau
   hasilnya, terutama nama dan tenggat.
 - **Bahasa:** antarmuka tersedia dalam Indonesia dan Inggris; ringkasan dan task yang dihasilkan hanya berbahasa Indonesia. Pesan dari server atau perekam Rust (mis. sebagian teks galat) belum diterjemahkan.
@@ -355,8 +355,9 @@ Dinyatakan apa adanya supaya Anda tahu apa yang sedang diuji:
 
 Direncanakan untuk rilis berikutnya (**belum dikerjakan**; dicatat supaya Anda tahu arahnya, tanpa urutan pasti):
 
-- **GPU Intel**: dukungan eksperimental sudah diimplementasikan (OpenVINO); naik status setelah terverifikasi di perangkat keras nyata.
-- **GPU AMD**: dukungan eksperimental sudah diimplementasikan (Vulkan / whisper.cpp) dan sedang diuji di Ryzen AI 7 350. iGPU lama/kecil seperti Vega pada Ryzen 5 5600G tidak ditargetkan (manfaat diperkirakan kecil). **Relawan penguji dengan mesin AMD lain dipersilakan** (buka issue).
+- **GPU Intel**: dukungan eksperimental sudah diimplementasikan (OpenVINO). Berikutnya: catat pengukuran nyata (kecepatan, akurasi) di Core Ultra 7 155H dan lepas label "eksperimental" bila hasilnya baik.
+- **GPU AMD**: dukungan eksperimental sudah diimplementasikan (Vulkan / whisper.cpp) dan **belum** dijalankan di perangkat keras nyata; Ryzen AI 7 350 adalah mesin uji pertama. iGPU lama/kecil seperti Vega pada Ryzen 5 5600G tidak ditargetkan (manfaat diperkirakan kecil). **Relawan penguji dengan mesin AMD lain dipersilakan** (buka issue).
+- **Kebersihan rilis:** installer bertanda tangan, AppImage Linux yang berfungsi, dan uji aplikasi desktop Linux di mesin nyata.
 - **Lebih banyak bahasa antarmuka** selain Indonesia dan Inggris, serta pilihan bahasa keluaran ringkasan dan task.
 
 Komputer tanpa GPU yang didukung berjalan di CPU (lihat [Dukungan GPU](#dukungan-gpu)).
