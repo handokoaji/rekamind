@@ -225,7 +225,12 @@ fn run_stream(ctx: &SourceCtx, stream: &mut Stream, stop: &AtomicBool, pacer: &m
         thread::sleep(POLL);
         let drained = drain_packets(
             || stream.capture.get_next_packet_size(),
-            || stream.capture.read_from_device_to_deque(&mut queue).map(|_| ()),
+            || {
+                stream
+                    .capture
+                    .read_from_device_to_deque(&mut queue)
+                    .map(|_| ())
+            },
         );
         if drained.is_err() {
             return End::DeviceLost; // any read failure here means the device went away

@@ -57,25 +57,25 @@ def label_segments(segs: list[AsrSegment], turns: list[SpeakerTurn], fallback: s
             out.append((seg, whole))
             continue
         labels = [_label_at((a + b) // 2, turns) for a, b, _ in seg.words]
-        known = [l for l in labels if l]
+        known = [lab for lab in labels if lab]
         if len(set(known)) < 2:
             out.append((seg, known[0] if known else whole))
             continue
         # unlabeled words take their neighbour's label, then runs of one word are folded into the previous run
-        for i, l in enumerate(labels):
-            if l is None:
+        for i, lab in enumerate(labels):
+            if lab is None:
                 labels[i] = next((x for x in labels[:i][::-1] if x), None) or next((x for x in labels[i:] if x), whole)
         for i in range(1, len(labels)):  # a word that continues the previous one ("coba" + "-coba") never starts a turn
             if not seg.words[i][2].startswith(" "):
                 labels[i] = labels[i - 1]
         runs: list[list[int]] = []
-        for i, l in enumerate(labels):
-            if runs and labels[runs[-1][0]] == l:
+        for i, lab in enumerate(labels):
+            if runs and labels[runs[-1][0]] == lab:
                 runs[-1].append(i)
             else:
                 runs.append([i])
 
-        def solid(r: list[int]) -> bool:  # long enough to be a real turn, not boundary noise or a back-channel
+        def solid(r: list[int], seg: AsrSegment = seg) -> bool:  # long enough to be a real turn, not boundary noise or a back-channel
             return len(r) >= MIN_RUN_WORDS and seg.words[r[-1]][1] - seg.words[r[0]][0] >= MIN_RUN_MS
 
         merged: list[list[int]] = []
