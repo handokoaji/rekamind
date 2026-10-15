@@ -17,6 +17,7 @@ Tags ending in `-alpha.N`, `-beta.N` or `-rc.N` become a GitHub **pre-release**.
 5. The workflow checks version = tag, builds the Windows (NSIS) and Linux (.deb, plus AppImage if it succeeds) installers,
    runs the frozen-backend smoke test, creates `SHA256SUMS.txt` and publishes the release. If a job fails nothing is
    published; fix it and re-run via *Actions → Release → Run workflow* (enter the same tag).
+   If pushing a tag is not possible from where you work, use *Actions → Release → Run workflow* on `master` with the tag name; it builds that commit and creates the tag.
 6. Download and try each installer on a clean machine before announcing.
 
 App icons are generated from `docs/assets/logo.svg` (`scripts/make_icons.mjs`); the UI logo, favicon and README use the same shape.
