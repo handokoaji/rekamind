@@ -96,6 +96,12 @@ jobs:
       - run: python scripts/build_desktop.py --bundles ${{ matrix.bundles }}
       # The frozen backend is exactly what ships; prove it starts, migrates, refuses strangers and processes a recording.
       - run: python scripts/smoke_backend.py ${{ matrix.exe }}
+      # The installed app talks to the backend through a pipe. This installs a real engine through that pipe with the frozen
+      # backend and checks the output is valid UTF-8 and that an install survives a reader that goes away mid-download (that
+      # was `OSError: [Errno 22]` / exit code 120 on Windows). Needs real downloads (~1 GB), hence the long timeout.
+      - name: Engine install through a pipe (frozen backend)
+        timeout-minutes: 30
+        run: python scripts/smoke_engine_install.py ${{ matrix.exe }}
       - uses: actions/upload-artifact@v4
         with: { name: "rekamind-installer-${{ matrix.os }}", path: "${{ matrix.art }}" }
 
