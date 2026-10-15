@@ -124,11 +124,21 @@ class OpenAiCompatExtractor:
         for _ in range(2):  # one corrective retry when the model returns invalid JSON
             raw = self._chat(messages)
             try:
-                return ExtractionResult.model_validate(json.loads(_strip_fences(raw)))
+                result = ExtractionResult.model_validate(json.loads(_strip_fences(raw)))
             except (json.JSONDecodeError, ValidationError) as exc:
                 last_err = str(exc)[:300]
                 messages += [{"role": "assistant", "content": raw},
                              {"role": "user", "content": f"JSON tidak valid ({last_err}). Balas ulang HANYA JSON yang benar."}]
+                continue
+            if result.overview.strip() or result.decisions or result.minutes or result.tasks:
+                return result
+            # Every field has a default, so "{}" validates. A meeting with words in it never has nothing to summarise:
+            # it is a bad answer, not an empty one (it used to be saved as a blank summary and shown as "done").
+            log.warning("LLM returned an empty extraction; raw reply: %r", raw[:300])
+            last_err = "semua kolom kosong"
+            messages += [{"role": "assistant", "content": raw},
+                         {"role": "user", "content": "Jawabanmu kosong. Isi overview, decisions, minutes, dan tasks "
+                                                     "berdasarkan transkrip. Balas ulang HANYA JSON yang benar."}]
         raise LlmError(f"LLM mengembalikan format yang tidak valid: {last_err}")
 
     def _extract_fitting(self, inp: ExtractionInput, text: str, part: int, total: int) -> list[ExtractionResult]:

@@ -141,3 +141,20 @@ def test_a_request_that_is_too_large_even_when_tiny_fails_clearly():
     llm = _llm(lambda req: httpx.Response(413, json={"error": {"message": "Request too large"}}))
     with pytest.raises(LlmTooLarge):
         llm.extract(_inp(_long_transcript(60)))
+
+
+def test_an_empty_json_answer_is_retried_not_saved_as_a_blank_summary():
+    answers = iter(["{}", json.dumps(GOOD)])
+    seen = []
+
+    def handler(req):
+        seen.append(json.loads(req.content)["messages"][-1]["content"])
+        return _reply(next(answers))
+
+    r = _llm(handler).extract(_inp())
+    assert r.overview == "Rapat vendor" and len(seen) == 2 and "kosong" in seen[1]
+
+
+def test_an_answer_that_stays_empty_is_an_error_the_user_can_retry():
+    with pytest.raises(LlmError, match="tidak valid"):
+        _llm(lambda req: _reply('{"overview": "  ", "decisions": [], "minutes": [], "tasks": []}')).extract(_inp())
