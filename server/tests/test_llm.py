@@ -269,3 +269,19 @@ def test_a_transcript_that_fits_in_one_call_is_not_joined():
     _llm(handler).extract(_inp())
     assert seen == [False]
 
+
+def test_a_null_follow_up_from_the_join_does_not_erase_what_an_open_topic_still_needs():
+    def handler(req):
+        if _is_merge(req):
+            return _reply(json.dumps({"topics": [
+                # every part returns both topics, so they are numbered 1,2 / 3,4 / 5,6: odd = "Terbuka", even = "Selesai"
+                {"members": [1, 3, 5, 7, 9], "status": "open", "follow_up": None},       # still open: keep the part's follow-up
+                {"members": [2, 4, 6, 8, 10], "status": "decided", "follow_up": None},   # settled: nothing left to do
+            ]}))
+        return _reply(json.dumps(dict(GOOD, topics=[_topic("Terbuka", "open", follow_up="Cek vendor"), _topic("Selesai", "decided", follow_up="sisa lama")])))
+
+    r = _llm(handler).extract(_inp(_long()))
+    by_title = {t.title: t for t in r.topics}
+    assert by_title["Terbuka"].follow_up == "Cek vendor"
+    assert by_title["Selesai"].follow_up is None
+

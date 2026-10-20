@@ -31,7 +31,7 @@ jelas). Jangan mengarang task, nama, tanggal, atau durasi. Jika tidak disebutkan
 dan "evidence_quote": kutipan singkat dari transkrip.
 - "confidence": 0..1, turunkan bila tugas/penanggung jawab/tenggat ambigu.
 - "key_points": 3 sampai 7 hal PALING penting yang perlu diingat atau dicatat oleh orang yang tidak hadir: topik utama, fakta, angka, kondisi, risiko, batas waktu, dan hal yang belum terjawab atau belum diputuskan. Masing-masing satu kalimat padat yang didukung transkrip (jangan menyimpulkan di luar yang diucapkan). Jangan mengulang keputusan dan task: keduanya punya bagian sendiri. Ini intisari, BUKAN rincian per waktu: jangan mengulang isi "minutes" satu per satu. Kosongkan jika rapat memang tidak memuat hal penting.
-- "topics": SETIAP topik yang dibahas secara berarti, termasuk yang menyimpang dari agenda; jangan hanya agenda utama. Rapat sering melompat ke topik lain lalu kembali, kadang lupa kembali: gabungkan pembahasan topik yang sama walau terpisah waktu dan sebut waktunya di "times" (paling banyak 5 penanda waktu terpenting, disalin dari penanda waktu transkrip: awal, saat kembali dibahas, akhir). "status": "decided" bila ada keputusan atau kesimpulan; "open" bila dibahas tetapi belum selesai, ditunda, atau menunggu pihak lain; "dropped" bila diangkat lalu pembicaraan pindah dan topik itu tidak pernah dilanjutkan atau disimpulkan. "follow_up": apa yang masih harus dikerjakan atau diputuskan untuk topik itu (null bila sudah tuntas). "summary": satu sampai dua kalimat yang didukung transkrip.
+- "topics": SETIAP topik yang dibahas secara berarti, termasuk yang menyimpang dari agenda; jangan hanya agenda utama. Rapat sering melompat ke topik lain lalu kembali, kadang lupa kembali: gabungkan pembahasan topik yang sama walau terpisah waktu dan sebut waktunya di "times" (paling banyak 5 penanda waktu terpenting, disalin dari penanda waktu transkrip: awal, saat kembali dibahas, akhir). "status": "decided" bila ada keputusan atau kesimpulan; "open" bila dibahas tetapi belum selesai, ditunda, atau menunggu pihak lain; "dropped" bila diangkat lalu pembicaraan pindah dan topik itu tidak pernah dilanjutkan atau disimpulkan. "follow_up": apa yang masih harus dikerjakan atau diputuskan untuk topik itu (null bila sudah tuntas). "title" dan "summary" dalam Bahasa Indonesia; "summary": satu sampai dua kalimat yang didukung transkrip.
 - "decisions": hal yang disepakati, disimpulkan, dipilih, disetujui, atau arah yang ditetapkan, walaupun tidak diucapkan dengan kata "putuskan" atau "sepakat" (mis. "oke kita pakai vendor A", "berarti peluncuran digeser ke Senin", "setuju"). Satu kalimat yang menyebut apa yang diputuskan. Usulan, pertanyaan, atau pendapat yang belum disetujui BUKAN keputusan. Kosongkan jika memang tidak ada.
 - "minutes": rincian jalannya rapat berurutan waktu, lebih detail daripada "key_points", dengan "time" disalin dari penanda waktu transkrip.
 Balas HANYA JSON valid sesuai skema; tanpa teks lain."""
@@ -113,7 +113,9 @@ def _join_topics(topics: list[Topic], groups) -> list[Topic]:
         parts = [topics[i - 1] for i in members]
         status = g.get("status") if g.get("status") in ("decided", "open", "dropped") else parts[-1].status
         times = sorted(dict.fromkeys(x for p in parts for x in p.times), key=lambda x: (parse_clock(x) is None, parse_clock(x) or 0))
-        follow = g.get("follow_up") if "follow_up" in g else parts[-1].follow_up
+        follow = g.get("follow_up")
+        if not (isinstance(follow, str) and follow.strip()):  # a null here must not erase what the parts said
+            follow = parts[-1].follow_up if status != "decided" else None
         out.append(Topic(title=parts[0].title, summary=parts[-1].summary or parts[0].summary, status=status, times=times,
                          follow_up=follow if isinstance(follow, str) and follow.strip() else None))
     out += [tp for i, tp in enumerate(topics, 1) if i not in seen]
