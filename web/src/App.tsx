@@ -12,6 +12,7 @@ import { I18nProvider, t } from "./lib/i18n";
 import { TimeZoneProvider } from "./hooks/timezone";
 import { BackendProvider } from "./desktop/backend";
 import { isDesktop } from "./desktop/bridge";
+import { DesktopRecovery } from "./desktop/DesktopRecovery";
 import { DesktopSync } from "./desktop/DesktopSync";
 import { RecorderProvider } from "./desktop/useRecorder";
 import { MeetingsPage } from "./pages/MeetingsPage";
@@ -35,7 +36,7 @@ function Authenticated({ children }: { children: React.ReactNode }) {
   const auth = useAuthState();
   if (auth.status === "loading") return <Spinner label={t("Memeriksa sesi…")} />;
   if (auth.status === "signed-out") return <LoginScreen />;
-  if (auth.status === "error") return <ErrorState error={auth.error} onRetry={() => window.location.reload()} />;
+  if (auth.status === "error") return isDesktop() ? <DesktopRecovery error={auth.error} /> : <ErrorState error={auth.error} onRetry={() => window.location.reload()} />;
   return <AuthProvider me={auth.me}>{children}</AuthProvider>;
 }
 

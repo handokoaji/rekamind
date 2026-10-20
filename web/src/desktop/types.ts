@@ -31,6 +31,8 @@ export interface EngineState { pack: PackStatus; job: EngineJob }
 export interface EngineCheck { ok: boolean; error: string | null; cuda_devices: number; ctranslate2?: string; faster_whisper?: string; openvino?: string; ov_devices?: string[]; intel_gpu?: boolean;
   whispercpp?: string | null; vulkan_devices?: string[]; gpu?: boolean; model_cached?: string | null }
 export interface LoginResult { email: string; token: string; remembered: boolean }
+/** Mirrors Rust's `Update` (recorder/src/update.rs). `installer_url` is null where the app cannot install itself. */
+export interface UpdateInfo { version: string; html_url: string; installer_url: string | null; sums_url: string | null }
 
 const PHASES: Phase[] = ["idle", "recording", "uploading", "done", "needs_attention"];
 const KINDS: SourceKind[] = ["recording", "reconnecting", "unavailable", "failed"];

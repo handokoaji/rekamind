@@ -1,4 +1,4 @@
-import type { DesktopSettings, EngineCheck, EngineState, LoginResult, SettingsView, UiState } from "./types";
+import type { DesktopSettings, EngineCheck, EngineState, LoginResult, SettingsView, UiState, UpdateInfo } from "./types";
 import { t } from "../lib/i18n";
 
 /** True only inside the Tauri shell. In a normal browser every desktop feature stays hidden. */
@@ -46,4 +46,8 @@ export const desktop = {
   setSecrets: (s: { llmApiKey?: string; hfToken?: string }) => invoke<SettingsView>("secrets_set", { llmApiKey: s.llmApiKey, hfToken: s.hfToken }),
   login: () => invoke<LoginResult>("auth_login"),
   logout: () => invoke<void>("auth_logout"),
+  /** null = already on the newest release. */
+  checkUpdate: () => invoke<UpdateInfo | null>("update_check"),
+  /** Downloads, verifies and runs the installer, then the app quits. Rejects while a recording runs. */
+  installUpdate: () => invoke<void>("update_install"),
 };

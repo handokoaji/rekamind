@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Update notice in the desktop app.** The app checks GitHub Releases shortly after start and every 6 hours; when a newer release exists, a banner on the meetings page offers "Perbarui sekarang". One click downloads the Windows installer, verifies its SHA-256 against the release's `SHA256SUMS.txt` (a mismatch aborts and installs nothing), runs it and restarts the app. Refused while a recording, upload or engine install is running. A prerelease is only offered to someone already on a prerelease. On Linux the button opens the release page. The installer is not signed, so trust rests on GitHub's TLS and the repository's release permissions.
+
+### Fixed
+- **Desktop app stuck on the "cannot reach the server" screen.** The message said to check the server address in Settings, but Settings lives behind the sign-in, so there was no way out. That screen now has "Pakai mode lokal" (one click back to local mode, other settings kept) and "Ubah pengaturan server" (the desktop settings, openable without signing in).
+- **Desktop sign-in ended with "native-tls: unable to find any user-specified roots in the final cert chain"** on servers whose certificate chains to a root Mozilla's bundle lacks (e.g. Google Trust Services via GlobalSign). The browser step succeeded, then the app's own call to the server failed. The Windows build now trusts the Windows certificate store, like the browser does (`recorder/src/api.rs`).
+
 ## [0.4.0-beta.4] - 2026-10-15
 
 Test release. **The whole repository is now licensed under AGPL-3.0-or-later** (releases up to v0.4.0-beta.3 were MIT and stay MIT). Carries everything from beta.3.

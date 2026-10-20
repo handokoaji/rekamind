@@ -16,6 +16,7 @@ pub mod settings;
 pub mod sink;
 pub mod stats;
 pub mod timeline;
+pub mod update;
 pub mod uploader;
 pub mod wav;
 

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { isDesktop } from "../desktop/bridge";
 import { EngineSetupBanner } from "../desktop/EngineSetupBanner";
 import { RecordCard } from "../desktop/RecordCard";
+import { UpdateBanner } from "../desktop/UpdateBanner";
 import { StatusBadge } from "../components/StatusBadge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
@@ -121,6 +122,7 @@ export function MeetingsPage() {
         <Button variant="primary" onClick={() => setUpload(true)}><Plus className="size-4" aria-hidden /> {t("Rapat baru")}</Button>
       </div>
 
+      {isDesktop() && <UpdateBanner />}
       {isDesktop() && <RecordCard />}
       {isDesktop() && <EngineSetupBanner ready={caps.data?.processing_ready} />}
 

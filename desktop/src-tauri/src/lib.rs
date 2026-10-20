@@ -15,6 +15,7 @@ use rekamind_recorder::engines::EngineTool;
 use rekamind_recorder::local_backend::{LocalBackend, Watcher};
 use rekamind_recorder::login::{PendingLogin, TokenStore};
 use rekamind_recorder::settings::{new_local_token, BackendEnv, Settings};
+use rekamind_recorder::update::{self, Update};
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -501,6 +502,48 @@ fn engines_cancel(sh: State<'_, Shared>) {
     sh.engine_cancel.store(true, Ordering::SeqCst);
 }
 
+// ----------------------------------------------------------------------------- updates
+
+/// Is a newer release out? Asked by the UI shortly after start and every few hours.
+#[tauri::command]
+async fn update_check() -> Result<Option<Update>, String> {
+    tauri::async_runtime::spawn_blocking(|| update::check(env!("CARGO_PKG_VERSION")))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+/// Download the newer installer (verified against the release's SHA-256), run it and quit so it can
+/// replace the files. Refused while a recording, an upload or an engine install is in progress.
+#[tauri::command]
+async fn update_install(app: AppHandle, sh: State<'_, Shared>) -> Result<(), String> {
+    if matches!(sh.ctl.state().phase, Phase::Recording | Phase::Uploading) || sh.engine_job.lock().unwrap().running.is_some() {
+        return Err("Selesaikan rekaman, unggahan, atau pemasangan mesin yang sedang berjalan dulu, lalu perbarui.".into());
+    }
+    let u = tauri::async_runtime::spawn_blocking(|| update::check(env!("CARGO_PKG_VERSION")))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?
+        .ok_or("Sudah memakai versi terbaru.")?;
+    if u.installer_url.is_none() {
+        // No self-installing asset on this platform: the release page is the update.
+        return webbrowser::open(&u.html_url).map(|_| ()).map_err(|e| format!("tidak bisa membuka browser ({e}). Buka alamat ini sendiri: {}", u.html_url));
+    }
+    let dest = std::env::temp_dir().join(format!("Rekamind-{}-setup.exe", u.version));
+    let (job, path) = (u.clone(), dest.clone());
+    tauri::async_runtime::spawn_blocking(move || update::download(&job, &path))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+    // /P: progress only, no questions; /R: start Rekamind again when done (flags of the Tauri NSIS installer).
+    std::process::Command::new(&dest)
+        .args(["/P", "/R", "/UPDATE"])
+        .spawn()
+        .map_err(|e| format!("tidak bisa menjalankan pemasang: {e}"))?;
+    app.exit(0);
+    Ok(())
+}
+
 /// `None` leaves a secret as it is; an empty string removes it.
 #[tauri::command]
 fn secrets_set(sh: State<'_, Shared>, llm_api_key: Option<String>, hf_token: Option<String>) -> Result<SettingsView, String> {
@@ -674,6 +717,8 @@ pub fn run() {
             engines_warmup,
             engines_cancel,
             secrets_set,
+            update_check,
+            update_install,
         ])
         .build(tauri::generate_context!())
         .expect("gagal membangun aplikasi Rekamind");

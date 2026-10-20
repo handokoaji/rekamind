@@ -3140,7 +3140,7 @@ dependencies = [
 
 [[package]]
 name = "rekamind-recorder"
-version = "0.4.0-beta.1"
+version = "0.4.0-beta.4"
 dependencies = [
  "base64 0.22.1",
  "ctrlc",
