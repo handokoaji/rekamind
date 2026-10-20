@@ -3,6 +3,7 @@
 
 import json
 import logging
+import re
 import time
 
 import httpx
@@ -84,6 +85,27 @@ class LlmTooLarge(LlmError):
 _TOO_LARGE_HINTS = ("request too large", "context length", "maximum context", "reduce the length", "too many tokens")
 
 
+def _wait_is_pointless(text: str, retry_after: str | None) -> bool:
+    """A per-day quota, or a wait longer than two minutes, will not clear while we sleep a minute and try again; doing
+    that four times only delays the error by four minutes (it did, on a real quota)."""
+    if "per day" in text or "(tpd)" in text:
+        return True
+    try:
+        return float(retry_after or "") > 120
+    except ValueError:
+        return False
+
+
+def _quota_message(r: httpx.Response) -> str:
+    try:
+        detail = r.json()["error"]["message"]
+    except (ValueError, KeyError, TypeError):
+        detail = r.text[:200]
+    again = re.search(r"try again in ([0-9hms.]+)", detail)
+    when = f" Coba lagi sekitar {again.group(1)} lagi." if again else ""
+    return f"Kuota layanan LLM habis (batas harian atau waktu tunggu yang terlalu lama).{when} Rincian dari layanan: {detail[:200]}"
+
+
 def _numbers(value, size: int) -> list[int]:
     """The valid, distinct 1-based numbers out of whatever the model returned, in its order."""
     out: list[int] = []
@@ -129,6 +151,7 @@ class OpenAiCompatExtractor:
         self._chunk_chars = max(chunk_chars, MIN_CHUNK_CHARS)
         self._sleep = sleep
         self._json_schema_ok = True  # flipped off if the endpoint rejects response_format=json_schema
+        self.tokens = {"calls": 0, "prompt": 0, "completion": 0}  # what the last extract() cost (providers meter tokens per day)
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self._http = httpx.Client(base_url=base_url.rstrip("/"), headers=headers, timeout=120, transport=transport)
 
@@ -155,6 +178,8 @@ class OpenAiCompatExtractor:
             if r.status_code == 400 and structured and self._json_schema_ok:
                 self._json_schema_ok = False  # endpoint lacks structured output; fall back to json_object
                 continue
+            if r.status_code == 429 and _wait_is_pointless(text, r.headers.get("retry-after")):
+                raise LlmError(_quota_message(r))
             if r.status_code in (429, 500, 502, 503, 504) and attempt < MAX_RETRIES:
                 try:
                     wait = float(r.headers.get("retry-after", ""))
@@ -166,7 +191,12 @@ class OpenAiCompatExtractor:
                 raise LlmError("API key LLM ditolak (401). Periksa REKAMIND_LLM_API_KEY.")
             if r.status_code >= 400:
                 raise LlmError(f"LLM mengembalikan {r.status_code}: {r.text[:200]}")
-            return r.json()["choices"][0]["message"]["content"]
+            data = r.json()
+            used = data.get("usage") or {}
+            self.tokens["calls"] += 1
+            self.tokens["prompt"] += used.get("prompt_tokens") or 0
+            self.tokens["completion"] += used.get("completion_tokens") or 0
+            return data["choices"][0]["message"]["content"]
         raise LlmError("LLM tidak merespons setelah beberapa percobaan")
 
     # -- one validated call --------------------------------------------------
@@ -244,6 +274,15 @@ class OpenAiCompatExtractor:
 
     # -- public --------------------------------------------------------------
     def extract(self, inp: ExtractionInput) -> ExtractionResult:
+        self.tokens = {"calls": 0, "prompt": 0, "completion": 0}
+        try:
+            return self._extract_all(inp)
+        finally:
+            log.info("summary used %d tokens (%d in, %d out) in %d call(s) for %d characters of transcript",
+                     self.tokens["prompt"] + self.tokens["completion"], self.tokens["prompt"], self.tokens["completion"],
+                     self.tokens["calls"], len(inp.transcript))
+
+    def _extract_all(self, inp: ExtractionInput) -> ExtractionResult:
         chunks = chunk_transcript(inp.transcript, self._chunk_chars)
         parts = [r for i, c in enumerate(chunks) for r in self._extract_fitting(inp, c, i + 1, len(chunks))]
         if len(parts) == 1:

@@ -285,3 +285,41 @@ def test_a_null_follow_up_from_the_join_does_not_erase_what_an_open_topic_still_
     assert by_title["Terbuka"].follow_up == "Cek vendor"
     assert by_title["Selesai"].follow_up is None
 
+
+def test_a_daily_quota_fails_at_once_with_a_clear_message_instead_of_waiting_minutes():
+    slept = []
+    body = {"error": {"message": "Rate limit reached for model `x` on tokens per day (TPD): Limit 200000, Used 199018, "
+                                 "Requested 5000. Please try again in 21m3s."}}
+    llm = OpenAiCompatExtractor("http://llm/v1", "k", "m", sleep=slept.append,
+                                transport=httpx.MockTransport(lambda req: httpx.Response(429, json=body, headers={"retry-after": "1263"})))
+    with pytest.raises(LlmError) as e:
+        llm.extract(_inp())
+    assert "Kuota" in str(e.value) and "21m3s" in str(e.value) and "Used 199018" in str(e.value)
+    assert slept == [], "no point sleeping: the quota does not come back in a minute"
+
+
+def test_a_per_minute_limit_is_still_waited_out(caplog):
+    slept, calls = [], {"n": 0}
+
+    def handler(req):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return httpx.Response(429, json={"error": {"message": "Rate limit reached on tokens per minute (TPM). Please try again in 5s."}},
+                                  headers={"retry-after": "5"})
+        return _reply(json.dumps(GOOD))
+
+    r = OpenAiCompatExtractor("http://llm/v1", "k", "m", sleep=slept.append, transport=httpx.MockTransport(handler)).extract(_inp())
+    assert slept == [5.0] and r.tasks
+
+
+def test_the_tokens_a_summary_really_used_are_logged(caplog):
+    def handler(req):
+        return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps(GOOD)}}],
+                                         "usage": {"prompt_tokens": 1200, "completion_tokens": 300}})
+
+    llm = _llm(handler)
+    with caplog.at_level("INFO", logger="rekamind_server.engines.llm"):
+        llm.extract(_inp())
+    assert llm.tokens == {"calls": 1, "prompt": 1200, "completion": 300}
+    assert any("1500 tokens (1200 in, 300 out) in 1 call" in m for m in caplog.messages)
+
