@@ -1,4 +1,4 @@
-__version__ = "0.4.0b6"
+__version__ = "0.4.0b7"
 
 
 def build_id() -> str:

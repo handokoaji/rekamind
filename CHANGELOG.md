@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-beta.7] - 2026-10-20
+
+Test release. Summaries that say what the meeting was about (key points, every topic and where it ended up), a quieter and friendlier app (credit, light/dark, 10 meetings a page, update notice that works behind a shared address), and server fixes found by running beta.6 on a real GPU server. **Known limit: a file over 100 MB cannot be uploaded behind Cloudflare's free plan, which includes a desktop recording longer than about 52 minutes.**
+
 ### Added
 - **The meeting list shows the newest 10 and has real pagination** (it was 50 at a time with a "show more" button). Previous / next with "Halaman 2 dari 3" and "11–20 dari 23 rapat"; each page is a browser history entry (`?hal=2`), a new search or filter starts again from page 1, and landing past the end after deletions steps back to the last page. The server reports the total in an `X-Total-Count` header (same filters as the list; the body is still a plain list, so existing API clients are unaffected) and exposes it to the desktop app. A server that does not send it still pages (next is offered while a page comes back full). The Task tab is not paged yet.
 - **Light / dark setting** (Settings > Tampilan): "Ikuti sistem" (the default), "Terang" or "Gelap". Until now the colours only followed the system. The choice is kept on the device and applied before the page is painted (`public/theme-init.js`, a separate file because the content security policy allows scripts only from the app itself), so a dark choice does not flash white first. Works the same in the web page and the desktop app.
