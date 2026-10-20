@@ -39,7 +39,7 @@ export function ExportDialog({ meetingId, open, onOpenChange }: { meetingId: str
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} title={t("Ekspor rapat")} description={t("Ringkasan, keputusan, jalannya rapat, task, dan (bila dipilih) transkrip dalam satu berkas.")}>
+    <Dialog open={open} onOpenChange={onOpenChange} title={t("Ekspor rapat")} description={t("Ringkasan, poin penting, keputusan, jalannya rapat, task, dan (bila dipilih) transkrip dalam satu berkas.")}>
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1 text-sm font-medium">{t("Format")}</legend>
         {formats().map((f) => (

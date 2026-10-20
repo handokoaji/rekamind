@@ -101,7 +101,7 @@ export const enComponents: Record<string, string> = {
   "{filename} diunduh.": "{filename} downloaded.",
   "Gagal mengekspor": "Export failed",
   "Ekspor rapat": "Export meeting",
-  "Ringkasan, keputusan, jalannya rapat, task, dan (bila dipilih) transkrip dalam satu berkas.": "Summary, decisions, meeting flow, tasks, and (if selected) the transcript in one file.",
+  "Ringkasan, poin penting, keputusan, jalannya rapat, task, dan (bila dipilih) transkrip dalam satu berkas.": "Summary, key points, decisions, meeting flow, tasks, and (if selected) the transcript in one file.",
   "Format": "Format",
   "Sertakan transkrip lengkap": "Include the full transcript",
   "Sertakan juga task yang belum dikonfirmasi": "Also include tasks that are not confirmed yet",

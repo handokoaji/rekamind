@@ -74,8 +74,8 @@ Sudah punya rekaman? Unggah WAV, MP3, atau M4A. Judul diisi otomatis dari nama b
 <tr>
 <td width="50%" valign="top">
 
-### Ringkasan, keputusan, jalannya rapat
-Dibuat dari transkrip lengkap, dalam Bahasa Indonesia. Rapat panjang dipecah otomatis bila layanan ringkasan
+### Ringkasan, poin penting, keputusan, jalannya rapat
+Poin penting dan keputusan adalah intinya; jalannya rapat adalah rincian berurutan waktu. Dibuat dari transkrip lengkap, dalam Bahasa Indonesia. Rapat panjang dipecah otomatis bila layanan ringkasan
 membatasi ukuran.
 
 </td>

@@ -75,7 +75,7 @@ Already have a recording? Upload WAV, MP3 or M4A. The title is filled from the f
 <tr>
 <td width="50%" valign="top">
 
-### Summary, decisions, flow of the meeting
+### Summary, key points, decisions, flow of the meeting
 Built from the full transcript. Long meetings are split automatically when the summary service limits request size.
 
 </td>
