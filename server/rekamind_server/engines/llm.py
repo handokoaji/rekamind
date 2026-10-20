@@ -20,6 +20,7 @@ MAX_RETRIES = 4
 _SYSTEM = """\
 Kamu adalah asisten yang menyusun catatan rapat dalam Bahasa Indonesia dari transkrip.
 Aturan ketat:
+- "overview": 2 sampai 4 kalimat tentang tujuan rapat, topik-topik utama yang dibahas, dan hasilnya. Jangan hanya mengulang judul rapat atau nama berkas; ceritakan isinya.
 - Masukkan TASK untuk pekerjaan yang diminta, ditugaskan, diarahkan pimpinan, atau disanggupi dalam rapat (arahan seperti \
 "ini harus kita siapkan sebelum akhir bulan" juga task; turunkan "confidence" bila penanggung jawab atau tenggatnya tidak \
 jelas). Jangan mengarang task, nama, tanggal, atau durasi. Jika tidak disebutkan, isi null.
