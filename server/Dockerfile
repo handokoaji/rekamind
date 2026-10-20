@@ -11,19 +11,24 @@ RUN npm run build
 # ---- backend ----------------------------------------------------------------
 # EXTRAS picks the variant: "postgres,s3" = API only (record/upload/view, no processing),
 # "postgres,s3,asr" = also transcribes on the CPU (faster-whisper), "postgres,s3,asr,cuda" = NVIDIA GPU
-# (needs the NVIDIA Container Toolkit on the host). Published as `<version>`, `<version>-cpu`, `<version>-cuda`.
+# (needs the NVIDIA Container Toolkit on the host), "postgres,s3,asr,cuda,diarize" = also separates speakers (pyannote;
+# adds torch, so the image is several GB larger). Published as `<version>`, `<version>-cpu`, `<version>-cuda`, `<version>-cuda-diarize`.
 FROM python:3.12-slim
 ARG EXTRAS=postgres,s3
 LABEL org.opencontainers.image.source="https://github.com/handokoaji/rekamind" \
       org.opencontainers.image.licenses="AGPL-3.0-or-later" \
       org.opencontainers.image.description="Rekamind backend: meetings, transcripts, summaries, tasks"
 
-ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 REKAMIND_DATA_DIR=/data REKAMIND_WEB_DIR=/app/web HF_HOME=/data/huggingface \
+ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 REKAMIND_DATA_DIR=/data REKAMIND_WEB_DIR=/app/web HF_HUB_DISABLE_XET=1 HF_HOME=/data/huggingface \
     LD_LIBRARY_PATH=/usr/local/lib/python3.12/site-packages/nvidia/cublas/lib:/usr/local/lib/python3.12/site-packages/nvidia/cudnn/lib
 
 WORKDIR /app
 COPY server/pyproject.toml ./
 COPY server/rekamind_server ./rekamind_server
+# Speaker separation brings torch. PyPI's Linux torch is now built for CUDA 13, but Whisper (CTranslate2) here runs on the CUDA 12
+# libraries above, and two cuDNN builds in one process clash. So torch comes from the CUDA 12.6 index, at the newest version whose
+# matching torchaudio exists there (torchcodec 0.12+ from PyPI supports it).
+RUN case ",${EXTRAS}," in *,diarize,*) pip install "torch==2.11.0" "torchaudio==2.11.0" --index-url https://download.pytorch.org/whl/cu126 ;; esac
 RUN pip install ".[${EXTRAS}]" \
  && useradd --system --uid 10001 rekamind \
  && mkdir /data && chown rekamind /data

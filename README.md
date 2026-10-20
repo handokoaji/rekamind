@@ -8,7 +8,7 @@
 
 **Record meetings. Get a per-speaker transcript, a summary and a task list. Your data stays yours.**
 
-[![Release](https://img.shields.io/badge/release-v0.4.0--beta.5-f59e0b?style=for-the-badge)](https://github.com/handokoaji/rekamind/releases/tag/v0.4.0-beta.5)
+[![Release](https://img.shields.io/badge/release-v0.4.0--beta.6-f59e0b?style=for-the-badge)](https://github.com/handokoaji/rekamind/releases/tag/v0.4.0-beta.6)
 [![Platform](https://img.shields.io/badge/Windows%20%C2%B7%20Linux-4f46e5?style=for-the-badge)](#-download)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-16a34a?style=for-the-badge)](LICENSE)
 
@@ -21,7 +21,7 @@
 </div>
 
 > [!WARNING]
-> **This is a beta (0.x) release (latest: v0.4.0-beta.5) for testing, not a final release.** The core features are
+> **This is a beta (0.x) release (latest: v0.4.0-beta.6) for testing, not a final release.** The core features are
 > covered by automated tests and have been tried by hand on three Windows PCs (one NVIDIA, one Intel, one AMD), but not
 > on many machines. The Linux desktop app has **not** been tested on real hardware. **Do not make Rekamind the
 > only copy of a recording that matters.** See the honest list of [beta limitations](#-beta-limitations).
@@ -166,8 +166,8 @@ Pick the file for your system:
 
 | System | File | Notes |
 |---|---|---|
-| **Windows 10/11 (64-bit)** | [`Rekamind-Windows-x64-setup.exe`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.5/Rekamind-Windows-x64-setup.exe) | `.exe` installer. No admin rights needed. |
-| **Linux (64-bit)** | [`Rekamind-Linux-x64.deb`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.5/Rekamind-Linux-x64.deb) | Debian/Ubuntu and derivatives. |
+| **Windows 10/11 (64-bit)** | [`Rekamind-Windows-x64-setup.exe`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.6/Rekamind-Windows-x64-setup.exe) | `.exe` installer. No admin rights needed. |
+| **Linux (64-bit)** | [`Rekamind-Linux-x64.deb`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.6/Rekamind-Linux-x64.deb) | Debian/Ubuntu and derivatives. |
 | Linux, other distros | `Rekamind-Linux-x64.AppImage` | **Not available in beta.2** (the AppImage build failed; fix planned). Use the `.deb`. |
 
 Every file comes with `SHA256SUMS.txt`. All releases: [Releases](https://github.com/handokoaji/rekamind/releases).

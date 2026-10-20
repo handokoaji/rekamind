@@ -8,7 +8,7 @@ body:
         **Jangan** lampirkan rekaman, transkrip rahasia, kunci API, atau token. Tutupi nama/alamat pribadi pada tangkapan layar.
   - type: input
     id: version
-    attributes: { label: Versi Rekamind, placeholder: "0.4.0-beta.5" }
+    attributes: { label: Versi Rekamind, placeholder: "0.4.0-beta.6" }
     validations: { required: true }
   - type: dropdown
     id: os

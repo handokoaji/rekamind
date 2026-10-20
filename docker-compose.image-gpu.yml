@@ -1,20 +1,20 @@
 # Rekamind backend, NVIDIA GPU variant, from the PREBUILT image (nothing to build).
-# Host needs: NVIDIA driver + NVIDIA Container Toolkit (docker run --gpus all must work). Intended for e.g. an RTX 4060 (8 GB); not yet verified on real hardware (beta).
+# Host needs: NVIDIA driver + NVIDIA Container Toolkit (docker run --gpus all must work). Run once on an RTX 4060 Ti (16 GB): large-v3 took about 4.1 GB of VRAM at its peak and gave it back when the queue emptied.
 # Portainer: Stacks -> Add stack -> Web editor -> paste this file -> fill the environment variables.
 # Plain Docker:  docker compose -f docker-compose.image-gpu.yml up -d
 #
 # Uses ghcr.io/handokoaji/rekamind-server:<version>-cuda. The Whisper model downloads on first use into the data volume.
-# AMD/Intel GPUs are not supported (use docker-compose.image.yml, CPU). Speaker separation (pyannote) is not in the image.
+# AMD/Intel GPUs are not supported (use docker-compose.image.yml, CPU). Speaker separation (pyannote) is only in the "-cuda-diarize" image (set REKAMIND_IMAGE_TAG to <version>-cuda-diarize).
 #
 # AUTH: Google sign-in with YOUR OWN OAuth client (docs/AUTH.md). The server refuses to start without
 # REKAMIND_PUBLIC_URL / REKAMIND_GOOGLE_CLIENT_ID / REKAMIND_GOOGLE_CLIENT_SECRET / REKAMIND_SUPERADMINS.
-# The port is published on loopback; put an HTTPS reverse proxy in front for other machines.
+# The port is published on all interfaces (REKAMIND_BIND=0.0.0.0) so an HTTPS reverse proxy on another host can reach it: allow it only from that proxy in the firewall. Set REKAMIND_BIND=127.0.0.1 when the proxy runs on this host.
 services:
   rekamind:
-    image: ghcr.io/handokoaji/rekamind-server:${REKAMIND_IMAGE_TAG:-0.4.0-beta.5-cuda}
+    image: ghcr.io/handokoaji/rekamind-server:${REKAMIND_IMAGE_TAG:-0.4.0-beta.6-cuda}
     restart: unless-stopped
     ports:
-      - "127.0.0.1:${REKAMIND_PORT:-8787}:8787"
+      - "${REKAMIND_BIND:-0.0.0.0}:${REKAMIND_PORT:-8787}:8787"
     environment:
       REKAMIND_AUTH: google
       REKAMIND_PUBLIC_URL: ${REKAMIND_PUBLIC_URL:?set REKAMIND_PUBLIC_URL, e.g. https://rekamind.example.com}
@@ -43,6 +43,15 @@ services:
       REKAMIND_S3_BUCKET: ${REKAMIND_S3_BUCKET:-rekamind}
       REKAMIND_S3_ACCESS_KEY: ${REKAMIND_S3_ACCESS_KEY:-}
       REKAMIND_S3_SECRET_KEY: ${REKAMIND_S3_SECRET_KEY:-}
+      # Speaker separation: needs the "-cuda-diarize" image, REKAMIND_DIARIZER=pyannote and a Hugging Face token that accepted the pyannote model terms.
+      REKAMIND_DIARIZER: ${REKAMIND_DIARIZER:-none}
+      REKAMIND_HF_TOKEN: ${REKAMIND_HF_TOKEN:-}
+      REKAMIND_WHISPER_COMPUTE_TYPE: ${REKAMIND_WHISPER_COMPUTE_TYPE:-auto}
+      REKAMIND_GLOSSARY: ${REKAMIND_GLOSSARY:-}                  # names and jargon for Whisper, comma separated
+      REKAMIND_MAX_UPLOAD_MB: ${REKAMIND_MAX_UPLOAD_MB:-4096}
+      REKAMIND_LLM_CHUNK_CHARS: ${REKAMIND_LLM_CHUNK_CHARS:-12000}  # lower it if the summary service answers 429 (per-minute token cap)
+      # Hugging Face's Xet downloader stalled the first model download on a real server; plain HTTP does not.
+      HF_HUB_DISABLE_XET: ${HF_HUB_DISABLE_XET:-1}
     deploy:
       resources:
         reservations:

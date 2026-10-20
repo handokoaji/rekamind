@@ -8,7 +8,7 @@
 
 **Rekam rapat. Dapatkan transkrip per pembicara, ringkasan, dan daftar task. Data tetap milik Anda.**
 
-[![Rilis](https://img.shields.io/badge/rilis-v0.4.0--beta.5-f59e0b?style=for-the-badge)](https://github.com/handokoaji/rekamind/releases/tag/v0.4.0-beta.5)
+[![Rilis](https://img.shields.io/badge/rilis-v0.4.0--beta.6-f59e0b?style=for-the-badge)](https://github.com/handokoaji/rekamind/releases/tag/v0.4.0-beta.6)
 [![Platform](https://img.shields.io/badge/Windows%20%C2%B7%20Linux-4f46e5?style=for-the-badge)](#-unduh)
 [![Lisensi](https://img.shields.io/badge/lisensi-AGPL--3.0-16a34a?style=for-the-badge)](LICENSE)
 
@@ -21,7 +21,7 @@
 </div>
 
 > [!WARNING]
-> **Ini rilis beta (0.x; terbaru: v0.4.0-beta.5) untuk diuji, bukan rilis final.** Fungsi utama sudah diuji otomatis dan
+> **Ini rilis beta (0.x; terbaru: v0.4.0-beta.6) untuk diuji, bukan rilis final.** Fungsi utama sudah diuji otomatis dan
 > dicoba langsung di tiga PC Windows (satu NVIDIA, satu Intel, satu AMD), tetapi belum di banyak mesin. Aplikasi desktop
 > Linux **belum** diuji di perangkat keras nyata. **Jangan jadikan Rekamind satu-satunya salinan rekaman yang penting.**
 > Daftar batasan yang jujur ada di [Batasan rilis beta](#-batasan-rilis-beta).
@@ -165,8 +165,8 @@ Buka halaman rilis dan pilih berkas sesuai sistem Anda:
 
 | Sistem | Berkas | Catatan |
 |---|---|---|
-| **Windows 10/11 (64-bit)** | [`Rekamind-Windows-x64-setup.exe`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.5/Rekamind-Windows-x64-setup.exe) | Pemasang `.exe`. Tanpa hak admin. |
-| **Linux (64-bit)** | [`Rekamind-Linux-x64.deb`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.5/Rekamind-Linux-x64.deb) | Debian/Ubuntu dan turunannya. |
+| **Windows 10/11 (64-bit)** | [`Rekamind-Windows-x64-setup.exe`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.6/Rekamind-Windows-x64-setup.exe) | Pemasang `.exe`. Tanpa hak admin. |
+| **Linux (64-bit)** | [`Rekamind-Linux-x64.deb`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.6/Rekamind-Linux-x64.deb) | Debian/Ubuntu dan turunannya. |
 | Linux, distro lain | `Rekamind-Linux-x64.AppImage` | **Belum tersedia di beta.2** (build AppImage gagal; perbaikan direncanakan). Pakai `.deb`. |
 
 Semua berkas disertai `SHA256SUMS.txt`. Semua halaman rilis: [Releases](https://github.com/handokoaji/rekamind/releases).

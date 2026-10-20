@@ -113,11 +113,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        extras: ["postgres,s3", "postgres,s3,asr", "postgres,s3,asr,cuda"]
+        extras: ["postgres,s3", "postgres,s3,asr", "postgres,s3,asr,cuda", "postgres,s3,asr,cuda,diarize"]
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      # Same three variants the release publishes to GHCR (API only, -cpu, -cuda); built here, never pushed.
+      # Same four variants the release publishes to GHCR (API only, -cpu, -cuda, -cuda-diarize); built here, never pushed.
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -131,6 +131,9 @@ jobs:
           docker run -d --name rk -p 8787:8787 -e REKAMIND_AUTH=none -e REKAMIND_INSECURE_NO_AUTH=true -e REKAMIND_ENGINES=none rekamind-server:ci
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8787/api/health && exit 0; sleep 1; done
           docker logs rk; exit 1
+      - name: Speaker separation libraries import
+        if: contains(matrix.extras, 'diarize')
+        run: docker run --rm --entrypoint python rekamind-server:ci -c "import torch, torchaudio; from pyannote.audio import Pipeline; import pyannote.audio as p; assert torch.version.cuda and torch.version.cuda.startswith('12'), torch.version.cuda; print('torch', torch.__version__, 'cuda', torch.version.cuda, 'torchaudio', torchaudio.__version__, 'pyannote', p.__version__)"
       - name: compose from source still builds
         run: docker compose build
         env:

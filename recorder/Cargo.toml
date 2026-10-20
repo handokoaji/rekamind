@@ -1,6 +1,6 @@
 [package]
 name = "rekamind-recorder"
-version = "0.4.0-beta.5"
+version = "0.4.0-beta.6"
 edition = "2021"
 description = "Lightweight meeting audio recorder: mic + system audio to 16 kHz mono WAV, nothing else"
 license = "AGPL-3.0-or-later"

@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-beta.6] - 2026-10-20
+
+Test release. Server image fixes found while running beta.5 on a real GPU server, and a new image with speaker separation. The desktop app is unchanged apart from the version, which makes this the first real test of the in-app update.
+
+### Added
+- **`-cuda-diarize` server image** (NVIDIA GPU + speaker separation with pyannote). Torch comes from the CUDA 12.6 index (`torch`/`torchaudio` 2.11.0): PyPI's Linux torch is now a CUDA 13 build, and two cuDNN builds next to Whisper's CUDA 12 libraries in one process would clash. CI builds it and checks that `torch`, `torchaudio` and `pyannote.audio` import and that torch reports CUDA 12. It has not run on a GPU yet. Use it with `REKAMIND_DIARIZER=pyannote` and `REKAMIND_HF_TOKEN`.
+- Compose files pass through more settings: `REKAMIND_DIARIZER`, `REKAMIND_HF_TOKEN`, `REKAMIND_WHISPER_COMPUTE_TYPE`, `REKAMIND_GLOSSARY`, `REKAMIND_MAX_UPLOAD_MB`, `REKAMIND_LLM_CHUNK_CHARS`, and `REKAMIND_BIND` for the published address (`REKAMIND_PORT` was already there).
+
+### Changed
+- **The compose files publish the port on all interfaces (`0.0.0.0`) by default** (it was `127.0.0.1`), so a reverse proxy on another host can reach it. Allow it only from that proxy in the firewall, or set `REKAMIND_BIND=127.0.0.1` when the proxy runs on the same host.
+
+### Fixed
+- **The first transcription on a fresh server stalled while downloading the Whisper model.** On a real server the `large-v3` download stopped after about 130 MB (Hugging Face's Xet downloader; the network itself ran at about 110 MB/s). `HF_HUB_DISABLE_XET=1` is now set in the image and in the compose files; with it the 3 GB download finished in under two minutes.
+
+### Measured
+- On an RTX 4060 Ti (16 GB), one short recording: Whisper `large-v3` raised VRAM use by about 4.1 GB at its peak, and VRAM returned to within about 130 MB of the idle value as soon as the queue emptied. One short recording only.
+
 ## [0.4.0-beta.5] - 2026-10-20
 
 Test release. Fixes desktop sign-in against a server behind Google's certificates, removes the dead-end error screen, and adds an in-app update notice.

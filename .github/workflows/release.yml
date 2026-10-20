@@ -122,7 +122,8 @@ jobs:
           fi
 
   # Prebuilt backend image on GHCR (ghcr.io/<owner>/rekamind-server) for Portainer / docker compose users.
-  # Two variants: "<version>" = API only, "<version>-cpu" = also transcribes on the CPU. linux/amd64 only (beta).
+  # Four variants: "<version>" = API only, "-cpu" = also transcribes on the CPU, "-cuda" = on an NVIDIA GPU, "-cuda-diarize" = GPU plus
+  # speaker separation (pyannote). linux/amd64 only (beta).
   docker:
     needs: verify
     runs-on: ubuntu-latest
@@ -168,3 +169,13 @@ jobs:
           tags: |
             ${{ steps.t.outputs.repo }}:${{ steps.t.outputs.v }}-cuda
             ${{ steps.t.outputs.repo }}:${{ steps.t.outputs.moving }}-cuda
+      - name: NVIDIA GPU image with speaker separation (pyannote)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: server/Dockerfile
+          build-args: EXTRAS=postgres,s3,asr,cuda,diarize
+          push: true
+          tags: |
+            ${{ steps.t.outputs.repo }}:${{ steps.t.outputs.v }}-cuda-diarize
+            ${{ steps.t.outputs.repo }}:${{ steps.t.outputs.moving }}-cuda-diarize
