@@ -34,6 +34,17 @@ describe("about card", () => {
     }
   });
 
+  it("shows only an icon for Instagram and the support links, each still named for screen readers and as a tooltip", () => {
+    render(<AboutCard />);
+    for (const name of ["Instagram", "GitHub Sponsors", "Saweria"]) {
+      const a = screen.getByRole("link", { name });
+      expect(a).toHaveAttribute("title", name);
+      expect(a.textContent).toBe(""); // an icon, no visible words
+      expect(a.querySelector("svg")).not.toBeNull();
+    }
+    expect(screen.getByRole("link", { name: "Rochmad Handoko Aji" }).textContent).toBe("Rochmad Handoko Aji"); // the name stays text
+  });
+
   it("is a plain card: no buttons, nothing that asks for money outside the one sentence", () => {
     render(<AboutCard />);
     expect(screen.queryAllByRole("button")).toHaveLength(0);
