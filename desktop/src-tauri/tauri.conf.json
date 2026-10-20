@@ -11,7 +11,7 @@
     "withGlobalTauri": false,
     "windows": [],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data:; font-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* http://localhost:* https:; media-src 'self' blob: http://127.0.0.1:* http://localhost:* https:; object-src 'none'; base-uri 'self'; form-action 'self'"
+      "csp": "default-src 'self'; img-src 'self' data: https:; font-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* http://localhost:* https:; media-src 'self' blob: http://127.0.0.1:* http://localhost:* https:; object-src 'none'; base-uri 'self'; form-action 'self'"
     }
   },
   "bundle": {
