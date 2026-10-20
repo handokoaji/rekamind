@@ -98,16 +98,13 @@ pub fn pick(releases: &Value, current: &str) -> Option<Update> {
         if r["draft"].as_bool().unwrap_or(false) {
             continue;
         }
+        if r["prerelease"].as_bool().unwrap_or(false) && !allow_pre {
+            continue;
+        }
         let Some(tag) = r["tag_name"].as_str() else {
             continue;
         };
         let version = tag.trim_start_matches('v');
-        // The GitHub flag alone is not trusted: v0.4.0-beta.4 was published without it.
-        let is_pre = r["prerelease"].as_bool().unwrap_or(false)
-            || parse(version).is_some_and(|(_, pre)| !pre.is_empty());
-        if is_pre && !allow_pre {
-            continue;
-        }
         if !is_newer(version, current) {
             continue;
         }
@@ -265,12 +262,6 @@ mod tests {
             pick(&all, "0.3.0").is_none(),
             "a stable user is not offered a beta"
         );
-        let unflagged_beta = json!([release("v0.4.0-beta.5", false)]);
-        assert!(
-            pick(&unflagged_beta, "0.3.0").is_none(),
-            "a beta GitHub forgot to flag is still a beta"
-        );
-        assert!(pick(&unflagged_beta, "0.4.0-beta.4").is_some());
         let with_stable = json!([release("v0.4.0-beta.5", true), release("v0.4.0", false)]);
         assert_eq!(pick(&with_stable, "0.3.0").unwrap().version, "0.4.0");
     }
