@@ -28,6 +28,9 @@
       "icons/icon.ico",
       "icons/icon.png"
     ],
+    "publisher": "Rochmad Handoko Aji",
+    "copyright": "Copyright (C) 2026 Rochmad Handoko Aji",
+    "homepage": "https://github.com/handokoaji/rekamind",
     "shortDescription": "Rekam rapat, dapatkan transkrip, ringkasan, dan task",
     "windows": {
       "nsis": {

@@ -1,6 +1,8 @@
 import { CheckCircle2, Server, XCircle } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { toast } from "sonner";
+import { AboutCard } from "../components/AboutCard";
 import { IntegrationsCard } from "../components/IntegrationsCard";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
@@ -28,6 +30,8 @@ function TimeZoneCard({ serverZone, serverLabel }: { serverZone?: string; server
 
 export function SettingsPage() {
   const [url, setUrl] = useState(getBackendUrl());
+  const { hash } = useLocation();
+  useEffect(() => { if (hash) document.getElementById(hash.slice(1))?.scrollIntoView({ block: "start" }); }, [hash]);
   const [testing, setTesting] = useState(false);
   const health = useHealth();
   const caps = useCapabilities();
@@ -84,6 +88,8 @@ export function SettingsPage() {
           ) : <p className="text-sm text-muted">{t("Server ini belum dikonfigurasi untuk memproses rekaman.")}</p>
         )}
       </Card>
+
+      <AboutCard />
     </div>
   );
 }

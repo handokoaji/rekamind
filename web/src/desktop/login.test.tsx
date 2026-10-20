@@ -25,7 +25,8 @@ describe("desktop sign-in", () => {
   it("uses the shell's browser flow (a button, not a cookie redirect) and re-asks who is signed in", async () => {
     bridge.login.mockResolvedValue({ email: "a@kantor.id", token: "rks_x", remembered: true });
     const spy = ui();
-    expect(screen.queryByRole("link")).toBeNull();
+    // no link into the server's cookie sign-in (the author's credit line is a link too, to GitHub)
+    expect(screen.queryAllByRole("link").filter((a) => (a.getAttribute("href") ?? "").includes("/auth/login"))).toEqual([]);
     await userEvent.click(screen.getByRole("button", { name: /Masuk dengan Google/ }));
     await waitFor(() => expect(spy).toHaveBeenCalledWith({ queryKey: ["me"] }));
     expect(toast.warning).not.toHaveBeenCalled();

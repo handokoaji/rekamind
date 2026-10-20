@@ -157,7 +157,9 @@ def create_app(settings: Settings | None = None, *, engines: Engines | None = No
             await app.state.http.aclose()
         await engine.dispose()
 
-    app = FastAPI(title="Rekamind", version=__version__, lifespan=lifespan)
+    app = FastAPI(title="Rekamind", version=__version__, lifespan=lifespan,
+                  contact={"name": "Rochmad Handoko Aji", "url": "https://github.com/handokoaji"},
+                  license_info={"name": "AGPL-3.0-or-later", "url": "https://www.gnu.org/licenses/agpl-3.0.html"})
     app.state.settings = settings  # available before startup too (the auth dependency reads it)
     origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
     if origins:

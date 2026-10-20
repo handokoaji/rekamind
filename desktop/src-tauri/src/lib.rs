@@ -544,6 +544,67 @@ async fn update_install(app: AppHandle, sh: State<'_, Shared>) -> Result<(), Str
     Ok(())
 }
 
+// ----------------------------------------------------------------------------- links
+
+/// The pages the About card links to. A click inside the app would replace the app with that site, so the UI asks the
+/// shell to open them in the system browser; the shell opens only these, whatever the UI asks for.
+const EXTERNAL_PAGES: [&str; 4] = [
+    "https://github.com/handokoaji",
+    "https://github.com/sponsors/handokoaji",
+    "https://saweria.co/handokoaji",
+    "https://www.instagram.com/rhandokoaji",
+];
+
+/// `https://github.com/handokoaji` and anything below it, but not `https://github.com/handokoaji.evil.example`.
+fn external_allowed(url: &str) -> bool {
+    EXTERNAL_PAGES.iter().any(|page| {
+        url == *page || url.strip_prefix(page).is_some_and(|rest| rest.starts_with('/'))
+    })
+}
+
+#[tauri::command]
+fn open_external(url: String) -> Result<(), String> {
+    if !external_allowed(&url) {
+        return Err("Alamat ini tidak boleh dibuka dari aplikasi.".into());
+    }
+    webbrowser::open(&url).map(|_| ()).map_err(|e| format!("tidak bisa membuka browser ({e})"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::external_allowed;
+
+    #[test]
+    fn opens_the_authors_pages_and_what_lies_below_them() {
+        for ok in [
+            "https://github.com/handokoaji",
+            "https://github.com/handokoaji/rekamind",
+            "https://github.com/handokoaji/rekamind/issues",
+            "https://github.com/sponsors/handokoaji",
+            "https://saweria.co/handokoaji",
+            "https://www.instagram.com/rhandokoaji/",
+        ] {
+            assert!(external_allowed(ok), "{ok}");
+        }
+    }
+
+    #[test]
+    fn refuses_look_alikes_other_hosts_and_other_schemes() {
+        for bad in [
+            "https://github.com/handokoaji.evil.example",
+            "https://github.com/handokoaji@evil.example",
+            "https://github.com.evil.example/handokoaji",
+            "https://github.com/someone-else",
+            "http://github.com/handokoaji",
+            "file:///C:/Windows/System32/calc.exe",
+            "javascript:alert(1)",
+            "",
+        ] {
+            assert!(!external_allowed(bad), "{bad}");
+        }
+    }
+}
+
 /// `None` leaves a secret as it is; an empty string removes it.
 #[tauri::command]
 fn secrets_set(sh: State<'_, Shared>, llm_api_key: Option<String>, hf_token: Option<String>) -> Result<SettingsView, String> {
@@ -719,6 +780,7 @@ pub fn run() {
             secrets_set,
             update_check,
             update_install,
+            open_external,
         ])
         .build(tauri::generate_context!())
         .expect("gagal membangun aplikasi Rekamind");

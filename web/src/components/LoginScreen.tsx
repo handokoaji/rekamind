@@ -1,4 +1,6 @@
 import { Logo } from "./Logo";
+import { ExternalLink } from "./ExternalLink";
+import { ABOUT, APP_VERSION } from "../lib/about";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { useState } from "react";
@@ -72,6 +74,9 @@ export function LoginScreen() {
           {t("Anda hanya bisa melihat rapat milik Anda sendiri. Kata sandi Google tidak pernah dikirim ke Rekamind.")}
         </p>
         <LanguageSwitcher />
+        <p className="text-xs text-muted">
+          Rekamind {APP_VERSION} · {t("Dibuat oleh")} <ExternalLink href={ABOUT.github}>{ABOUT.name}</ExternalLink>
+        </p>
       </Card>
     </main>
   );

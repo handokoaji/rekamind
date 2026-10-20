@@ -4,6 +4,7 @@ version = "0.4.0b6"
 description = "Rekamind v2 backend: API, job queue, and processing pipeline"
 requires-python = ">=3.11"
 license = { text = "AGPL-3.0-or-later" }
+authors = [{ name = "Rochmad Handoko Aji" }]
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
@@ -21,6 +22,11 @@ dependencies = [
     "tzdata",  # zone database for Windows and the frozen backend (they have no system copy)
     "av>=12,<17",  # (faster-whisper 1.2 breaks on av 17+) decodes mp3/m4a/ogg uploads to WAV; also a faster-whisper dependency
 ]
+
+[project.urls]
+Homepage = "https://github.com/handokoaji/rekamind"
+Source = "https://github.com/handokoaji/rekamind"
+Issues = "https://github.com/handokoaji/rekamind/issues"
 
 [project.optional-dependencies]
 postgres = ["asyncpg>=0.29"]

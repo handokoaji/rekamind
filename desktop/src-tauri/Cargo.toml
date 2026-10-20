@@ -4,6 +4,9 @@ version = "0.4.0-beta.6"
 edition = "2021"
 description = "Rekamind desktop shell: tray, hotkey and window around the lightweight recorder"
 license = "AGPL-3.0-or-later"
+authors = ["Rochmad Handoko Aji"]
+homepage = "https://github.com/handokoaji/rekamind"
+repository = "https://github.com/handokoaji/rekamind"
 
 [lib]
 name = "rekamind_desktop_lib"

@@ -396,5 +396,5 @@ Dukungan sepenuhnya opsional. Bintang, laporan bug, atau pull request sama berar
 
 ## Lisensi
 
-[AGPL-3.0-or-later](LICENSE), Hak cipta (C) 2026 handokoaji. Bila Anda menjalankan Rekamind yang sudah diubah sebagai layanan jaringan, AGPL mewajibkan Anda menyediakan kode sumber versi Anda kepada pengguna layanan itu. Rilis sampai v0.4.0-beta.3 diterbitkan dengan lisensi MIT; salinan itu tetap MIT, dan AGPL-3.0-or-later berlaku mulai v0.4.0-beta.4. Pustaka dan model pihak ketiga memiliki lisensinya sendiri (lihat [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); mis. model pyannote memerlukan
+[AGPL-3.0-or-later](LICENSE), Hak cipta (C) 2026 Rochmad Handoko Aji ([@handokoaji](https://github.com/handokoaji)). Bila Anda menjalankan Rekamind yang sudah diubah sebagai layanan jaringan, AGPL mewajibkan Anda menyediakan kode sumber versi Anda kepada pengguna layanan itu. Rilis sampai v0.4.0-beta.3 diterbitkan dengan lisensi MIT; salinan itu tetap MIT, dan AGPL-3.0-or-later berlaku mulai v0.4.0-beta.4. Pustaka dan model pihak ketiga memiliki lisensinya sendiri (lihat [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); mis. model pyannote memerlukan
 persetujuan syarat di Hugging Face).

@@ -405,5 +405,5 @@ Support is entirely optional. A star, a bug report or a pull request helps just 
 
 ## License
 
-[AGPL-3.0-or-later](LICENSE), Copyright (C) 2026 handokoaji. If you run a modified Rekamind as a network service, the AGPL requires you to offer the source of your version to that service's users. Releases up to v0.4.0-beta.3 were published under the MIT licence; those copies stay MIT, and AGPL-3.0-or-later applies from v0.4.0-beta.4 onwards. Third-party libraries and models have their own licences (see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); e.g. the pyannote models require accepting
+[AGPL-3.0-or-later](LICENSE), Copyright (C) 2026 Rochmad Handoko Aji ([@handokoaji](https://github.com/handokoaji)). If you run a modified Rekamind as a network service, the AGPL requires you to offer the source of your version to that service's users. Releases up to v0.4.0-beta.3 were published under the MIT licence; those copies stay MIT, and AGPL-3.0-or-later applies from v0.4.0-beta.4 onwards. Third-party libraries and models have their own licences (see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); e.g. the pyannote models require accepting
 terms on Hugging Face).

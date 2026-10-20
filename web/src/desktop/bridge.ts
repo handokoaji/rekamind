@@ -46,6 +46,8 @@ export const desktop = {
   setSecrets: (s: { llmApiKey?: string; hfToken?: string }) => invoke<SettingsView>("secrets_set", { llmApiKey: s.llmApiKey, hfToken: s.hfToken }),
   login: () => invoke<LoginResult>("auth_login"),
   logout: () => invoke<void>("auth_logout"),
+  /** Opens one of the few known addresses (the author's pages) in the system browser. */
+  openExternal: (url: string) => invoke<void>("open_external", { url }),
   /** null = already on the newest release. */
   checkUpdate: () => invoke<UpdateInfo | null>("update_check"),
   /** Downloads, verifies and runs the installer, then the app quits. Rejects while a recording runs. */

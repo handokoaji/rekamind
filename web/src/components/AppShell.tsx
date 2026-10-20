@@ -5,6 +5,7 @@ import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../hooks/auth";
 import { useHealth } from "../hooks/queries";
 import { UserMenu } from "./UserMenu";
+import { APP_VERSION } from "../lib/about";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { t } from "../lib/i18n";
 import { cn } from "../lib/cn";
@@ -122,6 +123,9 @@ export function AppShell() {
         {/* The header stays put while a page chunk loads; only the content area shows progress. */}
         <Content />
       </main>
+      <footer className="mx-auto max-w-5xl px-4 pb-6 text-xs text-muted">
+        Rekamind {APP_VERSION} · <NavLink to="/pengaturan#tentang" className="underline decoration-muted/50 underline-offset-4 transition-colors hover:text-fg hover:decoration-current">{t("Tentang")}</NavLink>
+      </footer>
     </div>
   );
 }
