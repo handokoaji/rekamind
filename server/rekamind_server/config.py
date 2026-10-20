@@ -79,6 +79,8 @@ class Settings(BaseSettings):
     # Diarization: none | pyannote
     diarizer: str = "none"
     hf_token: str = ""
+    # Model downloads slower than this (MB/s, over 10 s) are dropped and retried on a new connection; 0 = never.
+    hf_min_mbps: float = 0.5
     # Summaries / tasks: any OpenAI-compatible endpoint (Groq, OpenAI, Ollama, vLLM)
     llm_base_url: str = "https://api.groq.com/openai/v1"
     llm_api_key: str = ""

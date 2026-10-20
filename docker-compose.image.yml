@@ -52,8 +52,9 @@ services:
       REKAMIND_GLOSSARY: ${REKAMIND_GLOSSARY:-}                  # names and jargon for Whisper, comma separated
       REKAMIND_MAX_UPLOAD_MB: ${REKAMIND_MAX_UPLOAD_MB:-4096}
       REKAMIND_LLM_CHUNK_CHARS: ${REKAMIND_LLM_CHUNK_CHARS:-12000}  # lower it if the summary service answers 429 (per-minute token cap)
-      # Hugging Face's Xet downloader stalled the first model download on a real server; plain HTTP does not.
+      # Keep model downloads on plain HTTP: the slow-download guard below only watches those (Xet downloads bypass it).
       HF_HUB_DISABLE_XET: ${HF_HUB_DISABLE_XET:-1}
+      REKAMIND_HF_MIN_MBPS: ${REKAMIND_HF_MIN_MBPS:-0.5}   # a model download slower than this (over 10 s) is dropped and retried on a new connection; 0 = off
     volumes:
       - rekamind-data:/data
 

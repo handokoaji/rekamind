@@ -48,6 +48,10 @@ def build_engines(settings: Settings) -> Engines | None:
 
         os.environ.setdefault("HF_TOKEN", settings.hf_token)
 
+    from .. import hfguard
+
+    hfguard.install(settings.hf_min_mbps)
+
     from .llm import OpenAiCompatExtractor
     from .whisper import FasterWhisperTranscriber
 

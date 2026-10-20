@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Slow model downloads are cut off and retried** (`hfguard.py`, setting `REKAMIND_HF_MIN_MBPS`, default 0.5, 0 = off). Hugging Face serves model files from a CDN host that resolves to about ten addresses; on a real server one of them answered at 0.1 MB/s while the rest gave about 27 MB/s. `huggingface_hub` only times out when no byte arrives for ten seconds, and a slow node keeps trickling bytes, so the connection stayed on it: the first Whisper download, and later a 26 MB pyannote file (10 MiB in 100 s, then nothing for minutes), never finished and the job hung in `diarizing`. A response of 20 MB or more whose rate stays under the minimum for 10 s (after a 12 s grace) now raises a timeout, `huggingface_hub` resumes it, and the dropped connection means the retry usually lands on a healthy node. Covers every model download (Whisper and pyannote) that goes through plain HTTP.
+
+### Changed
+- `HF_HUB_DISABLE_XET=1` stays, but for a different reason than stated in beta.6: the guard can only watch plain HTTP downloads. The beta.6 note blamed the Xet downloader; that was not proven, and the slow CDN node above explains the stalls without it.
+
+### Measured
+- Speaker separation on a real GPU server (RTX 4060 Ti, 16 GB, image `0.4.0-beta.6-cuda-diarize`), one short recording: pyannote ran on the GPU and split the computer's audio into two voices (`SPEAKER_00` 92 segments, `SPEAKER_01` 38; the microphone stays `ME`). VRAM peaked at 8,534 MiB (idle 2,601; Whisper about +4.1 GB, pyannote about +1.8 GB more) and returned to 2,824 MiB when the queue emptied.
+
 ### Fixed
 - **The desktop app did not show the Google profile picture** (the web page served by the server did). The app's content security policy only allowed images from itself, so the picture at `lh3.googleusercontent.com` was blocked; `img-src` now allows `https:`, the same as the server's own policy. The only remote image the interface shows is that picture.
 - **The in-app update notice never appeared when GitHub's API refused the request.** The API allows 60 anonymous calls an hour per IP address, and a campus or an office shares one address, so the quota is easy to exhaust; the failure was swallowed silently. When the API refuses, the update check now reads the public `releases.atom` feed instead (not rate limited). The feed has no pre-release flag, so there a tag with a pre-release suffix counts as a pre-release (a stable install is not offered a beta), and the installer and checksum URLs follow the fixed names `release.yml` uses; the SHA-256 check is unchanged.
