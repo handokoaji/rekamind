@@ -45,7 +45,7 @@ function messageFrom(body: unknown, status: number): string {
   return t("Permintaan gagal ({status}).", { status });
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function send(method: string, path: string, body?: unknown): Promise<{ res: Response; data: unknown }> {
   let res: Response;
   try {
     res = await fetch(`${getBackendUrl()}${path.startsWith("/../") ? path.slice(3) : `/api${path}`}`, {
@@ -56,12 +56,26 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   } catch {
     throw new ApiError(0, t("Tidak dapat terhubung ke server. Periksa koneksi atau alamat server di Pengaturan."));
   }
-  if (res.status === 204) return undefined as T;
+  if (res.status === 204) return { res, data: undefined };
   const data = await res.json().catch(() => null);
   // /me is how the app *asks* whether it is signed in; reacting to its own 401 would ask again forever.
   if (res.status === 401 && path !== "/me") unauthorized.forEach((f) => f());
   if (!res.ok) throw new ApiError(res.status, messageFrom(data, res.status));
-  return data as T;
+  return { res, data };
+}
+
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  return (await send(method, path, body)).data as T;
+}
+
+function meetingsPath(q: string, status: string, scope: Scope, offset: number, limit: number): string {
+  const p = new URLSearchParams();
+  if (offset) p.set("offset", String(offset));
+  if (limit !== 50) p.set("limit", String(limit));
+  if (q) p.set("q", q);
+  if (status) p.set("status", status);
+  if (scope === "all") p.set("scope", "all");
+  return `/meetings${p.size ? `?${p}` : ""}`;
 }
 
 export const api = {
@@ -72,14 +86,12 @@ export const api = {
   adminUsers: () => request<AdminUser[]>("GET", "/admin/users"),
   inviteUser: (email: string, role: Role) => request<AdminUser>("POST", "/admin/users", { email, role }),
   patchUser: (id: string, patch: { role?: Role; disabled?: boolean }) => request<AdminUser>("PATCH", `/admin/users/${id}`, patch),
-  meetings: (q = "", status = "", scope: Scope = "mine", offset = 0, limit = 50) => {
-    const p = new URLSearchParams();
-    if (offset) p.set("offset", String(offset));
-    if (limit !== 50) p.set("limit", String(limit));
-    if (q) p.set("q", q);
-    if (status) p.set("status", status);
-    if (scope === "all") p.set("scope", "all");
-    return request<Meeting[]>("GET", `/meetings${p.size ? `?${p}` : ""}`);
+  meetings: (q = "", status = "", scope: Scope = "mine", offset = 0, limit = 50) => request<Meeting[]>("GET", meetingsPath(q, status, scope, offset, limit)),
+  /** One page, and how many meetings there are in all (X-Total-Count; null from a server that does not send it). */
+  meetingsPage: async (q = "", status = "", scope: Scope = "mine", offset = 0, limit = 50): Promise<{ items: Meeting[]; total: number | null }> => {
+    const { res, data } = await send("GET", meetingsPath(q, status, scope, offset, limit));
+    const header = res.headers.get("x-total-count");
+    return { items: data as Meeting[], total: header !== null && Number.isFinite(Number(header)) ? Number(header) : null };
   },
   integrationStatus: () => request<IntegrationStatus>("GET", "/integrations/status"),
   integrations: () => request<Integration[]>("GET", "/integrations"),

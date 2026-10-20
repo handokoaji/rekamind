@@ -1,5 +1,4 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { MeetingDetail, Scope, TaskPatch } from "../lib/types";
 
@@ -11,22 +10,17 @@ export const useHealth = () =>
 export const useCapabilities = () => useQuery({ queryKey: ["capabilities"], queryFn: api.capabilities, staleTime: 60_000 });
 
 /** Polls only while something is actually being processed, so an idle page makes no requests. */
-export const MEETINGS_PAGE = 50;
+export const MEETINGS_PAGE = 10;
 
-/** Newest first, a page at a time ("Tampilkan lebih banyak"). Polls only while something is being
- *  processed, so an idle page makes no requests. */
-export const useMeetings = (q: string, status: string, scope: Scope = "mine") => {
-  const query = useInfiniteQuery({
-    queryKey: ["meetings", q, status, scope],
-    queryFn: ({ pageParam }) => api.meetings(q, status, scope, pageParam, MEETINGS_PAGE),
-    initialPageParam: 0,
-    getNextPageParam: (last, all) => (last.length === MEETINGS_PAGE ? all.length * MEETINGS_PAGE : undefined),
-    refetchInterval: (qr) => (qr.state.data?.pages.some((pg) => pg.some((m) => m.job || ACTIVE.has(m.status))) ? 2_000 : false),
-    placeholderData: (prev) => prev,
+/** The newest ten, a page at a time. `page` counts from 0. Polls only while something on the page is being processed,
+ *  so an idle page makes no requests. */
+export const useMeetings = (q: string, status: string, scope: Scope = "mine", page = 0) =>
+  useQuery({
+    queryKey: ["meetings", q, status, scope, page],
+    queryFn: () => api.meetingsPage(q, status, scope, page * MEETINGS_PAGE, MEETINGS_PAGE),
+    refetchInterval: (qr) => (qr.state.data?.items.some((m) => m.job || ACTIVE.has(m.status)) ? 2_000 : false),
+    placeholderData: keepPreviousData,
   });
-  const data = useMemo(() => query.data?.pages.flat(), [query.data]);
-  return { ...query, data };
-};
 
 export const useMeeting = (id: string) =>
   useQuery({

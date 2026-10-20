@@ -256,3 +256,17 @@ async def test_first_person_is_not_guessed_when_nobody_was_speaking_then(client)
     await Worker(a.state.sf, a.state.storage, a.state.engines).run_once()
     report = next(t for t in (await client.get(f"/api/meetings/{m['id']}")).json()["tasks"] if t["title"] == "Kirim laporan")
     assert report["assignee_participant_id"] is None  # 00:20 is outside every speaker segment
+
+
+async def test_the_meeting_list_reports_how_many_there_are_so_a_client_can_page(client):
+    for i in range(25):
+        assert (await client.post("/api/meetings", json={"title": f"Rapat {i:02d}"})).status_code == 201
+    last = await client.get("/api/meetings", params={"limit": 10, "offset": 20})
+    assert len(last.json()) == 5 and last.headers["x-total-count"] == "25"
+    first = await client.get("/api/meetings", params={"limit": 10})
+    assert [m["title"] for m in first.json()] == [f"Rapat {i:02d}" for i in range(24, 14, -1)], "newest first"
+    assert first.headers["x-total-count"] == "25"
+    found = await client.get("/api/meetings", params={"q": "Rapat 1", "limit": 5})
+    assert len(found.json()) == 5 and found.headers["x-total-count"] == "10", "the total follows the search, not the whole table"
+    assert len((await client.get("/api/meetings", params={"limit": 1000})).json()) == 25  # capped at 200 per request
+

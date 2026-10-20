@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
-from sqlalchemy import select, true, update
+from sqlalchemy import func, select, true, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -163,7 +163,8 @@ def create_app(settings: Settings | None = None, *, engines: Engines | None = No
     app.state.settings = settings  # available before startup too (the auth dependency reads it)
     origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
     if origins:
-        app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"], allow_credentials=True)
+        app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"], allow_credentials=True,
+                           expose_headers=["X-Total-Count"])
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
@@ -244,7 +245,7 @@ def create_app(settings: Settings | None = None, *, engines: Engines | None = No
         return m
 
     @app.get("/api/meetings", response_model=list[MeetingSummaryOut])
-    async def list_meetings(db: Db, user: User_, limit: int = 50, offset: int = 0, q: str | None = None,
+    async def list_meetings(response: Response, db: Db, user: User_, limit: int = 50, offset: int = 0, q: str | None = None,
                             status: str | None = None, scope: str | None = None):
         query = select(Meeting).where(Meeting.deleted_at.is_(None), _listing(user, scope))
         if q:
@@ -252,6 +253,8 @@ def create_app(settings: Settings | None = None, *, engines: Engines | None = No
             query = query.where(Meeting.title.ilike(f"%{escaped}%", escape="\\"))
         if status:
             query = query.where(Meeting.status == status)
+        # How many there are in all (same filters), so a client can offer page numbers. A header, because the body stays a plain list.
+        response.headers["X-Total-Count"] = str((await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one())
         rows = (await db.execute(query.order_by(Meeting.started_at.desc()).limit(min(limit, 200)).offset(offset))).scalars().all()
         active = (await db.execute(select(Job).where(Job.meeting_id.in_([m.id for m in rows]), Job.status.in_(jobs.ACTIVE))
                                    .order_by(Job.created_at))).scalars().all() if rows else []

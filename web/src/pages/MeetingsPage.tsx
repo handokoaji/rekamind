@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { isDesktop } from "../desktop/bridge";
 import { EngineSetupBanner } from "../desktop/EngineSetupBanner";
 import { RecordCard } from "../desktop/RecordCard";
+import { Pagination } from "../components/Pagination";
 import { UpdateBanner } from "../desktop/UpdateBanner";
 import { StatusBadge } from "../components/StatusBadge";
 import { Button } from "../components/ui/Button";
@@ -13,7 +14,7 @@ import { Card } from "../components/ui/Card";
 import { EmptyState, ErrorState, ProgressBar, Skeleton } from "../components/ui/Feedback";
 import { Input } from "../components/ui/Field";
 import { useAuth } from "../hooks/auth";
-import { useCapabilities, useMeetings, useProcessMeeting } from "../hooks/queries";
+import { MEETINGS_PAGE, useCapabilities, useMeetings, useProcessMeeting } from "../hooks/queries";
 import { api } from "../lib/api";
 import { cn } from "../lib/cn";
 import { formatDateTime } from "../lib/format";
@@ -96,7 +97,10 @@ export function MeetingsPage() {
   const search = useRef<HTMLInputElement>(null);
   const { canAdmin } = useAuth();
   const scope = canAdmin && params.get("scope") === "all" ? "all" : "mine";
-  const { data, error, isLoading, refetch, hasNextPage, fetchNextPage, isFetchingNextPage } = useMeetings(q, status, scope);
+  const page = Math.max(0, (Number(params.get("hal")) || 1) - 1);
+  const { data: pageData, error, isLoading, refetch } = useMeetings(q, status, scope, page);
+  const data = pageData?.items;
+  const total = pageData?.total ?? null;
   const caps = useCapabilities();
 
   useEffect(() => {
@@ -108,8 +112,24 @@ export function MeetingsPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const setStatus = (v: string) => setParams((p) => { v ? p.set("status", v) : p.delete("status"); return p; }, { replace: true });
-  const setScope = (v: string) => setParams((p) => { v === "all" ? p.set("scope", "all") : p.delete("scope"); return p; }, { replace: true });
+  const setStatus = (v: string) => setParams((p) => { v ? p.set("status", v) : p.delete("status"); p.delete("hal"); return p; }, { replace: true });
+  const setScope = (v: string) => setParams((p) => { v === "all" ? p.set("scope", "all") : p.delete("scope"); p.delete("hal"); return p; }, { replace: true });
+  // A page is a history entry, so the browser's back button returns to the previous page.
+  const setPage = (n: number, replace = false) => {
+    setParams((p) => { n > 0 ? p.set("hal", String(n + 1)) : p.delete("hal"); return p; }, { replace });
+    window.scrollTo({ top: 0 });
+  };
+  // A new search starts again from the first page; so does landing past the end (meetings were deleted meanwhile).
+  const lastSearch = useRef(q);
+  useEffect(() => {
+    if (lastSearch.current === q) return; // setParams changes identity with every address change: only react to a new search
+    lastSearch.current = q;
+    setParams((p) => { p.delete("hal"); return p; }, { replace: true });
+  }, [q, setParams]);
+  useEffect(() => {
+    if (pageData && pageData.items.length === 0 && page > 0 && pageData.total) setPage(Math.max(0, Math.ceil(pageData.total / MEETINGS_PAGE) - 1), true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageData, page]);
   const filtering = Boolean(q || status);
 
   return (
@@ -154,7 +174,7 @@ export function MeetingsPage() {
         <div className="flex flex-col gap-3" aria-label={t("Memuat daftar rapat")}>{[0, 1, 2].map((i) => <Skeleton key={i} className="h-[76px]" />)}</div>
       ) : error ? (
         <Card><ErrorState error={error} onRetry={() => void refetch()} /></Card>
-      ) : data && data.length === 0 ? (
+      ) : data && data.length === 0 && page === 0 ? (
         <Card>
           {filtering ? (
             <EmptyState icon={<Search className="size-6" />} title={t("Tidak ada rapat yang cocok")}
@@ -172,7 +192,7 @@ export function MeetingsPage() {
       ) : (
         <>
           <ul className="flex flex-col gap-3">{data?.map((m) => <Row key={m.id} m={m} canProcess={caps.data?.processing_ready ?? false} showOwner={scope === "all"} />)}</ul>
-          {hasNextPage && <Button className="self-center" loading={isFetchingNextPage} onClick={() => void fetchNextPage()}>{t("Tampilkan lebih banyak")}</Button>}
+          <Pagination page={page} size={MEETINGS_PAGE} total={total} count={data?.length ?? 0} onPage={setPage} />
         </>
       )}
 
