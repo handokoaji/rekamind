@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **The in-app update notice never appeared when GitHub's API refused the request.** The API allows 60 anonymous calls an hour per IP address, and a campus or an office shares one address, so the quota is easy to exhaust; the failure was swallowed silently. When the API refuses, the update check now reads the public `releases.atom` feed instead (not rate limited). The feed has no pre-release flag, so there a tag with a pre-release suffix counts as a pre-release (a stable install is not offered a beta), and the installer and checksum URLs follow the fixed names `release.yml` uses; the SHA-256 check is unchanged.
+
 ## [0.4.0-beta.6] - 2026-10-20
 
 Test release. Server image fixes found while running beta.5 on a real GPU server, and a new image with speaker separation. The desktop app is unchanged apart from the version, which makes this the first real test of the in-app update.

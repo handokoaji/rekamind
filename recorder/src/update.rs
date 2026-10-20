@@ -133,8 +133,18 @@ pub fn pick(releases: &Value, current: &str) -> Option<Update> {
     })
 }
 
-/// Ask GitHub whether a release newer than `current` exists.
+/// Ask GitHub whether a release newer than `current` exists. The API is tried first because it says which
+/// releases are pre-releases; its anonymous quota is 60 calls an hour per IP address, which a campus or an
+/// office shares, so when it refuses the public releases feed (no such quota) answers instead.
 pub fn check(current: &str) -> Result<Option<Update>, ApiError> {
+    match check_api(current) {
+        Ok(u) => Ok(u),
+        Err(api) => check_feed(current)
+            .map_err(|feed| ApiError(format!("{api}; cadangan lewat feed juga gagal: {feed}"))),
+    }
+}
+
+fn check_api(current: &str) -> Result<Option<Update>, ApiError> {
     let mut resp = agent()
         .get(format!(
             "https://api.github.com/repos/{REPO}/releases?per_page=10"
@@ -151,6 +161,53 @@ pub fn check(current: &str) -> Result<Option<Update>, ApiError> {
     }
     let releases: Value = resp.body_mut().read_json().map_err(net)?;
     Ok(pick(&releases, current))
+}
+
+/// The same question answered from `releases.atom`, which is not rate limited like the API.
+pub fn check_feed(current: &str) -> Result<Option<Update>, ApiError> {
+    let mut resp = get(
+        &agent(),
+        &format!("https://github.com/{REPO}/releases.atom"),
+    )?;
+    let feed = resp.body_mut().read_to_string().map_err(net)?;
+    Ok(pick_feed(&feed, current))
+}
+
+/// Like `pick`, from the Atom feed. The feed has no pre-release flag and no asset list, so a tag with a
+/// pre-release suffix counts as a pre-release and the asset URLs follow release.yml's fixed names; a wrong
+/// guess ends as a failed download, never as an unchecked install (the SHA-256 is still required).
+pub fn pick_feed(feed: &str, current: &str) -> Option<Update> {
+    let allow_pre = parse(current).is_some_and(|(_, pre)| !pre.is_empty());
+    let prefix = format!("https://github.com/{REPO}/releases/tag/");
+    let mut best: Option<&str> = None;
+    for (i, _) in feed.match_indices(&prefix) {
+        let rest = &feed[i + prefix.len()..];
+        let tag = rest.split(['"', '<', '\'']).next().unwrap_or("");
+        // The tag ends up in a URL: only what a release tag is made of.
+        let sane = tag.len() < 64
+            && tag.starts_with('v')
+            && tag
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+'));
+        if !sane {
+            continue;
+        }
+        let version = &tag[1..];
+        let is_pre = parse(version).is_some_and(|(_, pre)| !pre.is_empty());
+        if (is_pre && !allow_pre) || !is_newer(version, current) {
+            continue;
+        }
+        if best.is_none_or(|b| is_newer(version, &b[1..])) {
+            best = Some(tag);
+        }
+    }
+    let tag = best?;
+    Some(Update {
+        version: tag[1..].to_string(),
+        html_url: format!("https://github.com/{REPO}/releases/tag/{tag}"),
+        installer_url: INSTALLER.map(|name| format!("{DOWNLOADS}{tag}/{name}")),
+        sums_url: Some(format!("{DOWNLOADS}{tag}/{SUMS}")),
+    })
 }
 
 fn get(agent: &ureq::Agent, url: &str) -> Result<ureq::http::Response<ureq::Body>, ApiError> {
@@ -274,6 +331,48 @@ mod tests {
         let mut foreign = release("v0.5.0", false);
         foreign["assets"][1]["browser_download_url"] = json!("https://evil.example/SHA256SUMS.txt");
         assert!(pick(&json!([foreign]), "0.4.0").unwrap().sums_url.is_none());
+    }
+
+    fn feed(tags: &[&str]) -> String {
+        let entries: String = tags
+            .iter()
+            .map(|t| format!("<entry><link rel=\"alternate\" type=\"text/html\" href=\"https://github.com/handokoaji/rekamind/releases/tag/{t}\"/><title>x</title></entry>"))
+            .collect();
+        format!("<feed>{entries}</feed>")
+    }
+
+    #[test]
+    fn the_feed_fallback_finds_the_newest_release_like_the_api_does() {
+        let f = feed(&["v0.4.0-beta.6", "v0.4.0-beta.5", "v0.4.0-beta.4", "v0.3.0"]);
+        let u = pick_feed(&f, "0.4.0-beta.5").expect("beta.6 is newer");
+        assert_eq!(u.version, "0.4.0-beta.6");
+        assert_eq!(
+            u.html_url,
+            "https://github.com/handokoaji/rekamind/releases/tag/v0.4.0-beta.6"
+        );
+        assert_eq!(u.sums_url.as_deref(), Some("https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.6/SHA256SUMS.txt"));
+        assert_eq!(u.installer_url.is_some(), cfg!(windows));
+        assert!(pick_feed(&f, "0.4.0-beta.6").is_none());
+        assert!(
+            pick_feed(&f, "0.3.0").is_none(),
+            "a stable user is not offered a beta from the feed"
+        );
+        assert_eq!(
+            pick_feed(&feed(&["v0.5.0", "v0.4.0"]), "0.4.0")
+                .unwrap()
+                .version,
+            "0.5.0"
+        );
+    }
+
+    #[test]
+    fn the_feed_fallback_ignores_tags_that_cannot_be_trusted_in_a_url() {
+        let f = feed(&["v9.9.9/../../evil", "v8.0.0?x=1", "9.9.9", "v0.4.0-beta.6"]);
+        assert_eq!(
+            pick_feed(&f, "0.4.0-beta.5").unwrap().version,
+            "0.4.0-beta.6"
+        );
+        assert!(pick_feed("<feed></feed>", "0.4.0").is_none());
     }
 
     #[test]
