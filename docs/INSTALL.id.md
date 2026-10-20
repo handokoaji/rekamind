@@ -58,7 +58,7 @@ Image dipublikasikan di GitHub Container Registry pada setiap rilis:
 1. Buat OAuth client Google ([AUTH.id.md](AUTH.id.md)).
 2. **Portainer:** *Stacks → Add stack → Web editor*, tempel [`docker-compose.image.yml`](../docker-compose.image.yml), isi variabel lingkungan (`REKAMIND_PUBLIC_URL`, `REKAMIND_GOOGLE_CLIENT_ID`, `REKAMIND_GOOGLE_CLIENT_SECRET`, `REKAMIND_SUPERADMINS`, dan `REKAMIND_LLM_API_KEY` untuk ringkasan), lalu **Deploy**.
    **Docker biasa:** `docker compose -f docker-compose.image.yml up -d` dengan variabel itu di berkas `.env`.
-3. Pasang reverse proxy HTTPS di depannya (lihat di bawah) dan arahkan aplikasi desktop ke alamat itu (**Server terpisah**).
+3. Pasang reverse proxy HTTPS di depannya (lihat di bawah) dan arahkan aplikasi desktop ke alamat itu (**Server terpisah**). Berkas compose sudah mengizinkan origin aplikasi desktop lewat `REKAMIND_CORS_ORIGINS`; tanpa itu aplikasi mengaku tidak bisa menghubungi server padahal server hidup.
 
 > **Bila pull ditolak:** paket mungkin berstatus *private*. Untuk `v0.4.0-beta.2` sudah diverifikasi publik (tarik anonim berhasil). Bila private di tempat Anda, pemilik repositori mengubahnya menjadi **Public** (GitHub → profil → Packages → `rekamind-server` → Package settings → Change visibility). Image baru dibangun dan dijalankan di CI/sandbox; transkripsi di dalam container belum diverifikasi dengan rapat sungguhan (beta).
 

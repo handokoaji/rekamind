@@ -21,6 +21,8 @@ services:
       REKAMIND_SUPERADMINS: ${REKAMIND_SUPERADMINS:?set at least one super admin email}
       REKAMIND_SIGNUP: ${REKAMIND_SIGNUP:-allowlist}
       REKAMIND_TIMEZONE: ${REKAMIND_TIMEZONE:-Asia/Jakarta}
+      # Origins the desktop app (server mode) calls the API from. Leave the default if you use it; add your own if you serve another web page.
+      REKAMIND_CORS_ORIGINS: ${REKAMIND_CORS_ORIGINS:-http://tauri.localhost,https://tauri.localhost,tauri://localhost}
       # Needed to store integration tokens (GitHub/GitLab/webhook secrets): >= 32 random characters.
       REKAMIND_SECRET_KEY: ${REKAMIND_SECRET_KEY:-}
       REKAMIND_INTEGRATIONS_ALLOW_PRIVATE: ${REKAMIND_INTEGRATIONS_ALLOW_PRIVATE:-false}

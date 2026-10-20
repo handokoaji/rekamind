@@ -11,7 +11,7 @@
 # The port is published on loopback; put an HTTPS reverse proxy in front for other machines.
 services:
   rekamind:
-    image: ghcr.io/handokoaji/rekamind-server:${REKAMIND_IMAGE_TAG:-0.4.0-beta.4-cuda}
+    image: ghcr.io/handokoaji/rekamind-server:${REKAMIND_IMAGE_TAG:-0.4.0-beta.5-cuda}
     restart: unless-stopped
     ports:
       - "127.0.0.1:${REKAMIND_PORT:-8787}:8787"
@@ -25,6 +25,8 @@ services:
       REKAMIND_ALLOWED_EMAILS: ${REKAMIND_ALLOWED_EMAILS:-}
       REKAMIND_ALLOWED_DOMAINS: ${REKAMIND_ALLOWED_DOMAINS:-}
       REKAMIND_TIMEZONE: ${REKAMIND_TIMEZONE:-Asia/Jakarta}
+      # Origins the desktop app (server mode) calls the API from. Leave the default if you use it; add your own if you serve another web page.
+      REKAMIND_CORS_ORIGINS: ${REKAMIND_CORS_ORIGINS:-http://tauri.localhost,https://tauri.localhost,tauri://localhost}
       # >= 32 random characters; needed to store GitHub/GitLab/webhook tokens.
       REKAMIND_SECRET_KEY: ${REKAMIND_SECRET_KEY:-}
       # Processing.

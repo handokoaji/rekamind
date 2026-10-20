@@ -58,7 +58,7 @@ Images are published on GitHub Container Registry with every release:
 1. Create a Google OAuth client ([AUTH.md](AUTH.md)).
 2. **Portainer:** *Stacks → Add stack → Web editor*, paste [`docker-compose.image.yml`](../docker-compose.image.yml), fill the environment variables (`REKAMIND_PUBLIC_URL`, `REKAMIND_GOOGLE_CLIENT_ID`, `REKAMIND_GOOGLE_CLIENT_SECRET`, `REKAMIND_SUPERADMINS`, and `REKAMIND_LLM_API_KEY` for summaries), **Deploy**.
    **Plain Docker:** `docker compose -f docker-compose.image.yml up -d` with those variables in a `.env` file.
-3. Put an HTTPS reverse proxy in front (see below) and point the desktop app to it (**Server terpisah** / Remote server).
+3. Put an HTTPS reverse proxy in front (see below) and point the desktop app to it (**Server terpisah** / Remote server). The compose files already allow the desktop app's origins through `REKAMIND_CORS_ORIGINS`; without it the app says it cannot reach the server although the server is up.
 
 > **If the pull is denied:** the package may be *private*. For `v0.4.0-beta.2` it was verified to be public (anonymous pull works). If it is private for you, the repository owner sets it to **Public** (GitHub → profile → Packages → `rekamind-server` → Package settings → Change visibility). The image has only been built and started in CI/sandbox so far; transcription inside the container has not been verified against a real meeting (beta).
 
