@@ -185,7 +185,7 @@ def _topic(title, status="open", times=("01:00",), follow_up=None, summary="x"):
 
 
 def _is_merge(req):
-    return json.loads(req.content)["messages"][0]["content"].startswith("Kamu menggabungkan")
+    return json.loads(req.content)["messages"][0]["content"].startswith("Kamu merapikan")
 
 
 def _long():
@@ -206,23 +206,28 @@ def test_a_topic_touched_thirty_times_lists_a_few_times_not_thirty():
     assert t.times == many[:5] + [many[-1]], "the first ones and the last"
 
 
-def test_parts_are_joined_by_one_extra_call_that_decides_the_final_status_and_trims_the_key_points():
+def test_parts_are_joined_by_one_small_call_that_picks_by_number_and_decides_the_final_status():
     calls = {"parts": 0, "merge": 0}
-    final = {"key_points": ["Intisari seluruh rapat"], "decisions": ["Vendor A dipakai"],
-             "topics": [_topic("Kontrak vendor", "decided", ["12:00", "40:10"])]}
+    seen = {}
 
     def handler(req):
         if _is_merge(req):
             calls["merge"] += 1
-            return _reply(json.dumps(final))
+            seen["prompt"] = json.loads(req.content)["messages"][1]["content"]
+            # keep the second key point; every topic is the same subject ("Kontrak vendor"), settled in the end
+            return _reply(json.dumps({"key_points": [2], "decisions": [1],
+                                      "topics": [{"members": list(range(1, calls["parts"] + 1)), "status": "decided", "follow_up": None}]}))
         calls["parts"] += 1
-        status = "open" if calls["parts"] == 1 else "decided"  # raised early, settled later
-        return _reply(json.dumps(dict(GOOD, key_points=[f"poin dari bagian {calls['parts']}"], topics=[_topic("Kontrak vendor", status)])))
+        first = calls["parts"] == 1  # raised early, settled later
+        return _reply(json.dumps(dict(GOOD, key_points=["poin a", "poin b"] if first else ["poin c"],
+                                      topics=[_topic("Kontrak vendor", "open" if first else "decided", ["01:00"] if first else ["40:10"])])))
 
     r = _llm(handler).extract(_inp(_long()))
     assert calls["parts"] >= 2 and calls["merge"] == 1
-    assert [t.status for t in r.topics] == ["decided"] and r.key_points == ["Intisari seluruh rapat"]
-    assert r.decisions == ["Vendor A dipakai"]
+    assert "KEY_POINTS:\n1. poin a\n2. poin b\n3. poin c" in seen["prompt"], "numbered, so the answer can be numbers"
+    assert r.key_points == ["poin b"] and r.decisions == ["Pakai vendor A"]
+    assert len(r.topics) == 1
+    assert (r.topics[0].status, r.topics[0].times) == ("decided", ["01:00", "40:10"])
 
 
 def test_when_the_join_fails_the_parts_are_kept_not_lost():
@@ -234,6 +239,24 @@ def test_when_the_join_fails_the_parts_are_kept_not_lost():
     r = _llm(handler).extract(_inp(_long()))
     assert [t.title for t in r.topics] == ["Kontrak vendor"], "the same subject from every part, once"
     assert r.key_points == ["Vendor A lebih murah dari vendor B"] and r.decisions == ["Pakai vendor A"]
+
+
+def test_what_the_model_does_not_mention_or_gets_wrong_is_kept_not_dropped():
+    calls = {"parts": 0}
+
+    def handler(req):
+        if _is_merge(req):
+            # one valid group, nonsense numbers for the key points, a non-list for the decisions
+            return _reply(json.dumps({"key_points": [99, "x"], "decisions": 7,
+                                      "topics": [{"members": [1, 1, 99], "status": "open", "follow_up": "Cek lagi"}]}))
+        calls["parts"] += 1
+        n = calls["parts"]
+        return _reply(json.dumps(dict(GOOD, key_points=[f"poin {n}"], decisions=[f"keputusan {n}"], topics=[_topic(f"Topik {n}")])))
+
+    r = _llm(handler).extract(_inp(_long()))
+    assert len(r.topics) == calls["parts"], "no topic is lost"
+    assert [t.follow_up for t in r.topics if t.title == "Topik 1"] == ["Cek lagi"], "the group the model did give is applied"
+    assert len(r.key_points) == calls["parts"] and len(r.decisions) == calls["parts"], "unusable choices keep everything"
 
 
 def test_a_transcript_that_fits_in_one_call_is_not_joined():

@@ -8,7 +8,7 @@ import time
 import httpx
 from pydantic import ValidationError
 
-from ..schemas import ExtractionResult, Topic
+from ..schemas import ExtractionResult, Topic, parse_clock
 from .base import ExtractionInput
 
 log = logging.getLogger(__name__)
@@ -37,17 +37,17 @@ dan "evidence_quote": kutipan singkat dari transkrip.
 Balas HANYA JSON valid sesuai skema; tanpa teks lain."""
 
 _MERGE_SYSTEM = """\
-Kamu menggabungkan hasil ringkasan dari bagian-bagian transkrip satu rapat menjadi satu hasil untuk SELURUH rapat.
-- "key_points": pilih dan gabungkan menjadi paling banyak 10 hal yang paling penting untuk seluruh rapat; buang duplikat \
-dan yang remeh. Jangan mengulang keputusan.
-- "decisions": gabungkan duplikat; jangan menghapus keputusan yang berbeda. Sertakan setiap topik berstatus "decided" yang \
-isinya adalah sebuah keputusan bila belum ada di daftar.
-- "topics": topik yang sama (dibahas di bagian berbeda, atau dibuka lagi setelah topik lain) HARUS menjadi satu: gabungkan \
-"times" (paling banyak 5, berurutan waktu), tulis ulang "summary" singkat, dan tentukan status AKHIR: "decided" bila pada \
-akhirnya diputuskan atau disimpulkan (kecuali dibuka lagi tanpa kesimpulan), "open" bila terakhir masih menggantung, "dropped" \
-bila hanya diangkat lalu tidak pernah dilanjutkan. "follow_up" mengikuti keadaan akhir (null bila tuntas).
-- Jangan menambah hal baru dan jangan mengarang isi.
-Balas HANYA JSON: {"key_points": [...], "decisions": [...], "topics": [ ...bidang yang sama seperti masukan... ]}"""
+Kamu merapikan hasil ringkasan dari bagian-bagian transkrip satu rapat. Masukan berupa tiga daftar bernomor. Balas HANYA \
+JSON dengan NOMOR saja, jangan menulis ulang isinya:
+{"key_points": [nomor, ...], "decisions": [nomor, ...], "topics": [{"members": [nomor, ...], "status": "decided"|"open"|"dropped", "follow_up": str|null}]}
+- "key_points": nomor poin yang dipilih untuk SELURUH rapat (paling banyak 10, yang terpenting, urut); buang duplikat dan yang remeh. \
+Jangan memilih poin yang hanya mengulang keputusan.
+- "decisions": nomor keputusan yang dipertahankan; buang hanya duplikat, jangan membuang keputusan yang berbeda.
+- "topics": kelompokkan topik yang sama (dibahas di bagian berbeda, atau dibuka lagi setelah topik lain) dalam satu objek lewat \
+"members" (semua nomornya). "status" adalah status AKHIR: "decided" bila pada akhirnya diputuskan atau disimpulkan (kecuali dibuka \
+lagi tanpa kesimpulan), "open" bila terakhir masih menggantung, "dropped" bila hanya diangkat lalu tidak pernah dilanjutkan. \
+"follow_up" mengikuti keadaan akhir (null bila tuntas). Setiap nomor topik muncul tepat satu kali.
+"""
 
 _SCHEMA_HINT = """\
 Skema JSON:
@@ -84,6 +84,42 @@ class LlmTooLarge(LlmError):
 _TOO_LARGE_HINTS = ("request too large", "context length", "maximum context", "reduce the length", "too many tokens")
 
 
+def _numbers(value, size: int) -> list[int]:
+    """The valid, distinct 1-based numbers out of whatever the model returned, in its order."""
+    out: list[int] = []
+    for v in value if isinstance(value, list) else []:
+        if isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= size and v not in out:
+            out.append(v)
+    return out
+
+
+def _pick(items: list[str], chosen, limit: int | None = None) -> list[str]:
+    """The items the model chose (by number); all of them when it chose nothing usable."""
+    nums = _numbers(chosen, len(items))
+    picked = [items[i - 1] for i in nums] if nums else items
+    return picked[:limit] if limit else picked
+
+
+def _join_topics(topics: list[Topic], groups) -> list[Topic]:
+    """One topic per group of numbers the model says are the same subject, with the status and follow-up it ended with.
+    A topic no group mentions is kept as it was, so nothing is lost. Ordered by when each subject first came up."""
+    seen: set[int] = set()
+    out: list[Topic] = []
+    for g in groups if isinstance(groups, list) else []:
+        members = [i for i in _numbers(g.get("members"), len(topics)) if i not in seen]
+        if not members:
+            continue
+        seen.update(members)
+        parts = [topics[i - 1] for i in members]
+        status = g.get("status") if g.get("status") in ("decided", "open", "dropped") else parts[-1].status
+        times = sorted(dict.fromkeys(x for p in parts for x in p.times), key=lambda x: (parse_clock(x) is None, parse_clock(x) or 0))
+        follow = g.get("follow_up") if "follow_up" in g else parts[-1].follow_up
+        out.append(Topic(title=parts[0].title, summary=parts[-1].summary or parts[0].summary, status=status, times=times,
+                         follow_up=follow if isinstance(follow, str) and follow.strip() else None))
+    out += [tp for i, tp in enumerate(topics, 1) if i not in seen]
+    return sorted(out, key=lambda tp: (parse_clock(tp.times[0]) is None, parse_clock(tp.times[0]) or 0) if tp.times else (True, 0))
+
+
 class OpenAiCompatExtractor:
     def __init__(self, base_url: str, api_key: str, model: str, *, transport: httpx.BaseTransport | None = None,
                  sleep=time.sleep, chunk_chars: int = CHUNK_CHARS):
@@ -95,12 +131,12 @@ class OpenAiCompatExtractor:
         self._http = httpx.Client(base_url=base_url.rstrip("/"), headers=headers, timeout=120, transport=transport)
 
     # -- transport -----------------------------------------------------------
-    def _chat(self, messages: list[dict]) -> str:
+    def _chat(self, messages: list[dict], *, structured: bool = True) -> str:
         for attempt in range(MAX_RETRIES + 1):
             body = {"model": self._model, "messages": messages, "temperature": 0.1}
             body["response_format"] = (
                 {"type": "json_schema", "json_schema": {"name": "extraction", "schema": ExtractionResult.model_json_schema()}}
-                if self._json_schema_ok else {"type": "json_object"}
+                if structured and self._json_schema_ok else {"type": "json_object"}
             )
             try:
                 r = self._http.post("/chat/completions", json=body)
@@ -114,7 +150,7 @@ class OpenAiCompatExtractor:
             # only says "tokens per minute ... try again in 5s" is a rate limit and is retried below.)
             if r.status_code == 413 or (r.status_code in (400, 429) and any(h in text for h in _TOO_LARGE_HINTS)):
                 raise LlmTooLarge(f"LLM menolak ukuran permintaan ({r.status_code}): {r.text[:200]}")
-            if r.status_code == 400 and self._json_schema_ok:
+            if r.status_code == 400 and structured and self._json_schema_ok:
                 self._json_schema_ok = False  # endpoint lacks structured output; fall back to json_object
                 continue
             if r.status_code in (429, 500, 502, 503, 504) and attempt < MAX_RETRIES:
@@ -177,23 +213,32 @@ class OpenAiCompatExtractor:
     def _merge_parts(self, parts: list[ExtractionResult]) -> tuple[list[str], list[str], list[Topic]]:
         """Parts of a long transcript are read one by one, so each returns its own key points (several parts, several
         sets of 3-7), its own decisions, and the subjects it saw: one raised early, dropped and picked up again later
-        shows up in several parts, each with the status it had there. One more (small) call joins them for the whole
-        meeting. If it fails, the plain lists are kept: still true, only longer and less tidy."""
+        shows up in several parts, each with the status it had there. One more call joins them for the whole meeting.
+
+        The model is asked for a SMALL answer, numbers only (which key points to keep, which topics are the same subject
+        and how it ended); the text is assembled here. Rewriting every topic in full made the answer large enough for the
+        provider to fail to produce valid JSON. Anything it does not mention is kept, and if the call fails altogether
+        the plain lists stand: still true, only longer."""
         key_points = list(dict.fromkeys(k for p in parts for k in p.key_points))
         decisions = list(dict.fromkeys(d for p in parts for d in p.decisions))
-        topics = list({t.title.strip().lower(): t for p in parts for t in p.topics}.values())
+        topics = [t for p in parts for t in p.topics]
+        plain_topics = list({t.title.strip().lower(): t for t in topics}.values())
         if len(key_points) + len(decisions) + len(topics) < 2:
             return key_points, decisions, topics
         try:
-            listing = json.dumps({"key_points": key_points, "decisions": decisions,
-                                  "topics": [t.model_dump() for p in parts for t in p.topics]}, ensure_ascii=False)
+            numbered = lambda items: "\n".join(f"{i}. {x}" for i, x in enumerate(items, 1))  # noqa: E731
+            listing = (f"KEY_POINTS:\n{numbered(key_points)}\n\nDECISIONS:\n{numbered(decisions)}\n\nTOPICS:\n"
+                       + numbered(f"[{t.status}] {t.title} | waktu: {','.join(t.times)} | tindak lanjut: {t.follow_up or '-'}"
+                                  for t in topics))
             raw = self._chat([{"role": "system", "content": _MERGE_SYSTEM},
-                              {"role": "user", "content": f"Hasil dari bagian-bagian transkrip (urut waktu):\n{listing}"}])
-            merged = ExtractionResult.model_validate(json.loads(_strip_fences(raw)))
-            return merged.key_points or key_points, merged.decisions or decisions, merged.topics or topics
-        except (LlmError, json.JSONDecodeError, ValidationError):
+                              {"role": "user", "content": f"Hasil dari bagian-bagian transkrip (urut waktu):\n{listing}"}],
+                             structured=False)
+            answer = json.loads(_strip_fences(raw))
+            return (_pick(key_points, answer.get("key_points"), limit=10), _pick(decisions, answer.get("decisions")),
+                    _join_topics(topics, answer.get("topics")))
+        except (LlmError, json.JSONDecodeError, ValidationError, AttributeError, TypeError, ValueError):
             log.warning("could not merge the parts of the transcript; keeping them as extracted", exc_info=True)
-            return key_points, decisions, topics
+            return key_points, decisions, plain_topics
 
     # -- public --------------------------------------------------------------
     def extract(self, inp: ExtractionInput) -> ExtractionResult:
