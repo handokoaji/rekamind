@@ -77,6 +77,23 @@ describe("the summary tab", () => {
     expect(screen.getByText("Tidak ada keputusan yang tercatat.")).toBeInTheDocument();
   });
 
+  it("lists every topic with where it ended up, so a subject that was dropped is not lost", async () => {
+    withSummary({
+      overview: "Rapat pimpinan", key_points: [], decisions: [], minutes: [],
+      topics: [
+        { title: "Anggaran 2027", summary: "Diputuskan naik 10%.", status: "decided", times: ["03:10", "21:40"], follow_up: null },
+        { title: "Kontrak vendor", summary: "Belum jelas siapa pemegangnya.", status: "open", times: ["12:00"], follow_up: "Tentukan penanggung jawab" },
+        { title: "Parkir gedung", summary: "Disebut sekilas, lalu pindah topik.", status: "dropped", times: ["15:30"], follow_up: "Bahas lagi bila perlu" },
+      ],
+    });
+    expect(await screen.findByRole("heading", { name: "Topik yang dibahas" })).toBeInTheDocument();
+    expect(screen.getByText("Diputuskan")).toBeInTheDocument();
+    expect(screen.getByText("Masih terbuka")).toBeInTheDocument();
+    expect(screen.getByText("Tidak dilanjutkan")).toBeInTheDocument();
+    expect(screen.getByText("03:10, 21:40")).toBeInTheDocument(); // it came back later in the meeting
+    expect(screen.getByText("Tentukan penanggung jawab")).toBeInTheDocument();
+  });
+
   it("copes with a server that does not send key points yet", async () => {
     withSummary({ overview: "Dari server lama", decisions: [], minutes: [] });
     expect(await screen.findByText("Tidak ada poin penting yang tercatat.")).toBeInTheDocument();

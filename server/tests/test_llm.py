@@ -176,3 +176,73 @@ def test_an_empty_json_answer_is_retried_not_saved_as_a_blank_summary():
 def test_an_answer_that_stays_empty_is_an_error_the_user_can_retry():
     with pytest.raises(LlmError, match="tidak valid"):
         _llm(lambda req: _reply('{"overview": "  ", "decisions": [], "minutes": [], "tasks": []}')).extract(_inp())
+
+
+# ---- topics: followed across the whole meeting ---------------------------------------------------------------------
+
+def _topic(title, status="open", times=("01:00",), follow_up=None, summary="x"):
+    return {"title": title, "summary": summary, "status": status, "times": list(times), "follow_up": follow_up}
+
+
+def _is_merge(req):
+    return json.loads(req.content)["messages"][0]["content"].startswith("Kamu menggabungkan")
+
+
+def _long():
+    return "\n".join(f"[{i:02d}:00] ME: " + "kalimat " * 50 for i in range(60))
+
+
+def test_topics_keep_their_status_times_and_follow_up():
+    reply = dict(GOOD, topics=[_topic("Kontrak vendor", "open", ["12:00", "40:10"], "Tentukan penanggung jawab")])
+    r = _llm(lambda req: _reply(json.dumps(reply))).extract(_inp())
+    t = r.topics[0]
+    assert (t.title, t.status, t.times, t.follow_up) == ("Kontrak vendor", "open", ["12:00", "40:10"], "Tentukan penanggung jawab")
+
+
+def test_a_topic_touched_thirty_times_lists_a_few_times_not_thirty():
+    many = [f"{i:02d}:00" for i in range(30)]
+    reply = dict(GOOD, topics=[_topic("Persiapan presentasi", times=many)])
+    t = _llm(lambda req: _reply(json.dumps(reply))).extract(_inp()).topics[0]
+    assert t.times == many[:5] + [many[-1]], "the first ones and the last"
+
+
+def test_parts_are_joined_by_one_extra_call_that_decides_the_final_status_and_trims_the_key_points():
+    calls = {"parts": 0, "merge": 0}
+    final = {"key_points": ["Intisari seluruh rapat"], "decisions": ["Vendor A dipakai"],
+             "topics": [_topic("Kontrak vendor", "decided", ["12:00", "40:10"])]}
+
+    def handler(req):
+        if _is_merge(req):
+            calls["merge"] += 1
+            return _reply(json.dumps(final))
+        calls["parts"] += 1
+        status = "open" if calls["parts"] == 1 else "decided"  # raised early, settled later
+        return _reply(json.dumps(dict(GOOD, key_points=[f"poin dari bagian {calls['parts']}"], topics=[_topic("Kontrak vendor", status)])))
+
+    r = _llm(handler).extract(_inp(_long()))
+    assert calls["parts"] >= 2 and calls["merge"] == 1
+    assert [t.status for t in r.topics] == ["decided"] and r.key_points == ["Intisari seluruh rapat"]
+    assert r.decisions == ["Vendor A dipakai"]
+
+
+def test_when_the_join_fails_the_parts_are_kept_not_lost():
+    def handler(req):
+        if _is_merge(req):
+            return _reply("bukan json")
+        return _reply(json.dumps(dict(GOOD, topics=[_topic("Kontrak vendor")])))
+
+    r = _llm(handler).extract(_inp(_long()))
+    assert [t.title for t in r.topics] == ["Kontrak vendor"], "the same subject from every part, once"
+    assert r.key_points == ["Vendor A lebih murah dari vendor B"] and r.decisions == ["Pakai vendor A"]
+
+
+def test_a_transcript_that_fits_in_one_call_is_not_joined():
+    seen = []
+
+    def handler(req):
+        seen.append(_is_merge(req))
+        return _reply(json.dumps(dict(GOOD, topics=[_topic("Kontrak vendor")])))
+
+    _llm(handler).extract(_inp())
+    assert seen == [False]
+

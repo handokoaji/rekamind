@@ -41,6 +41,9 @@ def clock(ms: int | None) -> str:
     return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}" if s >= 3600 else f"{s // 60:02d}:{s % 60:02d}"
 
 
+TOPIC_STATUS = {"decided": "Diputuskan", "open": "Masih terbuka", "dropped": "Tidak dilanjutkan"}
+
+
 def minutes_text(m: int | None) -> str:
     if not m:
         return ""
@@ -79,6 +82,11 @@ def build_document(m: Meeting, *, transcript: bool = True, tasks: TaskFilter = "
                           "speaking_ms": sum(s.end_ms - s.start_ms for s in m.segments if s.participant_id == p.id)}
                          for p in m.participants],
         "summary": ({"overview": clean(m.summary.overview), "key_points": [clean(k) for k in (m.summary.key_points or [])],
+                     "topics": [{"title": clean(t.get("title")), "summary": clean(t.get("summary")),
+                                 "status": t.get("status") if t.get("status") in TOPIC_STATUS else "open",
+                                 "times": [clean(x) for x in (t.get("times") or [])],
+                                 "follow_up": clean(t.get("follow_up")) or None}
+                                for t in (m.summary.topics or [])],
                      "decisions": [clean(d) for d in m.summary.decisions],
                      "minutes": [{"start_ms": x.get("start_ms"), "point": clean(x.get("point"))} for x in m.summary.minutes]}
                     if m.summary else None),
@@ -141,6 +149,15 @@ def to_markdown(doc: dict) -> bytes:
             L += ["", "## Poin penting", ""] + [f"- {md(k)}" for k in s["key_points"]]
         if s["decisions"]:
             L += ["", "## Keputusan", ""] + [f"- {md(d)}" for d in s["decisions"]]
+        if s.get("topics"):
+            L += ["", "## Topik yang dibahas", ""]
+            for t in s["topics"]:
+                when = f" ({md(', '.join(t['times']))})" if t["times"] else ""
+                L.append(f"- **{md(t['title'])}**: {TOPIC_STATUS[t['status']]}{when}")
+                if t["summary"]:
+                    L.append(f"  {md(t['summary'])}")
+                if t["follow_up"]:
+                    L.append(f"  Tindak lanjut: {md(t['follow_up'])}")
         if s["minutes"]:
             L += ["", "## Jalannya rapat", ""] + [f"- **{clock(x['start_ms'])}** {md(x['point'])}" for x in s["minutes"]]
     if doc["tasks"]:
@@ -211,6 +228,16 @@ def to_docx(doc: dict) -> bytes:
             d.add_heading("Keputusan", level=1)
             for x in s["decisions"]:
                 d.add_paragraph(x, style="List Bullet")
+        if s.get("topics"):
+            d.add_heading("Topik yang dibahas", level=1)
+            for t in s["topics"]:
+                p = d.add_paragraph(style="List Bullet")
+                p.add_run(t["title"]).bold = True
+                p.add_run(": " + TOPIC_STATUS[t["status"]] + (" (" + ", ".join(t["times"]) + ")" if t["times"] else ""))
+                if t["summary"]:
+                    p.add_run("\n" + t["summary"])
+                if t["follow_up"]:
+                    p.add_run("\nTindak lanjut: " + t["follow_up"])
         if s["minutes"]:
             d.add_heading("Jalannya rapat", level=1)
             for x in s["minutes"]:

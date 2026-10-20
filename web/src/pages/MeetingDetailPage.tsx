@@ -41,6 +41,12 @@ function sourceAt(segments: Segment[], ms: number): Segment["source"] | null {
 function SummaryTab({ m }: { m: MeetingDetail }) {
   const s = m.summary;
   const keyPoints = s?.key_points ?? []; // a server older than this field sends none
+  const topics = s?.topics ?? [];
+  const topicStatus = {
+    decided: { label: t("Diputuskan"), tone: "success" as const, icon: <Check className="size-3" aria-hidden /> },
+    open: { label: t("Masih terbuka"), tone: "info" as const, icon: <HelpCircle className="size-3" aria-hidden /> },
+    dropped: { label: t("Tidak dilanjutkan"), tone: "warning" as const, icon: <X className="size-3" aria-hidden /> },
+  };
   if (!s) return <EmptyState icon={<FileText className="size-6" />} title={t("Belum ada ringkasan")}>{t("Ringkasan muncul setelah rapat diproses.")}</EmptyState>;
   return (
     <div className="flex flex-col gap-6">
@@ -59,6 +65,19 @@ function SummaryTab({ m }: { m: MeetingDetail }) {
             <li key={i} className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden />{d}</li>))}</ul>
           : <p className="text-sm text-muted">{t("Tidak ada keputusan yang tercatat.")}</p>}
       </section>
+      {topics.length > 0 && (
+        <section aria-labelledby="h-top"><h3 id="h-top" className="mb-2 font-semibold">{t("Topik yang dibahas")}</h3>
+          <ul className="flex flex-col gap-3">{topics.map((tp, i) => (
+            <li key={i} className="flex flex-col gap-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">{tp.title}</span>
+                <Badge tone={topicStatus[tp.status].tone} icon={topicStatus[tp.status].icon}>{topicStatus[tp.status].label}</Badge>
+                {tp.times.length > 0 && <span className="text-xs tabular-nums text-muted">{tp.times.join(", ")}</span>}
+              </div>
+              {tp.summary && <p className="text-sm leading-relaxed">{tp.summary}</p>}
+              {tp.follow_up && <p className="text-sm text-muted"><span className="font-medium">{t("Tindak lanjut")}:</span> {tp.follow_up}</p>}
+            </li>))}</ul>
+        </section>)}
       {s.minutes.length > 0 && (
         <section aria-labelledby="h-min"><h3 id="h-min" className="mb-2 font-semibold">{t("Jalannya rapat")}</h3>
           <ol className="flex flex-col gap-2 border-l-2 border-border pl-4">{s.minutes.map((p, i) => (

@@ -31,19 +31,23 @@ jelas). Jangan mengarang task, nama, tanggal, atau durasi. Jika tidak disebutkan
 dan "evidence_quote": kutipan singkat dari transkrip.
 - "confidence": 0..1, turunkan bila tugas/penanggung jawab/tenggat ambigu.
 - "key_points": 3 sampai 7 hal PALING penting yang perlu diingat atau dicatat oleh orang yang tidak hadir: topik utama, fakta, angka, kondisi, risiko, batas waktu, dan hal yang belum terjawab atau belum diputuskan. Masing-masing satu kalimat padat yang didukung transkrip (jangan menyimpulkan di luar yang diucapkan). Jangan mengulang keputusan dan task: keduanya punya bagian sendiri. Ini intisari, BUKAN rincian per waktu: jangan mengulang isi "minutes" satu per satu. Kosongkan jika rapat memang tidak memuat hal penting.
-- "topics": SETIAP topik yang dibahas secara berarti, termasuk yang menyimpang dari agenda; jangan hanya agenda utama. Rapat sering melompat ke topik lain lalu kembali, kadang lupa kembali: gabungkan pembahasan topik yang sama walau terpisah waktu dan sebut semua waktunya di "times" (disalin dari penanda waktu transkrip). "status": "decided" bila ada keputusan atau kesimpulan; "open" bila dibahas tetapi belum selesai, ditunda, atau menunggu pihak lain; "dropped" bila diangkat lalu pembicaraan pindah dan topik itu tidak pernah dilanjutkan atau disimpulkan. "follow_up": apa yang masih harus dikerjakan atau diputuskan untuk topik itu (null bila sudah tuntas). "summary": satu sampai dua kalimat yang didukung transkrip.
+- "topics": SETIAP topik yang dibahas secara berarti, termasuk yang menyimpang dari agenda; jangan hanya agenda utama. Rapat sering melompat ke topik lain lalu kembali, kadang lupa kembali: gabungkan pembahasan topik yang sama walau terpisah waktu dan sebut waktunya di "times" (paling banyak 5 penanda waktu terpenting, disalin dari penanda waktu transkrip: awal, saat kembali dibahas, akhir). "status": "decided" bila ada keputusan atau kesimpulan; "open" bila dibahas tetapi belum selesai, ditunda, atau menunggu pihak lain; "dropped" bila diangkat lalu pembicaraan pindah dan topik itu tidak pernah dilanjutkan atau disimpulkan. "follow_up": apa yang masih harus dikerjakan atau diputuskan untuk topik itu (null bila sudah tuntas). "summary": satu sampai dua kalimat yang didukung transkrip.
 - "decisions": hal yang disepakati, disimpulkan, dipilih, disetujui, atau arah yang ditetapkan, walaupun tidak diucapkan dengan kata "putuskan" atau "sepakat" (mis. "oke kita pakai vendor A", "berarti peluncuran digeser ke Senin", "setuju"). Satu kalimat yang menyebut apa yang diputuskan. Usulan, pertanyaan, atau pendapat yang belum disetujui BUKAN keputusan. Kosongkan jika memang tidak ada.
 - "minutes": rincian jalannya rapat berurutan waktu, lebih detail daripada "key_points", dengan "time" disalin dari penanda waktu transkrip.
 Balas HANYA JSON valid sesuai skema; tanpa teks lain."""
 
 _MERGE_SYSTEM = """\
-Kamu menggabungkan daftar topik rapat yang diekstrak dari bagian-bagian transkrip yang berbeda.
-- Topik yang sama (dibahas di bagian berbeda, atau dibuka lagi setelah topik lain) HARUS menjadi satu: gabungkan "times" \
-berurutan waktu, tulis ulang "summary" singkat, dan tentukan status AKHIR: "decided" bila pada akhirnya diputuskan atau \
-disimpulkan (kecuali dibuka lagi tanpa kesimpulan), "open" bila terakhir masih menggantung, "dropped" bila hanya diangkat \
-lalu tidak pernah dilanjutkan. "follow_up" mengikuti keadaan akhir (null bila tuntas).
-- Jangan menambah topik baru, jangan menghapus topik yang berbeda, jangan mengarang isi.
-Balas HANYA JSON: {"topics": [ ...topik yang sudah digabung, dengan bidang yang sama... ]}"""
+Kamu menggabungkan hasil ringkasan dari bagian-bagian transkrip satu rapat menjadi satu hasil untuk SELURUH rapat.
+- "key_points": pilih dan gabungkan menjadi paling banyak 10 hal yang paling penting untuk seluruh rapat; buang duplikat \
+dan yang remeh. Jangan mengulang keputusan.
+- "decisions": gabungkan duplikat; jangan menghapus keputusan yang berbeda. Sertakan setiap topik berstatus "decided" yang \
+isinya adalah sebuah keputusan bila belum ada di daftar.
+- "topics": topik yang sama (dibahas di bagian berbeda, atau dibuka lagi setelah topik lain) HARUS menjadi satu: gabungkan \
+"times" (paling banyak 5, berurutan waktu), tulis ulang "summary" singkat, dan tentukan status AKHIR: "decided" bila pada \
+akhirnya diputuskan atau disimpulkan (kecuali dibuka lagi tanpa kesimpulan), "open" bila terakhir masih menggantung, "dropped" \
+bila hanya diangkat lalu tidak pernah dilanjutkan. "follow_up" mengikuti keadaan akhir (null bila tuntas).
+- Jangan menambah hal baru dan jangan mengarang isi.
+Balas HANYA JSON: {"key_points": [...], "decisions": [...], "topics": [ ...bidang yang sama seperti masukan... ]}"""
 
 _SCHEMA_HINT = """\
 Skema JSON:
@@ -170,22 +174,26 @@ class OpenAiCompatExtractor:
                 raise
             return [r for h in halves for r in self._extract_fitting(inp, h, part, total + 1)]
 
-    def _merge_topics(self, topics: list[Topic]) -> list[Topic]:
-        """Parts are read one by one, so a subject that was raised early, dropped and picked up again later shows up in
-        several of them, each with the status it had in that part. One more (small) call joins them and decides the
-        status the whole meeting ended with. If that call fails the plain list is kept: still true, only less tidy."""
-        plain = list({t.title.strip().lower(): t for t in topics}.values())
-        if len(topics) < 2:
-            return topics
+    def _merge_parts(self, parts: list[ExtractionResult]) -> tuple[list[str], list[str], list[Topic]]:
+        """Parts of a long transcript are read one by one, so each returns its own key points (several parts, several
+        sets of 3-7), its own decisions, and the subjects it saw: one raised early, dropped and picked up again later
+        shows up in several parts, each with the status it had there. One more (small) call joins them for the whole
+        meeting. If it fails, the plain lists are kept: still true, only longer and less tidy."""
+        key_points = list(dict.fromkeys(k for p in parts for k in p.key_points))
+        decisions = list(dict.fromkeys(d for p in parts for d in p.decisions))
+        topics = list({t.title.strip().lower(): t for p in parts for t in p.topics}.values())
+        if len(key_points) + len(decisions) + len(topics) < 2:
+            return key_points, decisions, topics
         try:
-            listing = json.dumps([t.model_dump() for t in topics], ensure_ascii=False)
+            listing = json.dumps({"key_points": key_points, "decisions": decisions,
+                                  "topics": [t.model_dump() for p in parts for t in p.topics]}, ensure_ascii=False)
             raw = self._chat([{"role": "system", "content": _MERGE_SYSTEM},
-                              {"role": "user", "content": f"Daftar topik dari bagian-bagian transkrip (urut waktu):\n{listing}"}])
-            merged = ExtractionResult.model_validate(json.loads(_strip_fences(raw))).topics
-            return merged or plain
+                              {"role": "user", "content": f"Hasil dari bagian-bagian transkrip (urut waktu):\n{listing}"}])
+            merged = ExtractionResult.model_validate(json.loads(_strip_fences(raw)))
+            return merged.key_points or key_points, merged.decisions or decisions, merged.topics or topics
         except (LlmError, json.JSONDecodeError, ValidationError):
-            log.warning("could not merge the topics of the transcript parts; keeping them as extracted", exc_info=True)
-            return plain
+            log.warning("could not merge the parts of the transcript; keeping them as extracted", exc_info=True)
+            return key_points, decisions, topics
 
     # -- public --------------------------------------------------------------
     def extract(self, inp: ExtractionInput) -> ExtractionResult:
@@ -195,10 +203,11 @@ class OpenAiCompatExtractor:
             return parts[0]
         # Merge: tasks/decisions/minutes concatenate (the pipeline de-duplicates tasks);
         # the overview is rebuilt from the per-part overviews so it covers the whole meeting.
+        key_points, decisions, topics = self._merge_parts(parts)
         merged = ExtractionResult(
-            key_points=list(dict.fromkeys(k for p in parts for k in p.key_points)),
-            topics=self._merge_topics([t for p in parts for t in p.topics]),
-            decisions=list(dict.fromkeys(d for p in parts for d in p.decisions)),
+            key_points=key_points,
+            topics=topics,
+            decisions=decisions,
             minutes=[m for p in parts for m in p.minutes],
             tasks=[t for p in parts for t in p.tasks],
             overview="\n".join(p.overview for p in parts if p.overview),

@@ -4,7 +4,7 @@ import re
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # ---- LLM extraction contract -------------------------------------------------
 # `ExtractionResult.model_json_schema()` is what a structured-output LLM call is
@@ -63,6 +63,12 @@ class Topic(BaseModel):
         description="decided: concluded; open: discussed but unfinished or waiting; dropped: raised, then never picked up again")
     times: list[str] = Field(default=[], description="Timestamps copied from the transcript where it was discussed")
     follow_up: str | None = Field(default=None, max_length=400, description="What is still to be done or decided; null when finished")
+
+    @field_validator("times")
+    @classmethod
+    def _few_times(cls, v: list[str]) -> list[str]:
+        """A subject touched thirty times would list thirty timestamps: keep the first ones and the last."""
+        return v if len(v) <= 6 else [*v[:5], v[-1]]
 
 
 class ExtractionResult(BaseModel):
