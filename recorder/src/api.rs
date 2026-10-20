@@ -37,26 +37,35 @@ fn err(e: ureq::Error) -> ApiError {
     }
 }
 
+/// The one HTTP agent every outgoing call uses (the server API and the update check).
+pub(crate) fn agent() -> ureq::Agent {
+    let builder = ureq::Agent::config_builder()
+        .timeout_connect(Some(Duration::from_secs(10)))
+        // ~6 requests per recording: connection reuse buys nothing, and a pooled connection the
+        // server has since closed (uvicorn drops idle ones after ~5 s) fails with "Peer disconnected".
+        .max_idle_connections(0)
+        .max_idle_connections_per_host(0)
+        .http_status_as_error(false); // read the server's own message instead of a bare code
+    #[cfg(windows)]
+    let builder = builder.tls_config(
+        ureq::tls::TlsConfig::builder()
+            .provider(ureq::tls::TlsProvider::NativeTls)
+            // ureq's default is Mozilla's bundled roots, which native-tls then treats as the ONLY
+            // allowed roots: a chain Windows ends at another root (e.g. Google's GTS Root R4
+            // cross-signed by GlobalSign) fails with "unable to find any user-specified roots".
+            // The Windows store is what the browser trusts, so trust that.
+            .root_certs(ureq::tls::RootCerts::PlatformVerifier)
+            .build(),
+    );
+    builder.build().into()
+}
+
 impl Client {
     pub fn new(base: &str, token: Option<String>) -> Self {
-        let builder = ureq::Agent::config_builder()
-            .timeout_connect(Some(Duration::from_secs(10)))
-            // ~6 requests per recording: connection reuse buys nothing, and a pooled connection the
-            // server has since closed (uvicorn drops idle ones after ~5 s) fails with "Peer disconnected".
-            .max_idle_connections(0)
-            .max_idle_connections_per_host(0)
-            .http_status_as_error(false); // read the server's own message instead of a bare code
-        #[cfg(windows)]
-        let builder = builder.tls_config(
-            ureq::tls::TlsConfig::builder()
-                .provider(ureq::tls::TlsProvider::NativeTls)
-                .build(),
-        );
-        let agent: ureq::Agent = builder.build().into();
         Self {
             base: base.trim_end_matches('/').to_string(),
             token,
-            agent,
+            agent: agent(),
         }
     }
 
