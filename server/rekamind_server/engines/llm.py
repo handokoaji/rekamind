@@ -28,7 +28,7 @@ nama, tanggal, atau durasi. Jika tidak disebutkan, isi null.
 - "evidence_time": salin penanda waktu [mm:ss] dari baris transkrip tempat task itu dibicarakan (tanpa kurung siku), \
 dan "evidence_quote": kutipan singkat dari transkrip.
 - "confidence": 0..1, turunkan bila tugas/penanggung jawab/tenggat ambigu.
-- "key_points": 3 sampai 7 hal PALING penting yang perlu diingat atau dicatat oleh orang yang tidak hadir (topik utama, fakta, angka, kondisi, risiko, kesimpulan), masing-masing satu kalimat padat. Ini intisari, BUKAN rincian per waktu: jangan mengulang isi "minutes" satu per satu. Kosongkan jika rapat memang tidak memuat hal penting.
+- "key_points": 3 sampai 7 hal PALING penting yang perlu diingat atau dicatat oleh orang yang tidak hadir: topik utama, fakta, angka, kondisi, risiko, batas waktu, dan hal yang belum terjawab atau belum diputuskan. Masing-masing satu kalimat padat yang didukung transkrip (jangan menyimpulkan di luar yang diucapkan). Jangan mengulang keputusan dan task: keduanya punya bagian sendiri. Ini intisari, BUKAN rincian per waktu: jangan mengulang isi "minutes" satu per satu. Kosongkan jika rapat memang tidak memuat hal penting.
 - "decisions": hal yang disepakati, disimpulkan, dipilih, disetujui, atau arah yang ditetapkan, walaupun tidak diucapkan dengan kata "putuskan" atau "sepakat" (mis. "oke kita pakai vendor A", "berarti peluncuran digeser ke Senin", "setuju"). Satu kalimat yang menyebut apa yang diputuskan. Usulan, pertanyaan, atau pendapat yang belum disetujui BUKAN keputusan. Kosongkan jika memang tidak ada.
 - "minutes": rincian jalannya rapat berurutan waktu, lebih detail daripada "key_points", dengan "time" disalin dari penanda waktu transkrip.
 Balas HANYA JSON valid sesuai skema; tanpa teks lain."""
