@@ -199,7 +199,8 @@ async def run_process_job(
     meeting_day: date = started_at.date()
     async with sf() as s:
         if result is not None:
-            s.add(Summary(meeting_id=job.meeting_id, overview=result.overview, key_points=result.key_points, decisions=result.decisions,
+            s.add(Summary(meeting_id=job.meeting_id, overview=result.overview, key_points=result.key_points, topics=[t.model_dump() for t in result.topics],
+                          decisions=result.decisions,
                           minutes=[m.model_dump() for m in result.minutes]))
         new_tasks = dedupe_tasks(result.tasks if result is not None else [])
         for t in new_tasks:

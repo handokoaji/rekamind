@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from ..schemas import ExtractedTask, ExtractionResult, MinutePoint
+from ..schemas import ExtractedTask, ExtractionResult, MinutePoint, Topic
 from .base import AsrSegment, Engines, ExtractionInput, SpeakerTurn
 
 
@@ -25,6 +25,7 @@ class FakeExtractor:
         return ExtractionResult(
             overview=f"Ringkasan {inp.title}",
             key_points=["Draft kontrak harus siap sebelum rapat berikutnya"],
+            topics=[Topic(title="Draft kontrak", summary="Draft disiapkan sebelum rapat berikutnya", status="decided", times=["00:05"])],
             decisions=["Draft kontrak disiapkan sebelum rapat berikutnya"],
             minutes=[MinutePoint(start_ms=0, point="Pembukaan")],
             tasks=[
@@ -71,6 +72,9 @@ class DemoExtractor:
             overview="Tim membahas kesiapan peluncuran fitur laporan bulanan. Desain sudah final, dashboard "
                      "tinggal pengujian akhir, dan peluncuran disepakati digeser ke minggu depan.",
             key_points=["Desain halaman laporan sudah final", "Dashboard tinggal pengujian akhir, selesai sebelum Kamis"],
+            topics=[Topic(title="Jadwal peluncuran", summary="Digeser ke Senin minggu depan", status="decided", times=["00:07", "01:02"]),
+                    Topic(title="Kontrak vendor", summary="Siapa yang memegang kontrak belum jelas", status="open", times=["01:02"],
+                          follow_up="Tentukan penanggung jawab kontrak")],
             decisions=["Peluncuran digeser ke Senin minggu depan", "Lisensi vendor diperpanjang dalam anggaran yang ada"],
             minutes=[MinutePoint(start_ms=0, point="Pembukaan dan status peluncuran"),
                      MinutePoint(start_ms=7000, point="Desain halaman laporan sudah final"),

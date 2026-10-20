@@ -53,9 +53,22 @@ class MinutePoint(BaseModel):
         return self
 
 
+class Topic(BaseModel):
+    """A subject the meeting talked about, followed across the whole meeting (it may come back after a digression)."""
+
+    title: str = Field(min_length=3, max_length=200)
+    summary: str = Field(default="", max_length=600)
+    status: Literal["decided", "open", "dropped"] = Field(
+        default="open",
+        description="decided: concluded; open: discussed but unfinished or waiting; dropped: raised, then never picked up again")
+    times: list[str] = Field(default=[], description="Timestamps copied from the transcript where it was discussed")
+    follow_up: str | None = Field(default=None, max_length=400, description="What is still to be done or decided; null when finished")
+
+
 class ExtractionResult(BaseModel):
     overview: str = ""
     key_points: list[str] = []
+    topics: list[Topic] = []
     decisions: list[str] = []
     minutes: list[MinutePoint] = []
     tasks: list[ExtractedTask] = []
@@ -97,6 +110,7 @@ class SegmentOut(_ORM):
 class SummaryOut(_ORM):
     overview: str
     key_points: list[str]
+    topics: list[Topic]
     decisions: list[str]
     minutes: list[MinutePoint]
 
