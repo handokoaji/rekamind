@@ -4,6 +4,7 @@ import { useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { AboutCard } from "../components/AboutCard";
 import { IntegrationsCard } from "../components/IntegrationsCard";
+import { ThemeCard } from "../components/ThemeCard";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { isDesktop } from "../desktop/bridge";
@@ -73,6 +74,8 @@ export function SettingsPage() {
       <IntegrationsCard />
 
       <TimeZoneCard serverZone={caps.data?.timezone} serverLabel={caps.data?.timezone_label} />
+
+      <ThemeCard />
 
       <Card className="flex flex-col gap-3 p-6">
         <h2 className="font-semibold">{t("Status server")}</h2>

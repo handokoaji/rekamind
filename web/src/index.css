@@ -25,8 +25,10 @@
   --info-soft: #e8f1fe;
   color-scheme: light;
 }
+/* Dark: when the system is dark and the user did not pick light, or when the user picked dark. No data-theme
+   means "follow the system" (the default); public/theme-init.js and hooks/theme.ts set it. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #0b0f17;
     --card: #131a26;
     --border: #243044;
@@ -47,6 +49,27 @@
     --info-soft: #14243f;
     color-scheme: dark;
   }
+}
+:root[data-theme="dark"] {
+  --bg: #0b0f17;
+  --card: #131a26;
+  --border: #243044;
+  --fg: #eef1f6;
+  --muted: #9aa5b8;
+  --primary: #8b93ff;
+  --primary-fg: #0b0f17;
+  --primary-soft: #1d2342;
+  --success: #4cd08a;
+  --success-soft: #10291d;
+  --warning: #f5b160;
+  --warning-soft: #33230f;
+  --danger: #ff8a80;
+  --danger-soft: #3a1714;
+  --danger-solid: #c0261b;
+  --danger-solid-fg: #ffffff;
+  --info: #7db3ff;
+  --info-soft: #14243f;
+  color-scheme: dark;
 }
 
 @theme inline {
