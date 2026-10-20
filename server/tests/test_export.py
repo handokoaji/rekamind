@@ -19,7 +19,7 @@ async def test_markdown_export_has_everything_and_only_confirmed_tasks_by_defaul
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/markdown")
     assert 'filename="rekamind-' in r.headers["content-disposition"] and r.headers["content-disposition"].endswith('.md"')
     text = r.text
-    for part in ("# Akan dihapus", "## Ringkasan", "## Keputusan", "## Jalannya rapat", "## Task", "## Transkrip", "Budi tolong siapkan draft kontrak"):
+    for part in ("# Akan dihapus", "## Ringkasan", "## Poin penting", "## Keputusan", "## Jalannya rapat", "## Task", "## Transkrip", "Budi tolong siapkan draft kontrak"):
         assert part in text, part
     assert text.count("- [x]") == 1 and "- [ ]" not in text, "unconfirmed suggestions are not exported by default"
     full = (await client.get(f"/api/meetings/{m}/export", params={"format": "md", "tasks": "all"})).text
@@ -59,7 +59,7 @@ def test_hostile_text_cannot_inject_markup_or_break_the_word_file():
     from docx import Document
 
     doc = {"meeting": {"title": nasty, "started_at": None, "language": "id", "note": nasty, "id": "x", "started_at_local": nasty, "ended_at": None, "status": "review"},
-           "participants": [], "summary": {"overview": nasty, "decisions": [nasty], "minutes": []}, "tasks": [],
+           "participants": [], "summary": {"overview": nasty, "key_points": [nasty], "decisions": [nasty], "minutes": []}, "tasks": [],
            "transcript": [{"start_ms": 0, "end_ms": 1, "source": "mic", "text": nasty, "speaker": nasty}]}
     Document(io.BytesIO(export.to_docx(doc)))  # must not raise on control characters
 

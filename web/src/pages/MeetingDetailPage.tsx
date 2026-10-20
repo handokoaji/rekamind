@@ -40,15 +40,25 @@ function sourceAt(segments: Segment[], ms: number): Segment["source"] | null {
 // ---------------------------------------------------------------- Ringkasan
 function SummaryTab({ m }: { m: MeetingDetail }) {
   const s = m.summary;
+  const keyPoints = s?.key_points ?? []; // a server older than this field sends none
   if (!s) return <EmptyState icon={<FileText className="size-6" />} title={t("Belum ada ringkasan")}>{t("Ringkasan muncul setelah rapat diproses.")}</EmptyState>;
   return (
     <div className="flex flex-col gap-6">
       {s.overview && <section aria-labelledby="h-ov"><h3 id="h-ov" className="mb-2 font-semibold">{t("Ringkasan")}</h3><p className="whitespace-pre-line leading-relaxed">{s.overview}</p></section>}
-      {s.decisions.length > 0 && (
-        <section aria-labelledby="h-dec"><h3 id="h-dec" className="mb-2 font-semibold">{t("Keputusan")}</h3>
-          <ul className="flex flex-col gap-2">{s.decisions.map((d, i) => (
+      {/* The headline (key points, decisions) first, the detail ("Jalannya rapat") after it. An empty list says so:
+          a section that silently disappears looks like a missing feature. */}
+      <section aria-labelledby="h-kp"><h3 id="h-kp" className="mb-2 font-semibold">{t("Poin penting")}</h3>
+        {keyPoints.length > 0
+          ? <ul className="flex flex-col gap-2">{keyPoints.map((k, i) => (
+            <li key={i} className="flex gap-2"><span className="mt-2 size-1.5 shrink-0 rounded-full bg-primary" aria-hidden />{k}</li>))}</ul>
+          : <p className="text-sm text-muted">{t("Tidak ada poin penting yang tercatat.")}</p>}
+      </section>
+      <section aria-labelledby="h-dec"><h3 id="h-dec" className="mb-2 font-semibold">{t("Keputusan")}</h3>
+        {s.decisions.length > 0
+          ? <ul className="flex flex-col gap-2">{s.decisions.map((d, i) => (
             <li key={i} className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden />{d}</li>))}</ul>
-        </section>)}
+          : <p className="text-sm text-muted">{t("Tidak ada keputusan yang tercatat.")}</p>}
+      </section>
       {s.minutes.length > 0 && (
         <section aria-labelledby="h-min"><h3 id="h-min" className="mb-2 font-semibold">{t("Jalannya rapat")}</h3>
           <ol className="flex flex-col gap-2 border-l-2 border-border pl-4">{s.minutes.map((p, i) => (

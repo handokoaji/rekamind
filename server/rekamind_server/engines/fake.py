@@ -24,6 +24,7 @@ class FakeExtractor:
     def extract(self, inp: ExtractionInput) -> ExtractionResult:
         return ExtractionResult(
             overview=f"Ringkasan {inp.title}",
+            key_points=["Draft kontrak harus siap sebelum rapat berikutnya"],
             decisions=["Draft kontrak disiapkan sebelum rapat berikutnya"],
             minutes=[MinutePoint(start_ms=0, point="Pembukaan")],
             tasks=[
@@ -69,6 +70,7 @@ class DemoExtractor:
         return ExtractionResult(
             overview="Tim membahas kesiapan peluncuran fitur laporan bulanan. Desain sudah final, dashboard "
                      "tinggal pengujian akhir, dan peluncuran disepakati digeser ke minggu depan.",
+            key_points=["Desain halaman laporan sudah final", "Dashboard tinggal pengujian akhir, selesai sebelum Kamis"],
             decisions=["Peluncuran digeser ke Senin minggu depan", "Lisensi vendor diperpanjang dalam anggaran yang ada"],
             minutes=[MinutePoint(start_ms=0, point="Pembukaan dan status peluncuran"),
                      MinutePoint(start_ms=7000, point="Desain halaman laporan sudah final"),

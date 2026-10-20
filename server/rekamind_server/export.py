@@ -78,7 +78,8 @@ def build_document(m: Meeting, *, transcript: bool = True, tasks: TaskFilter = "
         "participants": [{"label": p.label, "name": clean(p.name) or None, "is_local_user": p.is_local_user,
                           "speaking_ms": sum(s.end_ms - s.start_ms for s in m.segments if s.participant_id == p.id)}
                          for p in m.participants],
-        "summary": ({"overview": clean(m.summary.overview), "decisions": [clean(d) for d in m.summary.decisions],
+        "summary": ({"overview": clean(m.summary.overview), "key_points": [clean(k) for k in (m.summary.key_points or [])],
+                     "decisions": [clean(d) for d in m.summary.decisions],
                      "minutes": [{"start_ms": x.get("start_ms"), "point": clean(x.get("point"))} for x in m.summary.minutes]}
                     if m.summary else None),
         "tasks_schema": TASKS_SCHEMA,
@@ -136,6 +137,8 @@ def to_markdown(doc: dict) -> bytes:
     s = doc["summary"]
     if s:
         L += ["", "## Ringkasan", "", md(s["overview"])]
+        if s.get("key_points"):
+            L += ["", "## Poin penting", ""] + [f"- {md(k)}" for k in s["key_points"]]
         if s["decisions"]:
             L += ["", "## Keputusan", ""] + [f"- {md(d)}" for d in s["decisions"]]
         if s["minutes"]:
@@ -200,6 +203,10 @@ def to_docx(doc: dict) -> bytes:
     if s:
         d.add_heading("Ringkasan", level=1)
         d.add_paragraph(s["overview"])
+        if s.get("key_points"):
+            d.add_heading("Poin penting", level=1)
+            for x in s["key_points"]:
+                d.add_paragraph(x, style="List Bullet")
         if s["decisions"]:
             d.add_heading("Keputusan", level=1)
             for x in s["decisions"]:

@@ -14,7 +14,7 @@ export interface Meeting {
 export interface Participant { id: string; label: string; name: string | null; is_local_user: boolean }
 export interface Segment { id: number; participant_id: string | null; source: Source; start_ms: number; end_ms: number; text: string }
 export interface MinutePoint { time: string | null; start_ms: number; point: string }
-export interface Summary { overview: string; decisions: string[]; minutes: MinutePoint[] }
+export interface Summary { overview: string; key_points?: string[]; decisions: string[]; minutes: MinutePoint[] }
 export interface Task {
   id: string; meeting_id: string; title: string; description: string;
   assignee_name: string | null; assignee_participant_id: string | null;

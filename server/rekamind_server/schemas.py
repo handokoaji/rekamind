@@ -55,6 +55,7 @@ class MinutePoint(BaseModel):
 
 class ExtractionResult(BaseModel):
     overview: str = ""
+    key_points: list[str] = []
     decisions: list[str] = []
     minutes: list[MinutePoint] = []
     tasks: list[ExtractedTask] = []
@@ -95,6 +96,7 @@ class SegmentOut(_ORM):
 
 class SummaryOut(_ORM):
     overview: str
+    key_points: list[str]
     decisions: list[str]
     minutes: list[MinutePoint]
 

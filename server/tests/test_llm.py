@@ -13,6 +13,7 @@ from rekamind_server.engines.llm import (
 
 GOOD = {
     "overview": "Rapat vendor",
+    "key_points": ["Vendor A lebih murah dari vendor B"],
     "decisions": ["Pakai vendor A"],
     "minutes": [{"time": "01:05", "point": "Bahas vendor"}],
     "tasks": [{"title": "Kirim penawaran", "assignee": "Budi", "deadline_text": "Jumat depan",
@@ -36,6 +37,23 @@ def test_extracts_and_converts_clock_to_ms():
     r = _llm(lambda req: _reply(json.dumps(GOOD))).extract(_inp())
     assert r.tasks[0].evidence_start_ms == 65_000 and r.minutes[0].start_ms == 65_000
     assert r.tasks[0].deadline_text == "Jumat depan"
+
+
+def test_key_points_are_kept_apart_from_decisions_and_the_timeline_and_merged_without_repeats():
+    r = _llm(lambda req: _reply(json.dumps(GOOD))).extract(_inp())
+    assert r.key_points == ["Vendor A lebih murah dari vendor B"] and r.decisions == ["Pakai vendor A"]
+    text = "\n".join(f"[{i:02d}:00] ME: " + "kalimat " * 50 for i in range(60))
+    merged = _llm(lambda req: _reply(json.dumps(GOOD))).extract(_inp(text))
+    assert len(chunk_transcript(text)) >= 2 and merged.key_points == ["Vendor A lebih murah dari vendor B"], "the same point from every chunk appears once"
+
+
+def test_the_prompt_defines_decisions_and_key_points_and_keeps_them_short_of_a_second_timeline():
+    from rekamind_server.engines import llm
+
+    p = llm._SYSTEM
+    assert '"key_points"' in p and "BUKAN rincian per waktu" in p
+    assert "walaupun tidak diucapkan" in p and "BUKAN keputusan" in p, "implicit agreements count, bare proposals do not"
+    assert '"key_points"' in llm._SCHEMA_HINT
 
 
 def test_accepts_markdown_fenced_json():

@@ -28,12 +28,14 @@ nama, tanggal, atau durasi. Jika tidak disebutkan, isi null.
 - "evidence_time": salin penanda waktu [mm:ss] dari baris transkrip tempat task itu dibicarakan (tanpa kurung siku), \
 dan "evidence_quote": kutipan singkat dari transkrip.
 - "confidence": 0..1, turunkan bila tugas/penanggung jawab/tenggat ambigu.
-- "minutes": poin per waktu dengan "time" disalin dari penanda waktu transkrip.
+- "key_points": 3 sampai 7 hal PALING penting yang perlu diingat atau dicatat oleh orang yang tidak hadir (topik utama, fakta, angka, kondisi, risiko, kesimpulan), masing-masing satu kalimat padat. Ini intisari, BUKAN rincian per waktu: jangan mengulang isi "minutes" satu per satu. Kosongkan jika rapat memang tidak memuat hal penting.
+- "decisions": hal yang disepakati, disimpulkan, dipilih, disetujui, atau arah yang ditetapkan, walaupun tidak diucapkan dengan kata "putuskan" atau "sepakat" (mis. "oke kita pakai vendor A", "berarti peluncuran digeser ke Senin", "setuju"). Satu kalimat yang menyebut apa yang diputuskan. Usulan, pertanyaan, atau pendapat yang belum disetujui BUKAN keputusan. Kosongkan jika memang tidak ada.
+- "minutes": rincian jalannya rapat berurutan waktu, lebih detail daripada "key_points", dengan "time" disalin dari penanda waktu transkrip.
 Balas HANYA JSON valid sesuai skema; tanpa teks lain."""
 
 _SCHEMA_HINT = """\
 Skema JSON:
-{"overview": str, "decisions": [str],
+{"overview": str, "key_points": [str], "decisions": [str],
  "minutes": [{"time": "mm:ss", "point": str}],
  "tasks": [{"title": str, "description": str, "assignee": str|null, "deadline_text": str|null,
             "estimate_minutes": int|null, "priority": "low"|"medium"|"high",
@@ -130,14 +132,14 @@ class OpenAiCompatExtractor:
                 messages += [{"role": "assistant", "content": raw},
                              {"role": "user", "content": f"JSON tidak valid ({last_err}). Balas ulang HANYA JSON yang benar."}]
                 continue
-            if result.overview.strip() or result.decisions or result.minutes or result.tasks:
+            if result.overview.strip() or result.key_points or result.decisions or result.minutes or result.tasks:
                 return result
             # Every field has a default, so "{}" validates. A meeting with words in it never has nothing to summarise:
             # it is a bad answer, not an empty one (it used to be saved as a blank summary and shown as "done").
             log.warning("LLM returned an empty extraction; raw reply: %r", raw[:300])
             last_err = "semua kolom kosong"
             messages += [{"role": "assistant", "content": raw},
-                         {"role": "user", "content": "Jawabanmu kosong. Isi overview, decisions, minutes, dan tasks "
+                         {"role": "user", "content": "Jawabanmu kosong. Isi overview, key_points, decisions, minutes, dan tasks "
                                                      "berdasarkan transkrip. Balas ulang HANYA JSON yang benar."}]
         raise LlmError(f"LLM mengembalikan format yang tidak valid: {last_err}")
 
@@ -163,6 +165,7 @@ class OpenAiCompatExtractor:
         # Merge: tasks/decisions/minutes concatenate (the pipeline de-duplicates tasks);
         # the overview is rebuilt from the per-part overviews so it covers the whole meeting.
         merged = ExtractionResult(
+            key_points=list(dict.fromkeys(k for p in parts for k in p.key_points)),
             decisions=list(dict.fromkeys(d for p in parts for d in p.decisions)),
             minutes=[m for p in parts for m in p.minutes],
             tasks=[t for p in parts for t in p.tasks],

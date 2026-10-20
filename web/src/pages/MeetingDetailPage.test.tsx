@@ -59,3 +59,26 @@ describe("speaker count hint", () => {
     expect(patch).toBeLessThan(calls.findIndex((c) => c.startsWith("POST") && c.includes("/process"))); // hint first
   });
 });
+
+describe("the summary tab", () => {
+  const withSummary = (summary: object) => show((u) => u.includes("/capabilities") ? json({ processing_ready: true, engines: {} }) : json(meeting({ summary })));
+
+  it("shows the key points and decisions first, then the detail of the meeting", async () => {
+    withSummary({ overview: "Gambaran rapat", key_points: ["Anggaran naik 10%"], decisions: ["Vendor A dipakai"], minutes: [{ time: "00:05", start_ms: 5000, point: "Bahas anggaran" }] });
+    const headings = (await screen.findAllByRole("heading", { level: 3 })).map((h) => h.textContent);
+    expect(headings).toEqual(["Ringkasan", "Poin penting", "Keputusan", "Jalannya rapat"]);
+    expect(screen.getByText("Anggaran naik 10%")).toBeInTheDocument();
+    expect(screen.getByText("Vendor A dipakai")).toBeInTheDocument();
+  });
+
+  it("says so when there are no key points or decisions, instead of hiding the sections", async () => {
+    withSummary({ overview: "Obrolan santai", key_points: [], decisions: [], minutes: [] });
+    expect(await screen.findByText("Tidak ada poin penting yang tercatat.")).toBeInTheDocument();
+    expect(screen.getByText("Tidak ada keputusan yang tercatat.")).toBeInTheDocument();
+  });
+
+  it("copes with a server that does not send key points yet", async () => {
+    withSummary({ overview: "Dari server lama", decisions: [], minutes: [] });
+    expect(await screen.findByText("Tidak ada poin penting yang tercatat.")).toBeInTheDocument();
+  });
+});

@@ -173,6 +173,7 @@ class Summary(Base):
 
     meeting_id: Mapped[str] = mapped_column(ForeignKey("meetings.id", ondelete="CASCADE"), primary_key=True)
     overview: Mapped[str] = mapped_column(Text, default="")
+    key_points: Mapped[list] = mapped_column(JSON, default=list)  # the headline: what to remember (decisions are listed apart)
     decisions: Mapped[list] = mapped_column(JSON, default=list)
     minutes: Mapped[list] = mapped_column(JSON, default=list)
 
