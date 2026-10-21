@@ -12,7 +12,7 @@ beforeEach(() => { bridge.desktopMode = false; bridge.openExternal.mockReset().m
 describe("about card", () => {
   it("names the author, the version and the licence, and links to the right places", () => {
     render(<AboutCard />);
-    expect(screen.getByText(new RegExp(`Versi ${APP_VERSION.replace(/\./g, "\\.")}`))).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(`Versi ${APP_VERSION.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`))).toBeInTheDocument();
     expect(screen.getByText(/AGPL-3\.0-or-later/)).toBeInTheDocument();
     const href = (name: string) => screen.getByRole("link", { name }).getAttribute("href");
     expect(href("Rochmad Handoko Aji")).toBe("https://github.com/handokoaji");
