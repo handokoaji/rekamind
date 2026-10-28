@@ -7,16 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.4.0-beta.8] - 2026-10-28
-
-Test release. The UI can now be served under a sub-path behind a proxy (for example `https://apps.ugm.ac.id/playground/rekamind/`).
-
-### Added
-- **Sub-path deployment.** `REKAMIND_BASE` (default `/`) sets the vite `base`, the router basename and the API/auth prefix, so a proxy that strips a prefix before the backend no longer leaves a blank page. `server/Dockerfile` takes it as a build arg, and the release publishes an extra image `<version>-cuda-diarize-playground` built for `/playground/rekamind/`.
-
-### Fixed
-- **Google sign-in behind a stripped prefix.** The login-flow cookie was scoped to `/auth` and the session cookie to `/`; the browser never sent the first one to `<prefix>/auth/callback`. Both now follow the path of `REKAMIND_PUBLIC_URL`. Nothing changes when the public URL has no path.
-
 ## [0.4.0-beta.7] - 2026-10-20
 
 Test release. Summaries that say what the meeting was about (key points, every topic and where it ended up), a quieter and friendlier app (credit, light/dark, 10 meetings a page, update notice that works behind a shared address), and server fixes found by running beta.6 on a real GPU server. **Known limit: a file over 100 MB cannot be uploaded behind Cloudflare's free plan, which includes a desktop recording longer than about 52 minutes.**

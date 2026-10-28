@@ -13,7 +13,7 @@
 # The port is published on all interfaces (REKAMIND_BIND=0.0.0.0) so an HTTPS reverse proxy on another host can reach it: allow it only from that proxy in the firewall. Set REKAMIND_BIND=127.0.0.1 when the proxy runs on this host.
 services:
   rekamind:
-    image: ghcr.io/handokoaji/rekamind-server:${REKAMIND_IMAGE_TAG:-0.4.0-beta.8-cpu}
+    image: ghcr.io/handokoaji/rekamind-server:${REKAMIND_IMAGE_TAG:-0.4.0-beta.7-cpu}
     restart: unless-stopped
     ports:
       - "${REKAMIND_BIND:-0.0.0.0}:${REKAMIND_PORT:-8787}:8787"
