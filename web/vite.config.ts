@@ -7,6 +7,7 @@ import { defineConfig } from "vite";
 const version: string = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version;
 
 export default defineConfig({
+  base: process.env.REKAMIND_BASE ?? "/", // e.g. /playground/rekamind/ when a proxy serves the app under a sub-path
   plugins: [react(), tailwindcss()],
   define: { __APP_VERSION__: JSON.stringify(version) },
   server: { proxy: { "/api": process.env.REKAMIND_API ?? "http://127.0.0.1:8787" } },

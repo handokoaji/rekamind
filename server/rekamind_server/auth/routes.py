@@ -1,7 +1,7 @@
 import logging
 import re
 from html import escape
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -38,6 +38,11 @@ def _page(status: int, title: str, message: str) -> HTMLResponse:
     return HTMLResponse(body, status_code=status, headers={"Cache-Control": "no-store"})
 
 
+def _base(request: Request) -> str:
+    """Sub-path the public URL lives under ("" at the root); a proxy strips it, but the browser still sees it."""
+    return urlparse(request.app.state.settings.public_url).path.rstrip("/")
+
+
 def _secure_cookie(request: Request) -> bool:
     return request.app.state.settings.public_url.startswith("https://")
 
@@ -69,7 +74,7 @@ async def login(request: Request, redirect: str | None = None, client: str | Non
         log.exception("login: provider discovery failed")
         return _page(502, "Layanan login tidak tersedia", "Server tidak bisa menghubungi Google. Coba lagi nanti.")
     resp = RedirectResponse(url, status_code=302)
-    resp.set_cookie(FLOW_COOKIE, binding, max_age=600, httponly=True, samesite="lax", secure=_secure_cookie(request), path="/auth")
+    resp.set_cookie(FLOW_COOKIE, binding, max_age=600, httponly=True, samesite="lax", secure=_secure_cookie(request), path=_base(request) + "/auth")
     resp.headers["Cache-Control"] = "no-store"
     return resp
 
@@ -111,8 +116,8 @@ async def callback(request: Request, code: str | None = None, state: str | None 
     else:
         resp = RedirectResponse(flow.redirect_to, status_code=302)
         days = st.settings.session_days
-        resp.set_cookie(COOKIE, token, max_age=days * 86400, httponly=True, samesite="lax", secure=_secure_cookie(request), path="/")
-    resp.delete_cookie(FLOW_COOKIE, path="/auth")
+        resp.set_cookie(COOKIE, token, max_age=days * 86400, httponly=True, samesite="lax", secure=_secure_cookie(request), path=_base(request) or "/")
+    resp.delete_cookie(FLOW_COOKIE, path=_base(request) + "/auth")
     resp.headers["Cache-Control"] = "no-store"
     return resp
 
@@ -154,7 +159,7 @@ async def logout(request: Request, _: CurrentUser):
     from fastapi import Response
 
     resp = Response(status_code=204)
-    resp.delete_cookie(COOKIE, path="/")
+    resp.delete_cookie(COOKIE, path=_base(request) or "/")
     return resp
 
 

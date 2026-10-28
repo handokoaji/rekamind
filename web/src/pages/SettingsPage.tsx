@@ -13,7 +13,7 @@ import { Field, Input } from "../components/ui/Field";
 import { useCapabilities, useHealth } from "../hooks/queries";
 import { useTimeZoneChoice, zoneOptions } from "../hooks/timezone";
 import { Select } from "../components/ui/Field";
-import { getBackendUrl, normalizeBackendUrl, setBackendUrl } from "../lib/api";
+import { BASE, getBackendUrl, normalizeBackendUrl, setBackendUrl } from "../lib/api";
 import { t } from "../lib/i18n";
 
 function TimeZoneCard({ serverZone, serverLabel }: { serverZone?: string; serverLabel?: string }) {
@@ -43,7 +43,7 @@ export function SettingsPage() {
     if (invalid) return;
     setTesting(true);
     try {
-      const r = await fetch(`${normalized}/api/health`);
+      const r = await fetch(`${normalized || BASE}/api/health`);
       if (!r.ok) throw new Error(String(r.status));
       toast.success(t("Server terhubung."));
     } catch { toast.error(t("Server tidak merespons di alamat ini.")); }

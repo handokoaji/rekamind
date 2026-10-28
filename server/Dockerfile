@@ -6,7 +6,9 @@ WORKDIR /web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY web/ ./
-RUN npm run build
+# Sub-path the UI is served under behind a proxy, e.g. /playground/rekamind/ (default: root).
+ARG REKAMIND_BASE=/
+RUN REKAMIND_BASE=$REKAMIND_BASE npm run build
 
 # ---- backend ----------------------------------------------------------------
 # EXTRAS picks the variant: "postgres,s3" = API only (record/upload/view, no processing),

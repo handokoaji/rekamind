@@ -9,6 +9,10 @@ const KEY = "rekamind.backendUrl";
 export function getBackendUrl(): string {
   try { return localStorage.getItem(KEY) ?? ""; } catch { return ""; }
 }
+/** Sub-path the app is served under ("" at the root), from vite `base`. */
+export const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+/** Prefix for API/auth calls: the configured backend, else this app's own origin and sub-path. */
+export const apiRoot = (): string => getBackendUrl() || BASE;
 export function setBackendUrl(url: string): void {
   try { url ? localStorage.setItem(KEY, url) : localStorage.removeItem(KEY); } catch { /* storage blocked: stay on same origin */ }
 }
@@ -48,7 +52,7 @@ function messageFrom(body: unknown, status: number): string {
 async function send(method: string, path: string, body?: unknown): Promise<{ res: Response; data: unknown }> {
   let res: Response;
   try {
-    res = await fetch(`${getBackendUrl()}${path.startsWith("/../") ? path.slice(3) : `/api${path}`}`, {
+    res = await fetch(`${apiRoot()}${path.startsWith("/../") ? path.slice(3) : `/api${path}`}`, {
       method,
       headers: { ...authHeaders(), ...(body !== undefined ? { "content-type": "application/json" } : {}) },
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -106,7 +110,7 @@ export const api = {
   exportMeeting: async (id: string, o: { format: ExportFormat; transcript: boolean; allTasks: boolean }): Promise<{ blob: Blob; filename: string }> => {
     const q = new URLSearchParams({ format: o.format, transcript: String(o.transcript), tasks: o.allTasks ? "all" : "confirmed" });
     let res: Response;
-    try { res = await fetch(`${getBackendUrl()}/api/meetings/${id}/export?${q}`, { headers: authHeaders() }); }
+    try { res = await fetch(`${apiRoot()}/api/meetings/${id}/export?${q}`, { headers: authHeaders() }); }
     catch { throw new ApiError(0, t("Tidak dapat terhubung ke server.")); }
     if (!res.ok) throw new ApiError(res.status, messageFrom(await res.json().catch(() => null), res.status));
     const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? `rekamind.${o.format}`;
@@ -136,7 +140,7 @@ export const api = {
    *  with the same credentials as every other call and played from a blob URL. */
   fetchAudio: async (id: string, source: Source): Promise<Blob> => {
     let res: Response;
-    try { res = await fetch(`${getBackendUrl()}/api/meetings/${id}/audio/${source}`, { headers: authHeaders() }); }
+    try { res = await fetch(`${apiRoot()}/api/meetings/${id}/audio/${source}`, { headers: authHeaders() }); }
     catch { throw new ApiError(0, t("Tidak dapat terhubung ke server.")); }
     if (!res.ok) throw new ApiError(res.status, res.status === 404 ? t("Audio tidak tersedia untuk rapat ini.") : messageFrom(await res.json().catch(() => null), res.status));
     return res.blob();
@@ -149,7 +153,7 @@ export function uploadAudio(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("PUT", `${getBackendUrl()}/api/meetings/${id}/audio/${source}`);
+    xhr.open("PUT", `${apiRoot()}/api/meetings/${id}/audio/${source}`);
     for (const [k, v] of Object.entries(authHeaders())) xhr.setRequestHeader(k, v);
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
     xhr.onload = () => {

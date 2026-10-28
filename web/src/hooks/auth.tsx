@@ -65,7 +65,7 @@ export function AuthProvider({ me, children }: { me: Me; children: ReactNode }) 
       return;
     }
     qc.clear();
-    window.location.assign("/");
+    window.location.assign(import.meta.env.BASE_URL);
   };
   return <AuthCtx.Provider value={{ me, logout, isSuperadmin: me.role === "superadmin", canAdmin: me.role === "superadmin" && me.auth_mode === "google" }}>{children}</AuthCtx.Provider>;
 }

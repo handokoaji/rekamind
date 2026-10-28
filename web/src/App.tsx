@@ -44,7 +44,7 @@ export default function App() {
   return (
     <QueryClientProvider client={client}>
       <I18nProvider>
-      <BrowserRouter>
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
         <Desktop>
         <Authenticated>
         <TimeZoneProvider>

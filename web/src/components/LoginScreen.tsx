@@ -6,7 +6,7 @@ import { Loader2, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { desktop, isDesktop } from "../desktop/bridge";
-import { getBackendUrl, setAuthToken } from "../lib/api";
+import { apiRoot, setAuthToken } from "../lib/api";
 import { Card } from "./ui/Card";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { t } from "../lib/i18n";
@@ -55,7 +55,7 @@ function DesktopSignIn() {
 
 export function LoginScreen() {
   const here = window.location.pathname + window.location.search;
-  const href = `${getBackendUrl()}/auth/login?redirect=${encodeURIComponent(here)}`;
+  const href = `${apiRoot()}/auth/login?redirect=${encodeURIComponent(here)}`;
   return (
     <main className="grid min-h-screen place-items-center px-4">
       <Card className="flex w-full max-w-sm flex-col items-center gap-6 p-8 text-center">
