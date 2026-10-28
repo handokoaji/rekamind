@@ -8,7 +8,7 @@
 
 **Record meetings. Get a per-speaker transcript, a summary and a task list. Your data stays yours.**
 
-[![Release](https://img.shields.io/badge/release-v0.4.0--beta.7-f59e0b?style=for-the-badge)](https://github.com/handokoaji/rekamind/releases/tag/v0.4.0-beta.7)
+[![Release](https://img.shields.io/badge/release-v0.4.0--beta.8-f59e0b?style=for-the-badge)](https://github.com/handokoaji/rekamind/releases/tag/v0.4.0-beta.8)
 [![Platform](https://img.shields.io/badge/Windows%20%C2%B7%20Linux-4f46e5?style=for-the-badge)](#-download)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-16a34a?style=for-the-badge)](LICENSE)
 
@@ -166,8 +166,8 @@ Pick the file for your system:
 
 | System | File | Notes |
 |---|---|---|
-| **Windows 10/11 (64-bit)** | [`Rekamind-Windows-x64-setup.exe`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.7/Rekamind-Windows-x64-setup.exe) | `.exe` installer. No admin rights needed. |
-| **Linux (64-bit)** | [`Rekamind-Linux-x64.deb`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.7/Rekamind-Linux-x64.deb) | Debian/Ubuntu and derivatives. |
+| **Windows 10/11 (64-bit)** | [`Rekamind-Windows-x64-setup.exe`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.8/Rekamind-Windows-x64-setup.exe) | `.exe` installer. No admin rights needed. |
+| **Linux (64-bit)** | [`Rekamind-Linux-x64.deb`](https://github.com/handokoaji/rekamind/releases/download/v0.4.0-beta.8/Rekamind-Linux-x64.deb) | Debian/Ubuntu and derivatives. |
 | Linux, other distros | `Rekamind-Linux-x64.AppImage` | **Not available in beta.2** (the AppImage build failed; fix planned). Use the `.deb`. |
 
 Every file comes with `SHA256SUMS.txt`. All releases: [Releases](https://github.com/handokoaji/rekamind/releases).
