@@ -179,3 +179,14 @@ jobs:
           tags: |
             ${{ steps.t.outputs.repo }}:${{ steps.t.outputs.v }}-cuda-diarize
             ${{ steps.t.outputs.repo }}:${{ steps.t.outputs.moving }}-cuda-diarize
+      # Same image with the UI built for https://apps.ugm.ac.id/playground/rekamind/ (a proxy strips the prefix before the backend).
+      - name: NVIDIA GPU image with speaker separation, UI under /playground/rekamind/
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: server/Dockerfile
+          build-args: |
+            EXTRAS=postgres,s3,asr,cuda,diarize
+            REKAMIND_BASE=/playground/rekamind/
+          push: true
+          tags: ${{ steps.t.outputs.repo }}:${{ steps.t.outputs.v }}-cuda-diarize-playground
