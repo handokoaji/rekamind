@@ -22,8 +22,11 @@ describe("format", () => {
 });
 
 describe("backend URL", () => {
-  it("accepts only http(s) origins and strips paths", () => {
-    expect(normalizeBackendUrl("https://rekamind.kantor.id/foo?x=1")).toBe("https://rekamind.kantor.id");
+  it("accepts only http(s) URLs, keeps the sub-path, drops query", () => {
+    expect(normalizeBackendUrl("https://rekamind.kantor.id/foo?x=1")).toBe("https://rekamind.kantor.id/foo");
+    expect(normalizeBackendUrl("https://rekamind.kantor.id/playground/rekamind/")).toBe("https://rekamind.kantor.id/playground/rekamind");
+    expect(normalizeBackendUrl("https://rekamind.kantor.id/")).toBe("https://rekamind.kantor.id");
+    expect(normalizeBackendUrl("https://rapat.tim.kantor.id:8443/")).toBe("https://rapat.tim.kantor.id:8443");
     expect(normalizeBackendUrl("")).toBe("");
     for (const bad of ["javascript:alert(1)", "file:///etc/passwd", "ftp://x", "bukan url"]) expect(normalizeBackendUrl(bad)).toBeNull();
   });

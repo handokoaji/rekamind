@@ -90,7 +90,7 @@ impl Default for Settings {
     }
 }
 
-/// Normalises to an origin and accepts only http(s): a typo or hostile value must not be able to
+/// Normalises to origin + sub-path (no query, fragment or trailing slash) and accepts only http(s): a typo or hostile value must not be able to
 /// point uploads at another scheme.
 pub fn normalize_server(raw: &str) -> Option<String> {
     let v = raw.trim();
@@ -98,11 +98,12 @@ pub fn normalize_server(raw: &str) -> Option<String> {
     if scheme != "http" && scheme != "https" {
         return None;
     }
-    let host = rest.split(['/', '?', '#']).next().unwrap_or("");
-    if host.is_empty() || host.contains(char::is_whitespace) || host.contains('@') {
+    let rest = rest.split(['?', '#']).next().unwrap_or("").trim_end_matches('/');
+    let host = rest.split('/').next().unwrap_or("");
+    if host.is_empty() || rest.contains(char::is_whitespace) || host.contains('@') {
         return None;
     }
-    Some(format!("{scheme}://{host}"))
+    Some(format!("{scheme}://{rest}"))
 }
 
 impl Settings {

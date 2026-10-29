@@ -4,7 +4,7 @@
   "author": "Rochmad Handoko Aji (https://github.com/handokoaji)",
   "homepage": "https://github.com/handokoaji/rekamind",
   "repository": { "type": "git", "url": "https://github.com/handokoaji/rekamind.git" },
-  "version": "0.4.0-beta.7",
+  "version": "0.4.0-beta.9",
   "type": "module",
   "scripts": {
     "dev": "vite",

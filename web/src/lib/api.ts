@@ -22,7 +22,8 @@ export function normalizeBackendUrl(raw: string): string | null {
   if (!v) return "";
   try {
     const u = new URL(v);
-    return u.protocol === "http:" || u.protocol === "https:" ? u.origin : null;
+    // Keep the sub-path (https://host/playground/rekamind); only query and fragment are dropped.
+    return u.protocol === "http:" || u.protocol === "https:" ? u.origin + u.pathname.replace(/\/+$/, "") : null;
   } catch { return null; }
 }
 

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-beta.9] - 2026-10-29
+
+Test release. The server address in Settings keeps its sub-path, so a Rekamind installed under a path (for example `https://host/playground/rekamind`) works from the desktop app and the web UI. A bare domain, a subdomain and a port behave as before.
+
+### Fixed
+- **The server address lost its path.** Saving `https://host/playground/rekamind/` stored only `https://host`, so every request went to the domain root and the app said "Tidak dapat terhubung ke server". Both the desktop settings (`normalize_server`) and the web UI (`normalizeBackendUrl`) now keep origin + path; query, fragment and a trailing slash are dropped. No domain or path is assumed.
+
+### Added
+- **Sub-path deployment of the web UI** (`REKAMIND_BASE`, default `/`), and Google sign-in cookies scoped to the path of `REKAMIND_PUBLIC_URL` (carried over from the beta.8 build).
+
 ## [0.4.0-beta.7] - 2026-10-20
 
 Test release. Summaries that say what the meeting was about (key points, every topic and where it ended up), a quieter and friendlier app (credit, light/dark, 10 meetings a page, update notice that works behind a shared address), and server fixes found by running beta.6 on a real GPU server. **Known limit: a file over 100 MB cannot be uploaded behind Cloudflare's free plan, which includes a desktop recording longer than about 52 minutes.**

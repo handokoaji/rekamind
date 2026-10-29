@@ -13,10 +13,11 @@ fn env<'a>(dir: &'a Path, bundled: Option<&'a Path>) -> BackendEnv<'a> {
 }
 
 #[test]
-fn only_http_and_https_origins_are_accepted_and_paths_are_dropped() {
+fn only_http_and_https_urls_are_accepted_and_the_sub_path_is_kept() {
+    assert_eq!(normalize_server("https://rapat.tim.kantor.id:8443/").as_deref(), Some("https://rapat.tim.kantor.id:8443"));
     assert_eq!(
-        normalize_server("https://rekamind.kantor.id/api?x=1").as_deref(),
-        Some("https://rekamind.kantor.id")
+        normalize_server("https://rekamind.kantor.id/playground/rekamind/?x=1").as_deref(),
+        Some("https://rekamind.kantor.id/playground/rekamind")
     );
     assert_eq!(
         normalize_server("  http://10.0.0.5:8787/ ").as_deref(),
@@ -51,7 +52,7 @@ fn remote_mode_needs_a_valid_server_and_local_mode_does_not() {
     }
     .validated()
     .unwrap();
-    assert_eq!(ok.server_url(), "https://x.id");
+    assert_eq!(ok.server_url(), "https://x.id/path");
     assert_eq!(
         Settings::default().validated().unwrap().server_url(),
         "http://127.0.0.1:8787"
